@@ -1,0 +1,2 @@
+# VirbiusLLM
+VirbiusLLM是一款为大模型定制的安全防护工具，支持实时skill和近线skill配置，通过Agent来辅助生成和优化规则skill，主要应用场景是大模型prompt越狱和敏感指令的拦截和大模型输出的二次审计。
