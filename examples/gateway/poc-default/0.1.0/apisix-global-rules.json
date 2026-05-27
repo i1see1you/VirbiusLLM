@@ -1,0 +1,22 @@
+[
+  {
+    "id": "virbius-platform-global-1",
+    "desc": "PoC 平台级兜底：全局限流（与 virbius-guard 正交，不含 Prompt/Groovy）",
+    "plugins": {
+      "limit-count": {
+        "count": 2000,
+        "time_window": 60,
+        "rejected_code": 429,
+        "key_type": "var",
+        "key": "remote_addr",
+        "policy": "local"
+      },
+      "ip-restriction": {
+        "whitelist": [
+          "0.0.0.0/0"
+        ],
+        "message": "platform ip policy"
+      }
+    }
+  }
+]

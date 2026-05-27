@@ -1,0 +1,31 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: virbius-control
+  datasource:
+    # 任意 JDBC 数据库：配置 url + driver-class-name，并把对应驱动 jar 加入 classpath
+    url: ${VIRBIUS_JDBC_URL:jdbc:sqlite:${virbius.data-dir:./data}/virbius-control.db}
+    driver-class-name: ${VIRBIUS_JDBC_DRIVER:org.sqlite.JDBC}
+    # username / password 按目标库填写，例如 PostgreSQL：
+    # url: jdbc:postgresql://127.0.0.1:5432/virbius
+    # driver-class-name: org.postgresql.Driver
+    # username: virbius
+    # password: virbius
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
+      data-locations: classpath:db/seed.sql
+
+virbius:
+  data-dir: ${VIRBIUS_DATA_DIR:./data}
+  engine:
+    base-url: ${VIRBIUS_ENGINE_URL:http://127.0.0.1:8082}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

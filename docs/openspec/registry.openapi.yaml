@@ -1,0 +1,1174 @@
+openapi: 3.0.3
+info:
+  title: Virbius Control Plane API (MVP)
+  version: 1.2.0-mvp
+  description: |
+    **virbius-control** 单 Java 进程（Registry + Admin 合并）。
+
+    - **规范面**：`/api/v1/admin/tenants/{tenantId}/...`，响应 `{ code, message, data, timestamp }`（`code=0` 成功）。
+    - **兼容面**：`/api/v1/tenants/{tenantId}/...`（Legacy，裸 JSON），逐步废弃。
+    - 规则真源：`rule_history`；`runtime` / `enforce_mode` 见 DESIGN §8.5.0。
+    - PoC 发布为 **同步 HTTP 200**（非 202 异步）。
+    - Bundle YAML 导入（`draft/import`）**未实现**，Post-MVP。
+servers:
+  - url: http://virbius-control:8080
+    description: PoC（Registry + Admin UI 同端口）
+
+tags:
+  - name: admin-bundles
+  - name: admin-access-lists
+  - name: admin-rules
+  - name: admin-publish
+  - name: legacy
+
+paths:
+  /api/v1/health:
+    get:
+      tags: [admin-bundles]
+      summary: 健康检查
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultHealth'
+
+  /api/v1/admin/tenants/{tenantId}/bundles:
+    get:
+      tags: [admin-bundles]
+      summary: 列出 Bundle
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultBundleSummaryList'
+    post:
+      tags: [admin-bundles]
+      summary: 创建 Bundle（draft）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBundleRequest'
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultBundleSummary'
+
+  /api/v1/admin/tenants/{tenantId}/bundles/{bundleId}:
+    get:
+      tags: [admin-bundles]
+      summary: 获取 Bundle 详情
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/bundleId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultBundleDetail'
+
+  /api/v1/admin/tenants/{tenantId}/bundles/{bundleId}/versions/{version}:
+    get:
+      tags: [admin-bundles]
+      summary: 获取 Bundle 版本
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/bundleId'
+        - $ref: '#/components/parameters/version'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultBundleVersion'
+
+  /api/v1/admin/tenants/{tenantId}/bundles/{bundleId}/versions/{version}/metadata:
+    get:
+      tags: [admin-bundles]
+      summary: 获取 Bundle 元数据（含 context_bindings）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/bundleId'
+        - $ref: '#/components/parameters/version'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultBundleMetadata'
+
+  /api/v1/admin/tenants/{tenantId}/bundles/{bundleId}/versions/{version}/metadata/context-bindings:
+    put:
+      tags: [admin-bundles]
+      summary: 替换逻辑变量映射（context_bindings）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/bundleId'
+        - $ref: '#/components/parameters/version'
+        - name: sync
+          in: query
+          schema:
+            type: boolean
+            default: true
+          description: true 时同步 gw/cloud 名单规则并写 gateway 产物
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContextBindingsRequest'
+      responses:
+        '200':
+          description: 已更新
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultContextBindingsUpdate'
+
+  /api/v1/admin/tenants/{tenantId}/bundles/{bundleId}/versions/{version}/metadata/sync-gateway:
+    post:
+      tags: [admin-bundles]
+      summary: 同步 gateway 名单产物（不写 cloud）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/bundleId'
+        - $ref: '#/components/parameters/version'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+
+  /api/v1/admin/tenants/{tenantId}/bundles/{bundleId}/versions/{version}/publish:
+    post:
+      tags: [admin-publish]
+      summary: 发布 Bundle 版本（同步执行状态机）
+      description: |
+        PoC：同步完成并返回最终 status（通常 active）。
+        draft → validating → eval_running → compiling → syncing → active
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/bundleId'
+        - $ref: '#/components/parameters/version'
+      responses:
+        '200':
+          description: 发布完成
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultPublishStatus'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/admin/tenants/{tenantId}/bundles/{bundleId}/versions/{version}/status:
+    get:
+      tags: [admin-publish]
+      summary: 查询发布状态与 sync_ack
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/bundleId'
+        - $ref: '#/components/parameters/version'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultPublishStatus'
+
+  /api/v1/admin/tenants/{tenantId}/access-lists:
+    get:
+      tags: [admin-access-lists]
+      summary: 查询全部名单
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+
+  /api/v1/admin/tenants/{tenantId}/access-lists/{dimension}/{polarity}:
+    get:
+      tags: [admin-access-lists]
+      summary: 查询单维名单
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/dimension'
+        - $ref: '#/components/parameters/polarity'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+    put:
+      tags: [admin-access-lists]
+      summary: 整表替换名单并同步产物
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/dimension'
+        - $ref: '#/components/parameters/polarity'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessListEntriesRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+
+  /api/v1/admin/tenants/{tenantId}/access-lists/{dimension}/{polarity}/entries:
+    post:
+      tags: [admin-access-lists]
+      summary: 追加名单条目
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/dimension'
+        - $ref: '#/components/parameters/polarity'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessListEntriesRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+
+  /api/v1/admin/tenants/{tenantId}/access-lists/{dimension}/{polarity}/entries/{value}:
+    delete:
+      tags: [admin-access-lists]
+      summary: 删除名单条目
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/dimension'
+        - $ref: '#/components/parameters/polarity'
+        - name: value
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+
+  /api/v1/admin/tenants/{tenantId}/access-lists/sync-rules:
+    post:
+      tags: [admin-access-lists]
+      summary: 同步名单 → 规则行 + gateway/edge 产物
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+
+  /api/v1/admin/tenants/{tenantId}/access-lists/push-engine:
+    post:
+      tags: [admin-access-lists]
+      summary: 推送 cloud 名单至 engine RuleCache
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+
+  /api/v1/admin/tenants/{tenantId}/access-lists/sync-and-publish:
+    post:
+      tags: [admin-access-lists]
+      summary: 同步名单后发布 Bundle
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: bundleId
+          in: query
+          schema:
+            type: string
+            default: poc-default
+        - name: version
+          in: query
+          schema:
+            type: string
+            default: "0.1.0"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+
+  /api/v1/admin/tenants/{tenantId}/rules:
+    get:
+      tags: [admin-rules]
+      summary: 列出租户规则（当前 revision 指针）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: layer
+          in: query
+          schema:
+            type: string
+            enum: [edge, gateway, cloud]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultRulePointerList'
+    post:
+      tags: [admin-rules]
+      summary: 创建或更新规则（追加 rule_history revision）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpsertRuleRequest'
+      responses:
+        '200':
+          description: 新 revision 已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultRuleRevision'
+
+  /api/v1/admin/tenants/{tenantId}/rules/{ruleId}:
+    get:
+      tags: [admin-rules]
+      summary: 获取规则当前 revision
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ruleId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultRuleRevision'
+
+  /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/revisions:
+    get:
+      tags: [admin-rules]
+      summary: 列出规则历史 revision
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ruleId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultRuleRevisionMetaList'
+
+  /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/revisions/{revision}:
+    get:
+      tags: [admin-rules]
+      summary: 获取指定 revision 全文
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ruleId'
+        - $ref: '#/components/parameters/revision'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultRuleRevision'
+
+  /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/status:
+    patch:
+      tags: [admin-rules]
+      summary: 启用/停用规则（逻辑删除，追加 revision）
+      description: |
+        `disabled` 的规则不进 gateway/edge 产物与 RuleCache；**不可**再改 body/enforce。
+        变更后自动 sync 名单产物并刷新 engine。
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ruleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRuleStatusRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultRuleRevision'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/runtime:
+    patch:
+      tags: [admin-rules]
+      summary: 更新 enforce_mode（追加 rule_history revision）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ruleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRuntimeRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultRuleRevision'
+
+  /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/runtime/publish-snapshot:
+    post:
+      tags: [admin-publish]
+      summary: 刷新租户 engine RuleCache（runtime_only）
+      description: |
+        **PoC：`ruleId` 路径参数被忽略**，始终刷新整租户 RuleCache（不编译 gateway/edge）。
+        仅改 enforce_mode 后使用；见 DESIGN §8.8.2。
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ruleId'
+      responses:
+        '200':
+          description: EngineCacheSync 完成
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+
+  # --- Legacy（兼容脚本；新集成请用 Admin）---
+
+  /api/v1/tenants/{tenantId}/bundles:
+    get:
+      deprecated: true
+      tags: [legacy]
+      summary: "[Legacy] 列出 Bundle"
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: 裸 JSON 数组
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BundleSummary'
+
+  /api/v1/tenants/{tenantId}/bundles/{bundleId}/versions/{version}:
+    get:
+      deprecated: true
+      tags: [legacy]
+      summary: "[Legacy] 获取 Bundle 版本"
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/bundleId'
+        - $ref: '#/components/parameters/version'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/v1/tenants/{tenantId}/bundles/{bundleId}/versions/{version}/metadata:
+    get:
+      deprecated: true
+      tags: [legacy]
+      summary: "[Legacy] 获取 Bundle 元数据（无 PUT context-bindings）"
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/bundleId'
+        - $ref: '#/components/parameters/version'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BundleMetadata'
+
+  /api/v1/tenants/{tenantId}/bundles/{bundleId}/versions/{version}/publish:
+    post:
+      deprecated: true
+      tags: [legacy]
+      summary: "[Legacy] 发布 Bundle（同步 200）"
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/bundleId'
+        - $ref: '#/components/parameters/version'
+      responses:
+        '200':
+          description: 发布完成
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishStatus'
+
+  /api/v1/tenants/{tenantId}/access-lists:
+    get:
+      deprecated: true
+      tags: [legacy]
+      summary: "[Legacy] 查询全部名单"
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/tenants/{tenantId}/access-lists/{dimension}/{polarity}:
+    get:
+      deprecated: true
+      tags: [legacy]
+      summary: "[Legacy] 查询单维名单（无 PUT 整表替换）"
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/dimension'
+        - $ref: '#/components/parameters/polarity'
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/tenants/{tenantId}/access-lists/{dimension}/{polarity}/entries:
+    post:
+      deprecated: true
+      tags: [legacy]
+      summary: "[Legacy] 追加名单条目"
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/dimension'
+        - $ref: '#/components/parameters/polarity'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessListEntriesRequest'
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/tenants/{tenantId}/access-lists/{dimension}/{polarity}/entries/{value}:
+    delete:
+      deprecated: true
+      tags: [legacy]
+      summary: "[Legacy] 删除名单条目"
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/dimension'
+        - $ref: '#/components/parameters/polarity'
+        - name: value
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/tenants/{tenantId}/access-lists/sync-rules:
+    post:
+      deprecated: true
+      tags: [legacy]
+      summary: "[Legacy] 同步名单规则"
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/tenants/{tenantId}/access-lists/push-engine:
+    post:
+      deprecated: true
+      tags: [legacy]
+      summary: "[Legacy] 推送 engine"
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/tenants/{tenantId}/rules:
+    get:
+      deprecated: true
+      tags: [legacy]
+      summary: "[Legacy] 列出规则"
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: layer
+          in: query
+          schema:
+            type: string
+            enum: [edge, gateway, cloud]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RulePointer'
+    post:
+      deprecated: true
+      tags: [legacy]
+      summary: "[Legacy] 创建或更新规则"
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpsertRuleRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleRevision'
+
+  /api/v1/tenants/{tenantId}/rules/{ruleId}:
+    get:
+      deprecated: true
+      tags: [legacy]
+      summary: "[Legacy] 获取规则"
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ruleId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleRevision'
+
+  /api/v1/tenants/{tenantId}/rules/{ruleId}/runtime:
+    patch:
+      deprecated: true
+      tags: [legacy]
+      summary: "[Legacy] 更新 enforce_mode"
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ruleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRuntimeRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleRevision'
+
+components:
+  parameters:
+    tenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        type: string
+        example: default
+    bundleId:
+      name: bundleId
+      in: path
+      required: true
+      schema:
+        type: string
+        example: poc-default
+    version:
+      name: version
+      in: path
+      required: true
+      schema:
+        type: string
+        example: "0.1.0"
+    ruleId:
+      name: ruleId
+      in: path
+      required: true
+      schema:
+        type: string
+    revision:
+      name: revision
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int32
+    dimension:
+      name: dimension
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [keyword, user_id, device_id, ip_cidr, var]
+    polarity:
+      name: polarity
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [deny, allow]
+
+  responses:
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiResultError'
+
+  schemas:
+    ApiResultHealth:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            status:
+              type: string
+              example: ok
+
+    ApiResultError:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+
+    ApiResultObject:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+
+    ApiResultBundleSummaryList:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/BundleSummary'
+
+    ApiResultBundleSummary:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/BundleSummary'
+
+    ApiResultBundleDetail:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/BundleDetail'
+
+    ApiResultBundleVersion:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+
+    ApiResultBundleMetadata:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/BundleMetadata'
+
+    ApiResultContextBindingsUpdate:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            updated:
+              type: boolean
+            context_bindings:
+              $ref: '#/components/schemas/ContextBindingsBlock'
+            context_vars:
+              type: array
+              items:
+                $ref: '#/components/schemas/ContextVarBindingRow'
+            sync:
+              type: object
+              additionalProperties: true
+
+    ApiResultPublishStatus:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/PublishStatus'
+
+    ApiResultRulePointerList:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RulePointer'
+
+    ApiResultRuleRevision:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/RuleRevision'
+
+    ApiResultRuleRevisionMetaList:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleRevisionMeta'
+
+    BundleSummary:
+      type: object
+      properties:
+        bundle_id:
+          type: string
+        tenant_id:
+          type: string
+        latest_version:
+          type: string
+        status:
+          type: string
+          enum: [draft, validating, eval_running, compiling, syncing, active, failed]
+
+    CreateBundleRequest:
+      type: object
+      required: [bundle_id]
+      properties:
+        bundle_id:
+          type: string
+
+    BundleDetail:
+      allOf:
+        - $ref: '#/components/schemas/BundleSummary'
+        - type: object
+          properties:
+            rules:
+              type: array
+              items:
+                $ref: '#/components/schemas/RulePointer'
+
+    BundleMetadata:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+        bundle_id:
+          type: string
+        version:
+          type: string
+        status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        context_bindings:
+          $ref: '#/components/schemas/ContextBindingsBlock'
+        context_vars:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContextVarBindingRow'
+
+    ContextBindingsRequest:
+      type: object
+      required: [vars]
+      properties:
+        vars:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContextVarBindingRow'
+
+    ContextVarBindingRow:
+      type: object
+      required: [logical, from]
+      properties:
+        logical:
+          type: string
+          pattern: '^[a-z][a-z0-9_]*$'
+        from:
+          type: string
+          enum: [query, header, subject, network]
+        name:
+          type: string
+          description: from=query|header 时 HTTP 名；缺省=logical
+        field:
+          type: string
+          description: from=subject|network 时字段名；缺省=logical
+
+    ContextBindingsBlock:
+      type: object
+      properties:
+        version:
+          type: integer
+          example: 1
+        vars:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              from:
+                type: string
+                enum: [query, header, subject, network]
+              name:
+                type: string
+              field:
+                type: string
+
+    AccessListEntriesRequest:
+      type: object
+      properties:
+        value:
+          type: string
+        values:
+          type: array
+          items:
+            type: string
+
+    PublishStatus:
+      type: object
+      properties:
+        bundle_id:
+          type: string
+        bundle_version:
+          type: string
+        status:
+          type: string
+        publish_id:
+          type: string
+        sync_ack:
+          type: object
+          additionalProperties: true
+
+    RulePointer:
+      type: object
+      properties:
+        rule_id:
+          type: string
+        current_revision:
+          type: integer
+        layer:
+          type: string
+        runtime:
+          type: string
+          enum: [lua-dsl, lua, native, prompt, groovy]
+        reason_code:
+          type: string
+        enforce_mode:
+          type: string
+          enum: [dry_run, canary, full]
+        rule_status:
+          type: string
+          enum: [active, disabled]
+
+    UpdateRuleStatusRequest:
+      type: object
+      required: [rule_status]
+      properties:
+        rule_status:
+          type: string
+          enum: [active, disabled]
+
+    UpsertRuleRequest:
+      type: object
+      required: [rule_id, layer, runtime, reason_code, body]
+      properties:
+        rule_id:
+          type: string
+        bundle_id:
+          type: string
+        layer:
+          type: string
+          enum: [edge, gateway, cloud]
+        runtime:
+          type: string
+          enum: [lua-dsl, lua, native, prompt, groovy]
+          description: 详见 DESIGN.md §8.5.0
+        reason_code:
+          type: string
+        risk_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 100
+        scope:
+          type: object
+        body:
+          oneOf:
+            - type: string
+            - type: object
+
+    UpdateRuntimeRequest:
+      type: object
+      required: [enforce_mode]
+      properties:
+        enforce_mode:
+          type: string
+          enum: [dry_run, canary, full]
+          description: 详见 DESIGN.md §8.5.0、§8.8.3
+        canary_percent:
+          type: integer
+          minimum: 1
+          maximum: 100
+
+    RuleRevisionMeta:
+      type: object
+      properties:
+        rule_revision:
+          type: integer
+        enforce_mode:
+          type: string
+        rule_status:
+          type: string
+          enum: [active, disabled]
+        modified_at:
+          type: string
+          format: date-time
+        effective_from:
+          type: string
+          format: date-time
+        effective_to:
+          type: string
+          format: date-time
+          nullable: true
+
+    RuleRevision:
+      allOf:
+        - $ref: '#/components/schemas/RuleRevisionMeta'
+        - type: object
+          properties:
+            tenant_id:
+              type: string
+            rule_id:
+              type: string
+            layer:
+              type: string
+            runtime:
+              type: string
+            reason_code:
+              type: string
+            risk_score:
+              type: integer
+            scope:
+              type: object
+            body:
+              oneOf:
+                - type: string
+                - type: object
+            body_hash:
+              type: string

@@ -1,0 +1,20 @@
+{
+  "id": "virbius-route-general-chat",
+  "name": "general_chat-completions",
+  "desc": "PoC 主路由：POST /v1/chat/completions → scene=general_chat",
+  "uri": "/v1/chat/completions",
+  "methods": ["POST"],
+  "service_id": "virbius-svc-default",
+  "plugins": {
+    "serverless-pre-function": {
+      "phase": "rewrite",
+      "functions": [
+        "return function(conf, ctx)\n  ngx.req.set_header('X-Virbius-Scene', 'general_chat')\nend"
+      ]
+    },
+    "virbius-guard": {
+      "scene": "general_chat",
+      "evaluate": true
+    }
+  }
+}

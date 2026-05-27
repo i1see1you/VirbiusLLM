@@ -1,0 +1,15 @@
+_format_version: "3.0"
+services:
+  - name: virbius-default-llm
+    id: virbius-svc-default
+    url: https://mock-llm.internal
+    plugins:
+      - name: virbius-guard
+        config:
+          bundle_version: "0.1.0"
+          evaluate: true
+          tenant_id: default
+          scene: general_chat
+          agent_url: http://127.0.0.1:9070
+          fail_mode: open
+          lists_file: /usr/local/kong/virbius/data/gateway/default-access-lists.json

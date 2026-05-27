@@ -1,0 +1,19 @@
+_format_version: "3.0"
+routes:
+  - name: general_chat-completions
+    id: virbius-route-general-chat
+    service: virbius-svc-default
+    paths:
+      - /v1/chat/completions
+    methods:
+      - POST
+    plugins:
+      - name: request-transformer
+        config:
+          add:
+            headers:
+              - "X-Virbius-Scene:general_chat"
+      - name: virbius-guard
+        config:
+          scene: general_chat
+          evaluate: true

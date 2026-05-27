@@ -1,0 +1,34 @@
+package io.virbius.control.repository;
+
+import io.virbius.control.domain.BundleVersion;
+import io.virbius.control.domain.RuleRevision;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+public interface RegistryRepository {
+
+    List<BundleVersion> listBundles(String tenantId);
+
+    Optional<BundleVersion> getBundle(String tenantId, String bundleId, String version);
+
+    BundleVersion createBundle(String tenantId, String bundleId);
+
+    RuleRevision upsertRule(String tenantId, RuleRevision draft);
+
+    List<RuleRevision> listCurrentRules(String tenantId, String layer);
+
+    Optional<RuleRevision> getRuleRevision(String tenantId, String ruleId, int revision);
+
+    RuleRevision updateRuntime(String tenantId, String ruleId, String enforceMode, Integer canaryPercent);
+
+    RuleRevision updateRuleStatus(String tenantId, String ruleId, String ruleStatus);
+
+    void updateBundleStatus(String tenantId, String bundleId, String version, String status, String publishId, Object syncAck);
+
+    void updateBundleMetadata(String tenantId, String bundleId, String version, Map<String, Object> metadata);
+
+    List<RuleRevision> listRuleRevisions(String tenantId, String ruleId);
+
+    Optional<RuleRevision> getCurrentRule(String tenantId, String ruleId);
+}

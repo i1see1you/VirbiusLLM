@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Virbius 运营台</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #0f172a; background: #f1f5f9; }
+    body { margin: 0; padding: 1rem 1.25rem 2rem; max-width: 1280px; margin-left: auto; margin-right: auto; }
+    h1 { font-size: 1.35rem; margin: 0 0 0.25rem; }
+    .sub { color: #64748b; font-size: 0.85rem; margin-bottom: 1rem; }
+    .toolbar, .row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    label { font-size: 0.8rem; color: #475569; }
+    input, select, textarea { padding: 0.35rem 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.9rem; }
+    textarea { width: 100%; min-height: 120px; font-family: ui-monospace, monospace; font-size: 0.82rem; box-sizing: border-box; }
+    button { padding: 0.4rem 0.85rem; border: none; border-radius: 4px; background: #2563eb; color: #fff; cursor: pointer; font-size: 0.85rem; }
+    button.secondary { background: #64748b; }
+    button.danger { background: #dc2626; }
+    button.tab { background: #e2e8f0; color: #334155; }
+    button.tab.active { background: #2563eb; color: #fff; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+    th { background: #f8fafc; color: #475569; font-weight: 600; }
+    tr:hover { background: #f8fafc; }
+    tr.sel { background: #eff6ff; }
+    .tag { font-size: 0.7rem; padding: 0.1rem 0.35rem; border-radius: 3px; background: #e2e8f0; color: #334155; }
+    .tag.deny { background: #fee2e2; color: #991b1b; }
+    .tag.allow { background: #dcfce7; color: #166534; }
+    .tag.disabled { background: #fef3c7; color: #92400e; }
+    #log { font-size: 0.8rem; background: #0f172a; color: #e2e8f0; padding: 0.75rem; border-radius: 6px; white-space: pre-wrap; min-height: 4rem; max-height: 200px; overflow: auto; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .hint { font-size: 0.8rem; color: #64748b; margin: 0.25rem 0 0.75rem; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>Virbius 运营台</h1>
+  <p class="sub">统一维护：名单 · 上下文映射 · 规则 · 发布（API：<code>/api/v1/admin</code>）</p>
+
+  <div class="card">
+    <div class="toolbar">
+      <label>租户 <input id="tenantId" value="default" size="10" /></label>
+      <label>Bundle <input id="bundleId" value="poc-default" size="12" /></label>
+      <label>版本 <input id="bundleVer" value="0.1.0" size="6" /></label>
+      <button type="button" id="btnReload">刷新全部</button>
+      <button type="button" class="secondary" id="btnSyncAll">同步名单→规则→网关产物</button>
+      <button type="button" class="secondary" id="btnPublish">发布 Engine</button>
+    </div>
+    <div class="toolbar">
+      <button type="button" class="tab active" data-tab="lists">名单</button>
+      <button type="button" class="tab" data-tab="bindings">请求映射</button>
+      <button type="button" class="tab" data-tab="rules">规则</button>
+      <button type="button" class="tab" data-tab="publish">发布状态</button>
+    </div>
+  </div>
+
+  <div id="panel-lists" class="panel active card">
+    <h2 style="margin:0 0 0.5rem;font-size:1rem">多维名单</h2>
+    <p class="hint">逻辑变量名单格式 <code>logical_name=value</code>（如 <code>app_id=beta</code>）；须先在「上下文映射」声明逻辑名。</p>
+    <div class="row">
+      <select id="listDim">
+        <option value="keyword">keyword</option>
+        <option value="user_id">user_id</option>
+        <option value="device_id">device_id</option>
+        <option value="ip_cidr">ip_cidr</option>
+        <option value="var">var（逻辑变量）</option>
+      </select>
+      <select id="listPol">
+        <option value="deny">deny</option>
+        <option value="allow">allow</option>
+      </select>
+      <input id="listVal" placeholder="app_id=beta" style="min-width:14rem" />
+      <button type="button" id="btnListAdd">添加</button>
+    </div>
+    <table id="listsTable">
+      <thead><tr><th>维度</th><th>极性</th><th>值</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div id="panel-bindings" class="panel card">
+    <h2 style="margin:0 0 0.5rem;font-size:1rem">上下文映射（context_bindings）</h2>
+    <p class="hint">逻辑名 → HTTP 来源；策略与名单只引用逻辑名。wire 留空时默认与逻辑名相同（如逻辑名 <code>debug_flag</code> → Query 参数 <code>debug_flag</code>）。</p>
+    <table id="bindTable">
+      <thead><tr><th>逻辑名</th><th>来源 from</th><th>wire name / field</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="row" style="margin-top:0.5rem">
+      <input id="bLogical" placeholder="app_id" size="10" />
+      <select id="bFrom"><option value="header">header</option><option value="query">query</option><option value="subject">subject</option><option value="network">network</option></select>
+      <input id="bWire" placeholder="wire（可空，默认同逻辑名）" size="18" />
+      <button type="button" id="btnBindAdd">添加行</button>
+      <button type="button" id="btnSaveBindings">保存映射</button>
+    </div>
+  </div>
+
+  <div id="panel-rules" class="panel card">
+    <h2 style="margin:0 0 0.5rem;font-size:1rem">规则（Registry）</h2>
+    <p class="hint">名单类规则由「名单」Tab 同步生成；此处可<strong>新建</strong>或编辑 Prompt / Groovy / 自定义 body。保存会写入新 revision。</p>
+    <div class="row">
+      <button type="button" class="tab layer active" data-layer="cloud">云 cloud</button>
+      <button type="button" class="tab layer" data-layer="gateway">管 gateway</button>
+      <button type="button" class="tab layer" data-layer="edge">端 edge</button>
+      <button type="button" id="btnNewRule">新建规则</button>
+    </div>
+    <table id="rulesTable">
+      <thead><tr><th>rule_id</th><th>runtime</th><th>status</th><th>rev</th><th>risk</th><th>enforce</th><th>reason</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="ruleEditor" style="display:none;margin-top:1rem">
+      <h3 style="font-size:0.95rem"><span id="editTitle">编辑</span> <span id="editRuleId"></span></h3>
+      <div id="newRuleRow" class="row" style="display:none">
+        <label>rule_id <input id="fRuleId" placeholder="cloud_custom_l1" /></label>
+        <label>runtime
+          <select id="fRuntime"></select>
+        </label>
+      </div>
+      <div class="row">
+        <label>reason <input id="fReason" /></label>
+        <label>risk <input id="fRisk" type="number" min="0" max="100" style="width:4rem" /></label>
+        <label id="enforceWrap">enforce
+          <select id="fEnforce"><option>dry_run</option><option>canary</option><option>full</option></select>
+        </label>
+        <label id="canaryWrap">canary% <input id="fCanary" type="number" min="0" max="100" value="5" style="width:3rem" /></label>
+      </div>
+      <textarea id="fBody"></textarea>
+      <div class="row">
+        <button type="button" id="btnSaveRule">保存规则（新 revision）</button>
+        <button type="button" class="secondary" id="btnSaveRuntime">仅更新 enforce</button>
+        <button type="button" class="secondary" id="btnSnapshot">Engine 运行时快照</button>
+        <button type="button" class="danger" id="btnDisableRule">停用规则</button>
+        <button type="button" class="secondary" id="btnEnableRule" style="display:none">启用规则</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-publish" class="panel card">
+    <h2 style="margin:0 0 0.5rem;font-size:1rem">Bundle 发布状态</h2>
+    <pre id="publishInfo" style="background:#f8fafc;padding:0.75rem;border-radius:4px;font-size:0.85rem">—</pre>
+  </div>
+
+  <pre id="log"></pre>
+
+  <script>
+    const logEl = document.getElementById('log');
+    let currentLayer = 'cloud';
+    let selectedRuleId = null;
+    let isNewRule = false;
+    let editRuleMeta = null;
+    let contextVars = [];
+
+    const LAYER_RUNTIMES = {
+      cloud: ['native', 'prompt', 'groovy'],
+      gateway: ['lua'],
+      edge: ['lua-dsl']
+    };
+
+    function defaultRuleBody(layer, runtime) {
+      if (runtime === 'groovy') {
+        return "def decide(ctx) {\n  if (ctx.var('debug_flag') == '1') {\n    return [action: 'block', would_block: false]\n  }\n  return [action: 'allow', would_block: false]\n}";
+      }
+      if (runtime === 'prompt') {
+        return 'Classify user input. Block jailbreak/DAN/injection.';
+      }
+      if (runtime === 'native') {
+        return JSON.stringify({ list_type: 'deny', vars: [] }, null, 2);
+      }
+      return JSON.stringify({ list_type: 'deny', keywords: [] }, null, 2);
+    }
+
+    function fillRuntimeSelect(layer, selected) {
+      const sel = document.getElementById('fRuntime');
+      const runtimes = LAYER_RUNTIMES[layer] || ['native'];
+      sel.innerHTML = runtimes.map(r => `<option value="${r}">${r}</option>`).join('');
+      if (selected && runtimes.includes(selected)) sel.value = selected;
+    }
+
+    function setRuleEditorReadOnly(disabled) {
+      const ro = !!disabled;
+      ['fReason', 'fRisk', 'fEnforce', 'fCanary', 'fBody', 'fRuleId', 'fRuntime'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = ro;
+      });
+      document.getElementById('btnSaveRule').style.display = ro ? 'none' : '';
+      document.getElementById('btnSaveRuntime').style.display = ro || isNewRule ? 'none' : (editRuleMeta && editRuleMeta.layer === 'cloud' ? '' : 'none');
+      document.getElementById('btnSnapshot').style.display = ro || isNewRule ? 'none' : (editRuleMeta && editRuleMeta.layer === 'cloud' ? '' : 'none');
+      document.getElementById('btnDisableRule').style.display = ro || isNewRule ? 'none' : '';
+      document.getElementById('btnEnableRule').style.display = ro && !isNewRule ? '' : 'none';
+    }
+
+    function setRuleEditorCloudOnly(layer) {
+      const cloudOnly = layer === 'cloud';
+      document.getElementById('enforceWrap').style.display = cloudOnly ? '' : 'none';
+      document.getElementById('canaryWrap').style.display = cloudOnly ? '' : 'none';
+      document.getElementById('btnSaveRuntime').style.display = cloudOnly && !isNewRule ? '' : 'none';
+      document.getElementById('btnSnapshot').style.display = cloudOnly && !isNewRule ? '' : 'none';
+    }
+
+    function openNewRuleEditor() {
+      isNewRule = true;
+      selectedRuleId = null;
+      editRuleMeta = { layer: currentLayer };
+      document.getElementById('ruleEditor').style.display = 'block';
+      document.getElementById('editTitle').textContent = '新建';
+      document.getElementById('editRuleId').textContent = '';
+      document.getElementById('newRuleRow').style.display = '';
+      document.getElementById('fRuleId').value = '';
+      fillRuntimeSelect(currentLayer, LAYER_RUNTIMES[currentLayer][0]);
+      document.getElementById('fReason').value = 'CUSTOM_RULE';
+      document.getElementById('fRisk').value = 100;
+      document.getElementById('fEnforce').value = 'dry_run';
+      document.getElementById('fCanary').value = 5;
+      const rt = document.getElementById('fRuntime').value;
+      document.getElementById('fBody').value = defaultRuleBody(currentLayer, rt);
+      setRuleEditorCloudOnly(currentLayer);
+      setRuleEditorReadOnly(false);
+      document.getElementById('fRuntime').onchange = () => {
+        document.getElementById('fBody').value = defaultRuleBody(currentLayer, document.getElementById('fRuntime').value);
+      };
+    }
+
+    function tenant() { return document.getElementById('tenantId').value.trim() || 'default'; }
+    function bundleId() { return document.getElementById('bundleId').value.trim() || 'poc-default'; }
+    function bundleVer() { return document.getElementById('bundleVer').value.trim() || '0.1.0'; }
+    function admin(path, opts = {}) {
+      const url = '/api/v1/admin/tenants/' + encodeURIComponent(tenant()) + path;
+      return fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts }).then(async res => {
+        const j = await res.json();
+        if (j.code !== 0) throw new Error(j.message || ('HTTP ' + res.status));
+        return j.data;
+      });
+    }
+    function log(x) { logEl.textContent = typeof x === 'string' ? x : JSON.stringify(x, null, 2); }
+
+    const DIM_HINT = {
+      keyword: '关键字', user_id: '用户', device_id: '设备', ip_cidr: 'IP/CIDR',
+      var: '逻辑变量'
+    };
+
+    function flattenLists(lists) {
+      const rows = [];
+      if (!lists) return rows;
+      for (const [key, values] of Object.entries(lists)) {
+        const [pol, dim] = key.split('.');
+        (values || []).forEach(v => rows.push({ dim, pol, value: v }));
+      }
+      return rows.sort((a, b) => (a.dim + a.pol).localeCompare(b.dim + b.pol));
+    }
+
+    async function loadLists() {
+      const data = await admin('/access-lists');
+      const tbody = document.querySelector('#listsTable tbody');
+      tbody.innerHTML = '';
+      flattenLists(data.lists).forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${DIM_HINT[row.dim] || row.dim} <span class="tag">${row.dim}</span></td>
+          <td><span class="tag ${row.pol}">${row.pol}</span></td>
+          <td><code>${esc(row.value)}</code></td>
+          <td><button class="danger" data-dim="${row.dim}" data-pol="${row.pol}" data-val="${escAttr(row.value)}">删</button></td>`;
+        tbody.appendChild(tr);
+      });
+      tbody.querySelectorAll('button.danger').forEach(btn => {
+        btn.onclick = async () => {
+          await admin(`/access-lists/${btn.dataset.dim}/${btn.dataset.pol}/entries/${encodeURIComponent(btn.dataset.val)}`, { method: 'DELETE' });
+          await loadLists();
+          log('已删除名单条目');
+        };
+      });
+    }
+
+    async function loadBindings() {
+      const data = await admin(`/bundles/${encodeURIComponent(bundleId())}/versions/${encodeURIComponent(bundleVer())}/metadata`);
+      contextVars = (data.context_vars || []).map(v => ({
+        logical: v.logical,
+        from: v.from,
+        name: v.name || '',
+        field: v.field || ''
+      }));
+      renderBindingsTable();
+    }
+
+    function renderBindingsTable() {
+      const tbody = document.querySelector('#bindTable tbody');
+      tbody.innerHTML = '';
+      contextVars.forEach((row, idx) => {
+        const wire = row.from === 'subject' || row.from === 'network' ? row.field : row.name;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td><code>${esc(row.logical)}</code></td><td>${esc(row.from)}</td><td><code>${esc(wire)}</code></td>
+          <td><button class="danger" data-i="${idx}">删</button></td>`;
+        tr.querySelector('button').onclick = () => { contextVars.splice(idx, 1); renderBindingsTable(); };
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function loadRules() {
+      const rules = await admin('/rules?layer=' + encodeURIComponent(currentLayer));
+      const tbody = document.querySelector('#rulesTable tbody');
+      tbody.innerHTML = '';
+      rules.forEach(r => {
+        const tr = document.createElement('tr');
+        if (r.rule_id === selectedRuleId) tr.classList.add('sel');
+        tr.innerHTML = `<td>${esc(r.rule_id)}</td><td>${esc(r.runtime)}</td>
+          <td><span class="tag ${r.rule_status === 'disabled' ? 'disabled' : ''}">${esc(r.rule_status || 'active')}</span></td>
+          <td>${r.current_revision}</td>
+          <td>${r.risk_score}</td><td>${esc(r.enforce_mode)}</td><td>${esc(r.reason_code)}</td>`;
+        tr.onclick = () => selectRule(r.rule_id);
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function selectRule(ruleId) {
+      isNewRule = false;
+      selectedRuleId = ruleId;
+      const r = await admin('/rules/' + encodeURIComponent(ruleId));
+      editRuleMeta = r;
+      document.getElementById('ruleEditor').style.display = 'block';
+      document.getElementById('editTitle').textContent = '编辑';
+      document.getElementById('editRuleId').textContent = ruleId;
+      document.getElementById('newRuleRow').style.display = 'none';
+      document.getElementById('fReason').value = r.reason_code || '';
+      document.getElementById('fRisk').value = r.risk_score ?? 100;
+      document.getElementById('fEnforce').value = r.enforce_mode || 'dry_run';
+      document.getElementById('fCanary').value = r.canary_percent ?? 5;
+      const body = r.body;
+      document.getElementById('fBody').value = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
+      setRuleEditorCloudOnly(r.layer);
+      setRuleEditorReadOnly(r.rule_status === 'disabled');
+      await loadRules();
+    }
+
+    async function loadPublish() {
+      const st = await admin(`/bundles/${encodeURIComponent(bundleId())}/versions/${encodeURIComponent(bundleVer())}/status`);
+      document.getElementById('publishInfo').textContent = JSON.stringify(st, null, 2);
+    }
+
+    async function reloadAll() {
+      await loadLists();
+      await loadBindings();
+      await loadRules();
+      await loadPublish();
+      log({ ok: true, tenant: tenant(), bundle: bundleId(), version: bundleVer() });
+    }
+
+    function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function escAttr(s) { return String(s).replace(/"/g, '&quot;'); }
+
+    document.querySelectorAll('button.tab[data-tab]').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('button.tab[data-tab]').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+      };
+    });
+    document.querySelectorAll('button.tab.layer').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('button.tab.layer').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentLayer = btn.dataset.layer;
+        selectedRuleId = null;
+        isNewRule = false;
+        document.getElementById('ruleEditor').style.display = 'none';
+        loadRules().catch(e => log(e.message));
+      };
+    });
+
+    document.getElementById('btnReload').onclick = () => reloadAll().catch(e => log(e.message));
+    document.getElementById('btnSyncAll').onclick = () =>
+      admin('/access-lists/sync-rules', { method: 'POST' }).then(log).then(reloadAll).catch(e => log(e.message));
+    document.getElementById('btnPublish').onclick = () =>
+      admin(`/bundles/${encodeURIComponent(bundleId())}/versions/${encodeURIComponent(bundleVer())}/publish`, { method: 'POST' })
+        .then(log).then(loadPublish).catch(e => log(e.message));
+
+    document.getElementById('btnListAdd').onclick = () => {
+      const dim = document.getElementById('listDim').value;
+      const pol = document.getElementById('listPol').value;
+      const val = document.getElementById('listVal').value.trim();
+      if (!val) return;
+      admin(`/access-lists/${dim}/${pol}/entries`, { method: 'POST', body: JSON.stringify({ value: val }) })
+        .then(() => { document.getElementById('listVal').value = ''; return loadLists(); })
+        .then(() => log('名单已添加并同步')).catch(e => log(e.message));
+    };
+
+    document.getElementById('btnBindAdd').onclick = () => {
+      const logical = document.getElementById('bLogical').value.trim();
+      if (!logical) return;
+      const from = document.getElementById('bFrom').value || 'query';
+      const wireRaw = document.getElementById('bWire').value.trim();
+      const wire = wireRaw || logical;
+      const row = { logical, from, name: '', field: '' };
+      if (from === 'subject' || from === 'network') row.field = wire;
+      else row.name = wire;
+      if (!contextVars.some(x => x.logical === logical)) contextVars.push(row);
+      document.getElementById('bLogical').value = '';
+      document.getElementById('bWire').value = '';
+      renderBindingsTable();
+    };
+    document.getElementById('btnSaveBindings').onclick = () =>
+      admin(`/bundles/${encodeURIComponent(bundleId())}/versions/${encodeURIComponent(bundleVer())}/metadata/context-bindings?sync=true`, {
+        method: 'PUT',
+        body: JSON.stringify({ vars: contextVars.map(v => {
+          const m = { logical: v.logical, from: v.from };
+          if (v.name) m.name = v.name;
+          if (v.field) m.field = v.field;
+          return m;
+        })})
+      }).then(log).catch(e => log(e.message));
+
+    document.getElementById('btnNewRule').onclick = () => openNewRuleEditor();
+
+    document.getElementById('btnSaveRule').onclick = async () => {
+      if (editRuleMeta && editRuleMeta.rule_status === 'disabled') {
+        log('规则已停用，不可修改');
+        return;
+      }
+      const ruleId = isNewRule
+        ? document.getElementById('fRuleId').value.trim()
+        : selectedRuleId;
+      if (!ruleId) {
+        log('请填写 rule_id');
+        return;
+      }
+      const layer = isNewRule ? currentLayer : editRuleMeta.layer;
+      const runtime = isNewRule ? document.getElementById('fRuntime').value : editRuleMeta.runtime;
+      let body;
+      try { body = JSON.parse(document.getElementById('fBody').value); } catch { body = document.getElementById('fBody').value; }
+      await admin('/rules', {
+        method: 'POST',
+        body: JSON.stringify({
+          rule_id: ruleId,
+          bundle_id: bundleId(),
+          layer,
+          runtime,
+          reason_code: document.getElementById('fReason').value,
+          risk_score: Number(document.getElementById('fRisk').value),
+          scope: isNewRule ? {} : (editRuleMeta.scope || {}),
+          body
+        })
+      });
+      log(isNewRule ? '规则已创建' : '规则已保存');
+      isNewRule = false;
+      await selectRule(ruleId);
+    };
+    document.getElementById('btnSaveRuntime').onclick = () => {
+      if (editRuleMeta && editRuleMeta.rule_status === 'disabled') {
+        log('规则已停用，不可修改');
+        return;
+      }
+      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/runtime', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          enforce_mode: document.getElementById('fEnforce').value,
+          canary_percent: Number(document.getElementById('fCanary').value)
+        })
+      }).then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message));
+    };
+    document.getElementById('btnDisableRule').onclick = () =>
+      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/status', {
+        method: 'PATCH',
+        body: JSON.stringify({ rule_status: 'disabled' })
+      }).then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message));
+    document.getElementById('btnEnableRule').onclick = () =>
+      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/status', {
+        method: 'PATCH',
+        body: JSON.stringify({ rule_status: 'active' })
+      }).then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message));
+    document.getElementById('btnSnapshot').onclick = () =>
+      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/runtime/publish-snapshot', { method: 'POST' })
+        .then(log).catch(e => log(e.message));
+
+    reloadAll().catch(e => log(e.message));
+  </script>
+</body>
+</html>

@@ -1,0 +1,121 @@
+package io.virbius.groovy.l3;
+
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+import java.util.zip.CRC32;
+
+/**
+ * Groovy L3 白名单 API（G2）。脚本仅可访问 {@code ctx} 的 public 方法。
+ */
+public final class PolicyContext {
+
+    private static final int BLOCK_THRESHOLD = 100;
+
+    private final String tenantId;
+    private final String sessionId;
+    private final String scene;
+    private final String currentRuleId;
+    private final Map<String, L3RuleView> rulesById;
+    private final List<L3SignalView> signals;
+    private final Map<String, String> vars;
+
+    public PolicyContext(
+            String tenantId,
+            String sessionId,
+            String scene,
+            String currentRuleId,
+            Map<String, L3RuleView> rulesById,
+            List<L3SignalView> signals) {
+        this(tenantId, sessionId, scene, currentRuleId, rulesById, signals, Map.of());
+    }
+
+    public PolicyContext(
+            String tenantId,
+            String sessionId,
+            String scene,
+            String currentRuleId,
+            Map<String, L3RuleView> rulesById,
+            List<L3SignalView> signals,
+            Map<String, String> vars) {
+        this.tenantId = tenantId != null ? tenantId : "";
+        this.sessionId = sessionId != null ? sessionId : "";
+        this.scene = scene != null ? scene : "";
+        this.currentRuleId = currentRuleId != null ? currentRuleId : "";
+        this.rulesById = rulesById != null ? Map.copyOf(rulesById) : Map.of();
+        this.signals = signals != null ? List.copyOf(signals) : List.of();
+        this.vars = vars != null ? Map.copyOf(vars) : Map.of();
+    }
+
+    public String tenantId() {
+        return tenantId;
+    }
+
+    public String sessionId() {
+        return sessionId;
+    }
+
+    public String scene() {
+        return scene;
+    }
+
+    public String currentRuleId() {
+        return currentRuleId;
+    }
+
+    public List<L3SignalView> signals() {
+        return signals;
+    }
+
+    /** 只读 RequestContext 逻辑变量表。 */
+    public Map<String, String> vars() {
+        return vars;
+    }
+
+    /** 读取逻辑变量，如 {@code app_id}、{@code debug_flag}。 */
+    public String var(String logicalName) {
+        if (logicalName == null || logicalName.isBlank()) {
+            return null;
+        }
+        return vars.get(logicalName.trim());
+    }
+
+    public String enforceMode(String ruleId) {
+        L3RuleView r = rulesById.get(ruleId);
+        return r != null && r.enforceMode() != null ? r.enforceMode() : "full";
+    }
+
+    public int riskScore(String ruleId) {
+        L3RuleView r = rulesById.get(ruleId);
+        return r != null ? r.riskScore() : BLOCK_THRESHOLD;
+    }
+
+    public int canaryPercent(String ruleId) {
+        L3RuleView r = rulesById.get(ruleId);
+        return r != null ? r.canaryPercent() : 100;
+    }
+
+    /** 任一 signal 达到拦截阈值（risk_score≥100 或 suggest=block）。 */
+    public boolean wouldHitBlock() {
+        for (L3SignalView s : signals) {
+            if (s.score() >= BLOCK_THRESHOLD || "block".equalsIgnoreCase(s.suggest())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean inCanaryBucket(String sessionKey, int percent) {
+        if (percent >= 100) {
+            return true;
+        }
+        if (percent <= 0) {
+            return false;
+        }
+        String key = sessionKey == null || sessionKey.isBlank() ? "default" : sessionKey;
+        CRC32 crc = new CRC32();
+        crc.update(key.getBytes(StandardCharsets.UTF_8));
+        long bucket = crc.getValue() % 100;
+        return bucket < percent;
+    }
+}

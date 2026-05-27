@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virbius.io/schemas/edge-manifest/v1/mvp",
+  "title": "VirbiusEdgeManifest",
+  "description": "端侧 CDN 部署清单（非规则真源）",
+  "type": "object",
+  "required": ["apiVersion", "bundle_id", "bundle_version", "tenant", "files"],
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "virbius.io/v1"
+    },
+    "bundle_id": { "type": "string" },
+    "bundle_version": { "type": "string" },
+    "tenant": { "type": "string" },
+    "published_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "files": {
+      "type": "object",
+      "required": ["dict", "regex", "blacklist"],
+      "properties": {
+        "dict": { "$ref": "#/$defs/fileEntry" },
+        "regex": { "$ref": "#/$defs/fileEntry" },
+        "blacklist": { "$ref": "#/$defs/fileEntry" }
+      }
+    },
+    "signature": { "type": "string" },
+    "min_sdk_version": { "type": "string" }
+  },
+  "$defs": {
+    "fileEntry": {
+      "type": "object",
+      "required": ["url", "sha256"],
+      "properties": {
+        "url": { "type": "string", "format": "uri" },
+        "sha256": { "type": "string" },
+        "rule_id": { "type": "string" },
+        "rule_revision": { "type": "integer" }
+      }
+    }
+  }
+}

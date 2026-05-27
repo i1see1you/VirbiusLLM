@@ -1,0 +1,17 @@
+[package]
+name = "virbius-gateway-agent"
+version = "0.1.0"
+edition = "2021"
+description = "APISIX/Kong sidecar: HTTP → virbius-engine Evaluate"
+
+[[bin]]
+name = "virbius-gateway-agent"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.7"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

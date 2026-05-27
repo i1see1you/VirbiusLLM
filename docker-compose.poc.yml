@@ -1,0 +1,3 @@
+# PoC: run Java/Go on host (see docs/POC-REPO.md).
+# Optional placeholders for future container images.
+services: {}

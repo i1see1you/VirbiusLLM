@@ -1,0 +1,24 @@
+{
+  "id": "virbius-route-medical-qa",
+  "name": "medical_qa-completions",
+  "desc": "同 URI 多 scene 示例：网关注入 X-Virbius-Scene，vars 选路（DESIGN §11.4.5）",
+  "uri": "/v1/chat/completions",
+  "methods": ["POST"],
+  "vars": [
+    ["http_x_virbius_scene", "==", "medical_qa"]
+  ],
+  "priority": 10,
+  "service_id": "virbius-svc-default",
+  "plugins": {
+    "serverless-pre-function": {
+      "phase": "rewrite",
+      "functions": [
+        "return function(conf, ctx)\n  ngx.req.set_header('X-Virbius-Scene', 'medical_qa')\nend"
+      ]
+    },
+    "virbius-guard": {
+      "scene": "medical_qa",
+      "evaluate": true
+    }
+  }
+}

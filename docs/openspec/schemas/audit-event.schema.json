@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virbius.io/schemas/audit-event/v1/mvp",
+  "title": "VirbiusAuditEvent",
+  "description": "MVP 审计 jsonl 单行事件。不记录 bundle_id/bundle_version。ControlContext（F-11）：trace_id 必填；user_id/device_id 若 App 提供则各层应写入。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "trace_id",
+    "tenant_id",
+    "scene",
+    "layer",
+    "rule_id",
+    "rule_revision",
+    "reason_code",
+    "effective_action",
+    "would_block",
+    "intercepted_at"
+  ],
+  "properties": {
+    "trace_id": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 128,
+      "description": "App 生成的全局唯一 ID（UUID v4 或 ULID）；端 block 审计必填"
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scene": {
+      "type": "string",
+      "minLength": 1
+    },
+    "layer": {
+      "type": "string",
+      "enum": ["edge", "gateway", "cloud"]
+    },
+    "rule_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rule_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "reason_code": {
+      "type": "string",
+      "minLength": 1
+    },
+    "effective_action": {
+      "type": "string",
+      "enum": ["allow", "block", "review", "rewrite", "safe_reply", "log"]
+    },
+    "would_block": {
+      "type": "boolean"
+    },
+    "intercepted_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "user_id": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "可选；与 ControlContext / virbius_scan_ctx 一致（F-11）"
+    },
+    "device_id": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "可选；与 ControlContext / virbius_scan_ctx 一致（F-11）"
+    },
+    "trace_id_source": {
+      "type": "string",
+      "enum": ["client", "sdk", "gateway"],
+      "description": "trace_id 来源（F-10）；建议各层写入"
+    }
+  }
+}

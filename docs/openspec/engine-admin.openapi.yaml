@@ -1,0 +1,102 @@
+openapi: 3.0.3
+info:
+  title: Virbius Engine Admin API (MVP)
+  version: 1.0.0-mvp
+  description: |
+    virbius-engine 运维接口：RuleCache 同步与 ACK。
+    由 PublishOrchestrator EngineCacheSyncAdapter 调用。
+servers:
+  - url: http://virbius-engine:8082
+
+tags:
+  - name: cache
+  - name: health
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: 健康检查
+      responses:
+        '200':
+          description: OK
+
+  /admin/policy-version:
+    get:
+      tags: [cache]
+      summary: 当前 RuleCache 策略版本（Adapter ACK）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyVersion'
+
+  /admin/cache/reload:
+    post:
+      tags: [cache]
+      summary: 从 Registry DB 刷新 RuleCache
+      parameters:
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: bundle_id
+          in: query
+          schema:
+            type: string
+        - name: bundle_version
+          in: query
+          description: 发布批次标识（非审计字段）
+          schema:
+            type: string
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [full, runtime_only]
+            default: full
+      responses:
+        '200':
+          description: 刷新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CacheReloadResult'
+        '500':
+          description: 刷新失败
+
+components:
+  schemas:
+    PolicyVersion:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+        policy_version:
+          type: string
+          description: 与 bundle_version 对齐，仅运维 ACK
+        cache_generation:
+          type: integer
+          format: int64
+        loaded_at:
+          type: string
+          format: date-time
+        rule_count:
+          type: integer
+
+    CacheReloadResult:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        cache_generation:
+          type: integer
+        policy_version:
+          type: string
+        rules_loaded:
+          type: integer
+        duration_ms:
+          type: integer

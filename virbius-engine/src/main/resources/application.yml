@@ -1,0 +1,28 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: virbius-engine
+  datasource:
+    driver-class-name: org.sqlite.JDBC
+    url: jdbc:sqlite:${virbius.data-dir:./data}/virbius-engine.db
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
+      data-locations: classpath:db/seed.sql
+
+virbius:
+  data-dir: ${VIRBIUS_DATA_DIR:./data}
+  grpc:
+    port: 50051
+  audit:
+    engine-path: ${VIRBIUS_ENGINE_AUDIT:/tmp/virbius/engine-audit.jsonl}
+    sqlite-enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

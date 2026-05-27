@@ -1,0 +1,32 @@
+# Java
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# Go
+virbius-gateway-agent/bin/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+/var/
+
+# Env
+.env
+.env.local
+
+# SQLite data
+/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

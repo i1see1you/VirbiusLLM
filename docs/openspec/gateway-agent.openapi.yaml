@@ -1,0 +1,176 @@
+openapi: 3.0.3
+info:
+  title: Virbius Gateway Agent API (MVP)
+  version: 1.2.0-mvp
+  description: |
+    部署在 APISIX/Kong 同节点的 sidecar。
+    插件通过 HTTP 调用；内部 HTTP 至 virbius-engine。
+    **逻辑变量 `vars`**：virbius-guard 已按 `context_bindings` 解析后传入；非空时 agent **直接使用**（不再用空 query/headers 重算）。
+    直连调试可传 `query`/`headers` 由 agent 解析，或只传 `vars`。
+    ControlContext（F-11）：trace_id / user_id / device_id 由 Header 传入。
+    实现语言：**Rust**（F-14）。
+servers:
+  - url: http://127.0.0.1:9070
+  - url: unix:///var/run/virbius/agent.sock
+
+tags:
+  - name: evaluate
+  - name: health
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: 健康检查
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /v1/evaluate:
+    post:
+      tags: [evaluate]
+      summary: 安全评估（转 gRPC Evaluate）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluateHttpRequest'
+      responses:
+        '200':
+          description: 评估完成
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateHttpResponse'
+        '200-degraded':
+          description: engine 超时 fail-open（仍 HTTP 200）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateHttpResponse'
+        '400':
+          description: 非法 trace_id 格式或请求体错误（缺失 trace 由插件生成，不在此拒绝）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: INVALID_ARGUMENT
+        message:
+          type: string
+          example: invalid X-Virbius-Trace-Id
+
+    Signal:
+      type: object
+      required: [rule_id, rule_revision, source, layer]
+      properties:
+        rule_id:
+          type: string
+        rule_revision:
+          type: integer
+        source:
+          type: string
+          enum: [edge, gateway, cloud]
+        layer:
+          type: string
+        score:
+          type: number
+        suggest:
+          type: string
+        reason_code:
+          type: string
+
+    EvaluateHttpRequest:
+      type: object
+      required: [tenant_id, scene, role, content, trace_id]
+      properties:
+        tenant_id:
+          type: string
+        scene:
+          type: string
+        role:
+          type: string
+          default: user
+        session_id:
+          type: string
+        content:
+          type: string
+        trace_id:
+          type: string
+          minLength: 16
+          maxLength: 128
+          description: 与 X-Virbius-Trace-Id / 端 virbius_scan_ctx.trace_id 相同
+        prior_signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/Signal'
+        is_stream_chunk:
+          type: boolean
+          default: false
+        user_id:
+          type: string
+          maxLength: 256
+          description: 与 X-Virbius-User-Id / virbius_scan_ctx.user_id 相同（可选）
+        device_id:
+          type: string
+          maxLength: 256
+          description: 与 X-Virbius-Device-Id / virbius_scan_ctx.device_id 相同（可选）
+        vars:
+          type: object
+          additionalProperties:
+            type: string
+          description: |
+            逻辑变量表。经 virbius-guard 时由插件解析后传入；**非空时优先于 query/headers 解析**。
+            键为逻辑名，如 `app_id`、`debug_flag`。
+        query:
+          type: object
+          additionalProperties:
+            type: string
+          description: 可选；未传或非空 vars 时按 context_bindings 从 query 解析
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: 可选；header 名建议小写（如 x-app-id）
+
+    EvaluateHttpResponse:
+      type: object
+      required: [effective_action, would_block, trace_id]
+      properties:
+        effective_action:
+          type: string
+          enum: [allow, block, review, rewrite, safe_reply]
+        would_block:
+          type: boolean
+        rule_id:
+          type: string
+        rule_revision:
+          type: integer
+        reason_code:
+          type: string
+        trace_id:
+          type: string
+        degraded:
+          type: boolean
+          description: true 表示 fail-open 降级
+        signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/Signal'

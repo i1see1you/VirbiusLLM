@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virbius.io/schemas/control-context/v1/mvp",
+  "title": "VirbiusControlContext",
+  "description": "端/管/云公用的防控请求上下文（F-11）。检测结果见 Signal / EngineDecision；非完整 Evaluate 请求体。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["trace_id"],
+  "properties": {
+    "trace_id": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 128,
+      "description": "App 生成（UUID v4/ULID）；与 X-Virbius-Trace-Id 一致（F-10）"
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "管/云由网关注入；端侧可由 App 配置"
+    },
+    "scene": {
+      "type": "string",
+      "minLength": 1,
+      "description": "场景；管层由路由映射注入，禁止信任客户端伪造 scene"
+    },
+    "user_id": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "业务用户 ID；端黑名单与审计排障；可选"
+    },
+    "device_id": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "设备 ID；端黑名单与审计排障；可选"
+    },
+    "session_id": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "会话 ID；管/云 Evaluate 使用；端 scan 可不填"
+    },
+    "role": {
+      "type": "string",
+      "enum": ["user", "assistant", "tool", "retrieved"],
+      "description": "管/云 Evaluate 使用"
+    }
+  }
+}

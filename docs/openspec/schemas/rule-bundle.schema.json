@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virbius.io/schemas/rule-bundle/v1/mvp",
+  "title": "VirbiusRuleBundle",
+  "description": "Registry 逻辑 Bundle（PoC 最小集）。Post-MVP 导入校验用；线上真源为 rule_history。与 examples/poc-default-bundle.yaml 字段命名可能不一致，导入 API 未实现。",
+  "type": "object",
+  "required": ["apiVersion", "bundle", "scope", "rules"],
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "virbius/v1"
+    },
+    "bundle": {
+      "type": "object",
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "required": ["tenants", "scenes"],
+      "properties": {
+        "tenants": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "scenes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 5,
+      "items": { "$ref": "#/$defs/rule" }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "required": ["id", "layer", "runtime", "reason_code", "risk_score", "scope"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "rule_id，租户内唯一"
+        },
+        "layer": {
+          "type": "string",
+          "enum": ["edge", "gateway", "cloud"]
+        },
+        "runtime": {
+          "type": "string",
+          "enum": ["lua-dsl", "lua", "native", "prompt", "groovy"]
+        },
+        "reason_code": { "type": "string" },
+        "risk_score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 100,
+          "description": "0=放行，1–99=灰区预留，100=应拦截"
+        },
+        "scope": {
+          "type": "object",
+          "properties": {
+            "scenes": { "type": "array", "items": { "type": "string" } },
+            "roles": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "body": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "object" }
+          ]
+        }
+      }
+    }
+  }
+}

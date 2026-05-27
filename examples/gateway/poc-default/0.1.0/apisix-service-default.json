@@ -1,0 +1,27 @@
+{
+  "id": "virbius-svc-default",
+  "name": "virbius-default-llm",
+  "desc": "tenant=default，绑定 bundle poc-default@0.1.0；Route 可覆盖 scene / evaluate",
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "mock-llm.internal:443": 1
+    },
+    "timeout": {
+      "connect": 3,
+      "send": 60,
+      "read": 120
+    }
+  },
+  "plugins": {
+    "virbius-guard": {
+      "bundle_version": "0.1.0",
+      "evaluate": true,
+      "tenant_id": "default",
+      "scene": "general_chat",
+      "agent_url": "http://127.0.0.1:9070",
+      "fail_mode": "open",
+      "lists_file": "/usr/local/apisix/conf/virbius/data/gateway/default-access-lists.json"
+    }
+  }
+}
