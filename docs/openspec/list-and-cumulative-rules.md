@@ -130,7 +130,7 @@ runtime: list_match
 layer: gateway              # 或 cloud：在本层 match 并产 Signal / 403
 reason_code: GW_USER_DENY
 risk_score: 100
-rule_status: active
+rollout_state: dry_run      # R1+；PoC 等价 rule_status: active + enforce_mode: dry_run
 body:
   list_name: blocked_users  # 必填
   # value_source:          # 可选，见 §3

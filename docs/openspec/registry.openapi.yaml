@@ -1,14 +1,18 @@
 openapi: 3.0.3
 info:
   title: Virbius Control Plane API (MVP)
-  version: 1.3.0-mvp
+  version: 1.4.0-mvp
   description: |
     **virbius-control** 单 Java 进程（Registry + Admin 合并）。
 
     - **规范面**：`/api/v1/admin/tenants/{tenantId}/...`，响应 `{ code, message, data, timestamp }`（`code=0` 成功）。
     - **兼容面**：`/api/v1/tenants/{tenantId}/...`（Legacy，裸 JSON），逐步废弃。
     - 规则真源：`rule_history`；`runtime` 见 DESIGN §8.5.0。
-    - **规则级 enforce / canary**（管侧真拦 + 云 PolicyMerge）：见 [rule-level-enforce.md](./rule-level-enforce.md)。
+    - **运营放量**：`rollout_state` + `canary_percent`（[rule-rollout.md](./rule-rollout.md)）；R1 目标 API `PATCH .../rollout`。
+    - **执行面 enforce**：由 rollout 导出；合并见 [rule-level-enforce.md](./rule-level-enforce.md)。
+    - **PoC 过渡**：`rule_status` + `PATCH .../status`、`enforce_mode` + `PATCH .../runtime`（R1 废弃）。
+    - 租户门禁/阶梯：`GET|PUT .../rollout-policy`（**不可 per-rule**）。
+    - 审计 ingest：默认 Redis Stream，可选 Kafka（rule-rollout §5.7）。
     - PoC 发布为 **同步 HTTP 200**（非 202 异步）。
     - Bundle YAML 导入（`draft/import`）**未实现**，Post-MVP。
 servers:
@@ -426,10 +430,13 @@ paths:
   /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/status:
     patch:
       tags: [admin-rules]
-      summary: 启用/停用规则（逻辑删除，追加 revision）
+      deprecated: true
+      summary: "[PoC 过渡] 启用/停用规则（rule_status）"
       description: |
-        `disabled` 的规则不进 gateway/edge 产物与 RuleCache；**不可**再改 body/enforce。
-        变更后自动 sync 名单产物并刷新 engine。
+        **R1 起废弃**，请用 `PATCH .../rollout`（[rule-rollout.md](./rule-rollout.md)）。
+
+        映射：`active` ≈ 进执行面；`draft`/`disabled` ≈ 不进执行面。
+        `disabled` 的规则不可再改 body/enforce。
       parameters:
         - $ref: '#/components/parameters/tenantId'
         - $ref: '#/components/parameters/ruleId'
@@ -452,9 +459,12 @@ paths:
   /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/runtime:
     patch:
       tags: [admin-rules]
-      summary: 规则级放量（更新 enforce_mode，追加 rule_history revision）
+      deprecated: true
+      summary: "[PoC 过渡] 规则级放量（enforce_mode）"
       description: |
-        **规则级** enforce / canary（非租户 / Bundle 级）。详见 [rule-level-enforce.md](./rule-level-enforce.md)。
+        **R1 起废弃**，请用 `PATCH .../rollout`（[rule-rollout.md](./rule-rollout.md)）。
+
+        **永久禁止** `dry_run → full`；须 dry_run → canary → … → full。
 
         | enforce_mode | canary_percent | 行为（在规则所属 layer 执行点） |
         |--------------|----------------|----------------------------------|
@@ -469,7 +479,7 @@ paths:
         - `layer=cloud`：刷新 engine RuleCache（`runtime/publish-snapshot` 或 publish 流程）。
         - gateway 规则 **终局 403** 时不调用 evaluate（管侧审计必写）。
 
-        新建规则默认 `dry_run`；**不应**在 `POST .../rules` 时设置 canary，仅在本接口放量。
+        新建规则默认 `draft`；canary 仅在本接口或目标 `.../rollout` 放量。
       parameters:
         - $ref: '#/components/parameters/tenantId'
         - $ref: '#/components/parameters/ruleId'
@@ -486,6 +496,132 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResultRuleRevision'
+
+  /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/rollout:
+    patch:
+      tags: [admin-rules]
+      summary: 规则放量（rollout_state，R1+）
+      description: |
+        运营放量真源。详见 [rule-rollout.md](./rule-rollout.md)。
+
+        - `draft → dry_run`：publish / 上线
+        - **禁止** `dry_run → full`（409）
+        - `dry_run|canary|full` 下改 body → 强制 `draft`（`POST .../rules`）
+        - canary 时 `canary_percent` 必填；其他状态须 null
+        - 门禁未过返回 409 GATE_FAILED（除非 `force=true` + comment）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ruleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRolloutRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultRuleRevision'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/rollout/publish:
+    post:
+      tags: [admin-rules]
+      summary: 上线（draft → dry_run）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ruleId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultRuleRevision'
+
+  /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/rollout/rollback:
+    post:
+      tags: [admin-rules]
+      summary: 回退至 dry_run（canary/full → dry_run）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ruleId'
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/rollout/disable:
+    post:
+      tags: [admin-rules]
+      summary: 停用（→ disabled）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ruleId'
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/rollout/recover:
+    post:
+      tags: [admin-rules]
+      summary: 恢复草稿（disabled → draft）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ruleId'
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/rollout/evaluate:
+    post:
+      tags: [admin-rules]
+      summary: 门禁评估（不应用）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ruleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RolloutEvaluateRequest'
+      responses:
+        '200':
+          description: Gate result
+
+  /api/v1/admin/tenants/{tenantId}/rollout-policy:
+    get:
+      tags: [admin-rules]
+      summary: 租户放量策略（门禁 / 阶梯）
+      description: |
+        **仅租户级**；不可 per-rule。详见 [rule-rollout.md §5.2](./rule-rollout.md)。
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantRolloutPolicy'
+    put:
+      tags: [admin-rules]
+      summary: 更新租户放量策略
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantRolloutPolicy'
+      responses:
+        '200':
+          description: OK
 
   /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/runtime/publish-snapshot:
     post:
@@ -1097,30 +1233,33 @@ components:
         enforce_mode:
           type: string
           enum: [dry_run, canary, full]
-          description: 规则级执行模式；见 rule-level-enforce.md
+          description: 执行面导出字段（PoC 列名）；R1+ 由 rollout_state 导出；见 rule-level-enforce.md
         canary_percent:
           type: integer
           minimum: 1
           maximum: 100
           nullable: true
-          description: enforce_mode=canary 时必填；full/dry_run 时应省略或 null
+          description: canary 时必填；full/dry_run 时应省略或 null
+        rollout_state:
+          type: string
+          enum: [draft, disabled, dry_run, canary, full]
+          description: 运营放量真源（R1+）；见 rule-rollout.md
         rule_status:
           type: string
           enum: [draft, active, disabled]
+          deprecated: true
           description: |
-            draft=配置中不进执行面；active=参与匹配；disabled=停用不可编辑。
-            流转：draft→active|disabled；active→disabled；disabled→draft。
+            **PoC 过渡**；R1 删除。draft=配置；active=进执行面；disabled=停用。
 
     UpdateRuleStatusRequest:
       type: object
+      deprecated: true
       required: [rule_status]
       properties:
         rule_status:
           type: string
           enum: [draft, active, disabled]
-          description: |
-            draft=配置中不进执行面；active=参与匹配；disabled=停用不可编辑。
-            流转：draft→active|disabled；active→disabled；disabled→draft。
+          description: PoC 过渡；R1 用 PATCH .../rollout
 
     UpsertRuleRequest:
       type: object
@@ -1156,23 +1295,101 @@ components:
             - type: string
             - type: object
       description: |
-        新建或更新规则正文。**不包含** enforce / canary（默认 dry_run）。
-        放量使用 `PATCH .../rules/{ruleId}/runtime`。
+        新建或更新规则正文。**不包含** rollout / enforce。
+        R1+：`dry_run|canary|full` 下 body 变更 → 强制 `rollout_state=draft`。
+        PoC 放量：`PATCH .../runtime` 或 R1 `PATCH .../rollout`。
 
     UpdateRuntimeRequest:
       type: object
+      deprecated: true
       required: [enforce_mode]
       properties:
         enforce_mode:
           type: string
           enum: [dry_run, canary, full]
-          description: 规则级 enforce；见 rule-level-enforce.md
+          description: PoC 过渡；**禁止** dry_run→full；R1 用 PATCH .../rollout
         canary_percent:
           type: integer
           minimum: 1
           maximum: 100
           nullable: true
           description: enforce_mode=canary 时必填；否则省略或 null
+
+    UpdateRolloutRequest:
+      type: object
+      required: [rollout_state]
+      properties:
+        rollout_state:
+          type: string
+          enum: [draft, disabled, dry_run, canary, full]
+        canary_percent:
+          type: integer
+          minimum: 1
+          maximum: 100
+          nullable: true
+          description: rollout_state=canary 时必填
+        force:
+          type: boolean
+          default: false
+          description: 绕过门禁（须 comment）
+        comment:
+          type: string
+          description: force=true 时必填
+
+    RolloutEvaluateRequest:
+      type: object
+      required: [target_state]
+      properties:
+        target_state:
+          type: string
+          enum: [canary, full]
+        canary_percent:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: target_state=canary 时必填
+
+    TenantRolloutPolicy:
+      type: object
+      description: 租户级门禁与阶梯；**不可 per-rule**。见 rule-rollout.md §5.2
+      properties:
+        auto_mode:
+          type: string
+          enum: [manual, assisted, auto]
+          default: assisted
+        canary_ladder:
+          type: array
+          items:
+            type: integer
+          default: [5, 20, 50, 100]
+          description: 100 表示下一步 full
+        min_dry_run_hours:
+          type: integer
+          default: 24
+        min_review_count:
+          type: integer
+          default: 100
+        max_review_rate:
+          type: number
+          format: float
+          default: 0.05
+        max_review_spike_ratio:
+          type: number
+          format: float
+          default: 2.0
+        min_hours_per_step:
+          type: integer
+          default: 12
+        min_block_samples_per_step:
+          type: integer
+          default: 10
+        allow_force:
+          type: boolean
+          default: true
+        rollback_block_spike_ratio:
+          type: number
+          format: float
+          default: 3.0
 
     RuleRevisionMeta:
       type: object
@@ -1182,17 +1399,20 @@ components:
         enforce_mode:
           type: string
           enum: [dry_run, canary, full]
+          description: 执行面导出（PoC 列名）
         canary_percent:
           type: integer
           minimum: 1
           maximum: 100
           nullable: true
+        rollout_state:
+          type: string
+          enum: [draft, disabled, dry_run, canary, full]
         rule_status:
           type: string
           enum: [draft, active, disabled]
-          description: |
-            draft=配置中不进执行面；active=参与匹配；disabled=停用不可编辑。
-            流转：draft→active|disabled；active→disabled；disabled→draft。
+          deprecated: true
+          description: PoC 过渡
         modified_at:
           type: string
           format: date-time

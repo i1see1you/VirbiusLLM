@@ -3,7 +3,7 @@ package io.virbius.control.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.virbius.control.domain.BundleVersion;
 import io.virbius.control.domain.RuleRevision;
-import io.virbius.control.domain.RuleStatusHelper;
+import io.virbius.control.domain.RolloutStateHelper;
 import io.virbius.control.groovy.GroovyRuleValidator;
 import io.virbius.control.policy.PolicyMaterializer;
 import io.virbius.control.repository.RegistryRepository;
@@ -55,7 +55,7 @@ public class PublishService {
         }
         List<RuleRevision> rules = store.listCurrentRules(tenantId, null);
         for (RuleRevision r : rules) {
-            if (!RuleStatusHelper.isActive(r)) {
+            if (!RolloutStateHelper.inExecutionPlane(r)) {
                 continue;
             }
             try {
@@ -65,12 +65,12 @@ public class PublishService {
             }
         }
         boolean hasGroovy = rules.stream()
-                .anyMatch(r -> RuleStatusHelper.isActive(r) && "groovy".equals(r.runtime()));
+                .anyMatch(r -> RolloutStateHelper.inExecutionPlane(r) && "groovy".equals(r.runtime()));
         if (!hasGroovy) {
             throw new IllegalStateException("publish requires at least one active runtime=groovy rule");
         }
         List<RuleRevision> activeCloud = rules.stream()
-                .filter(r -> "cloud".equals(r.layer()) && RuleStatusHelper.isActive(r))
+                .filter(r -> "cloud".equals(r.layer()) && RolloutStateHelper.inExecutionPlane(r))
                 .map(r -> policyMaterializer.materialize(tenantId, r))
                 .toList();
         Map<String, Object> syncAck = reloadEngineCache(tenantId, version, activeCloud);
@@ -96,7 +96,7 @@ public class PublishService {
 
     public Map<String, Object> runtimeSnapshot(String tenantId) {
         List<RuleRevision> rules = store.listCurrentRules(tenantId, "cloud").stream()
-                .filter(RuleStatusHelper::isActive)
+                .filter(RolloutStateHelper::inExecutionPlane)
                 .map(r -> policyMaterializer.materialize(tenantId, r))
                 .toList();
         Map<String, Object> syncAck = reloadEngineCache(tenantId, "runtime-only", rules);
@@ -112,7 +112,7 @@ public class PublishService {
             body.put("policy_version", bundleVersion);
             com.fasterxml.jackson.databind.node.ArrayNode rulesNode = body.putArray("rules");
             for (RuleRevision r : rules) {
-                if (!"cloud".equals(r.layer()) || !RuleStatusHelper.isActive(r)) {
+                if (!"cloud".equals(r.layer()) || !RolloutStateHelper.inExecutionPlane(r)) {
                     continue;
                 }
                 com.fasterxml.jackson.databind.node.ObjectNode rule = rulesNode.addObject();
@@ -124,8 +124,10 @@ public class PublishService {
                 rule.put("reason_code", r.reasonCode());
                 rule.put("risk_score", r.riskScore());
                 rule.put("intent_action", r.intentAction() != null ? r.intentAction() : "deny");
-                rule.put("enforce_mode", r.enforceMode() != null ? r.enforceMode() : "dry_run");
-                rule.put("canary_percent", r.canaryPercent() != null ? r.canaryPercent() : 5);
+                rule.put("enforce_mode", r.enforceMode());
+                if (r.exportedCanaryPercent() != null) {
+                    rule.put("canary_percent", r.exportedCanaryPercent());
+                }
                 if (r.body() != null) {
                     if (r.body() instanceof String s) {
                         rule.put("body", s);

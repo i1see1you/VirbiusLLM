@@ -2,8 +2,8 @@
 
 | 属性 | 值 |
 |------|-----|
-| 版本 | MVP-1.8 |
-| 对齐设计 | [DESIGN.md v2.14](../DESIGN.md) §7.1.1、§8.5.2、§11.6.0 |
+| 版本 | MVP-1.11 |
+| 对齐设计 | [DESIGN.md v2.20](../DESIGN.md) §7.1.1、§8.5.2、§11.6.0、[rule-rollout.md](./rule-rollout.md) |
 | PoC 代码 | [POC-REPO.md](../POC-REPO.md) |
 | 状态 | 已冻结（2026-05-20） |
 
@@ -17,8 +17,8 @@
 - 控制面：**virbius-control**（Registry + Admin 单进程）+ `rule_history` + compiler + **PublishOrchestrator**
 - 管层：**APISIX** + `virbius-guard` + **gateway-agent** + etcd 路由
 - 云：**virbius-engine** RuleCache + **L1 单 Prompt** + Groovy L3
-- 运行时：**dry_run / canary / full**（Admin 手动）
-- 审计：本地 **JSON Lines**（§13.1 最小字段）
+- 运行时：**rollout_state**（`draft` / `dry_run` / `canary` / `full` / `disabled`）；执行面导出 `enforce_mode`（[rule-rollout.md](./rule-rollout.md)）
+- 审计：消息总线 ingest（默认 **Redis Stream**，可选 Kafka）+ 本地 jsonl 备档
 
 ### 1.2 Stretch（不阻塞验收）
 
@@ -329,7 +329,7 @@ virbius.signal(rule_id, rule_revision, score, suggest)
 
 ### 8.1 rule_history（真源，F-13）
 
-**禁止**使用 `rule_runtime` 表作真源；`enforce_mode` / `canary_percent` 与 `body` 一样写入 **`rule_history` 新 revision**。
+**禁止**使用 `rule_runtime` 表作真源。运营放量写入 **`rollout_state` / `canary_percent`**（R1+）；`body` 变更写入 **`rule_history` 新 revision**（`dry_run|canary|full` 下改 body → 强制 `draft`）。
 
 | 列 | 类型 | 说明 |
 |----|------|------|
@@ -337,14 +337,15 @@ virbius.signal(rule_id, rule_revision, score, suggest)
 | `rule_id` | string | **租户内唯一** |
 | `rule_revision` | int | 单调递增 |
 | `layer` | enum | edge / gateway / cloud |
-| `runtime` | enum | lua-dsl / lua / native / prompt / groovy / **cumulative** / **list_match**（§DESIGN 8.5.0.1–2；[value-resolution.md](./value-resolution.md)，**MVP 后**） |
+| `runtime` | enum | lua-dsl / lua / native / prompt / groovy / cumulative / list_match（§DESIGN 8.5.0.1–2；[value-resolution.md](./value-resolution.md)，**MVP 后**） |
 | `reason_code` | string | |
 | `risk_score` | int | 0–100；合并时取 top 意图组内 max |
 | `intent_action` | enum | allow / deny / captcha / review |
 | `body` | text/json | |
-| `enforce_mode` | enum | dry_run / canary / full |
-| `rule_status` | enum | draft / active / disabled |
-| `canary_percent` | int? | |
+| `rollout_state` | enum | **R1+** draft / disabled / dry_run / canary / full（见 [rule-rollout.md](./rule-rollout.md)） |
+| `enforce_mode` | enum | **PoC 过渡** / 执行面导出：dry_run / canary / full |
+| `rule_status` | enum | **PoC 过渡** draft / active / disabled |
+| `canary_percent` | int? | rollout=canary 或 enforce=canary 时 |
 | `effective_from` | timestamp | |
 | `effective_to` | timestamp? | |
 | `modified_at` | timestamp | |
@@ -373,14 +374,16 @@ MVP 必填 rule：
 
 - 格式：**JSON Lines**，UTF-8，一行一事件  
 - Schema：[audit-event.schema.json](./schemas/audit-event.schema.json)  
-- 路径：`/var/log/virbius/{engine,gateway,edge}-audit.jsonl`  
+- **投递（R2a+）**：各层 publish → **Redis Stream**（默认 `virbius:audit:events`）或 **Kafka**（`virbius.audit.events`）→ control **AuditIngest** → `tb_audit_events`（见 [rule-rollout.md §5.7](./rule-rollout.md)）  
+- **PoC 备档**：`/var/log/virbius/{engine,gateway,edge}-audit.jsonl`  
 - **`trace_id`**：端/管/云同一交互**必须相同**（F-10）；按 `layer` 可有多行事件  
 
 **不记录**：`bundle_id`、`bundle_version`、`skill_version`。
 
 **端 block**：写审计时 **`trace_id` 必填**；`effective_action` 固定为 `block`，`max_risk_score` 按需填写。  
 **`user_id` / `device_id`**：若 `virbius_scan_ctx` 提供，**必须**写入 audit（F-11）。  
-**`trace_id_source`**：建议写入（F-10）。
+**`trace_id_source`**：建议写入（F-10）。  
+**R2a+ 推荐扩展**：`rollout_state`、`canary_percent`、`in_canary_bucket`、`degraded`。
 
 ---
 

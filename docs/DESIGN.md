@@ -2,8 +2,8 @@
 
 | 项目 | 说明 |
 |------|------|
-| 文档版本 | v2.17 |
-| OpenSpec | [docs/openspec/MVP-OPENSPEC.md](openspec/MVP-OPENSPEC.md)（MVP-1.10） |
+| 文档版本 | v2.20 |
+| OpenSpec | [docs/openspec/MVP-OPENSPEC.md](openspec/MVP-OPENSPEC.md)（MVP-1.11） |
 | PoC 代码布局 | [docs/POC-REPO.md](POC-REPO.md) |
 | 状态 | 草案 |
 | 关联 | [README.md](../README.md) |
@@ -22,7 +22,27 @@
 | 合并 | `ActionMerge` / `PolicyMerger`；优先级 deny > captcha > review > allow |
 | HTTP | block→403，captcha→428，review/allow→200 |
 
-权威细则：[openspec/rule-level-enforce.md](openspec/rule-level-enforce.md)。
+权威细则：[openspec/rule-level-enforce.md](openspec/rule-level-enforce.md)（执行面）、[openspec/rule-rollout.md](openspec/rule-rollout.md)（运营放量）。
+
+---
+
+## 架构变更注记（2026-05 · rollout_state）
+
+运营放量统一为 **`rollout_state` + `canary_percent`**（方案 A），替代 `rule_status` + `enforce_mode` 双字段：
+
+| rollout_state | 含义 |
+|---------------|------|
+| draft / disabled | 不进执行面 |
+| dry_run / canary / full | 进执行面；导出为 `enforce_mode` 供 ActionMerge |
+
+**已定约束**（[rule-rollout.md §15](openspec/rule-rollout.md)）：
+
+- 改 body → **强制 `draft`**，须重走 publish 流程  
+- **`dry_run → full` 永久禁止**  
+- dry_run→canary **门禁**与 **canary 阶梯**仅 **租户级**配置（不可 per-rule）  
+- 审计 **AuditIngest**：默认 **Redis Stream**，可选 **Kafka**  
+
+PoC 代码仍用 `rule_status` + `/status` + `/runtime`；R1 迁移。
 
 ---
 
@@ -594,15 +614,20 @@ rules:
 | 字段 | 说明 |
 |------|------|
 | **`rule_revision`** | 该 `rule_id` 下单调递增整数（或 ULID）；**拦截审计必带** |
-| `rule_status` | `active` \| `disabled`（逻辑删除，见 §8.5.0）；变更时 **新 revision** + sync 产物 |
-| `enforce_mode` | `dry_run` \| `canary` \| `full`（见 §8.5.0）；变更时 **新 revision**（仅 active 规则可改） |
+| **`rollout_state`** | **R1+ 运营真源**：`draft` \| `disabled` \| `dry_run` \| `canary` \| `full`（[rule-rollout.md](openspec/rule-rollout.md)） |
+| `rule_status` | **PoC 过渡**；R1 删除 |
+| `enforce_mode` | **执行面导出**（PoC 列名）：`dry_run` \| `canary` \| `full`；由 `rollout_state` 映射 |
 | `canary_percent` | `canary` 时必填（1–100） |
 | `modified_at` / `modified_by` | 变更时间与操作者 |
 | `effective_from` / `effective_to` | 生效区间；按 `intercepted_at` 可还原当时规则 |
 
+**改 body**：`dry_run|canary|full` 下变更 → **强制 `rollout_state=draft`**（rule-rollout §3.4）。
+
 **`bundle_id` / `bundle_version`**：仅关联发布批次（`publish_id`）；**拦截日志不记录**（见 §13.1）。
 
-#### 8.5.0 `runtime` 与 `enforce_mode`（PoC）
+#### 8.5.0 `runtime`、放量与执行面 `enforce_mode`
+
+> **运营放量**见 [rule-rollout.md](openspec/rule-rollout.md)（`rollout_state`）；本节 **`enforce_mode`** 为执行面语义（ActionMerge）。
 
 **`runtime`**：声明规则由哪类执行器加载/执行；与 **`layer`** 组合使用（运营台新建规则时按层限制可选值）。
 
@@ -715,7 +740,7 @@ status: active；更新 Config Bus 指针与路由 bundle_version
 | 发布前评测 | Python Eval（绑定 `dataset_ref`） |
 | 编译 | **virbius-compiler**（读 Registry，不写 Git 真源） |
 | 分层推送 | **PublishOrchestrator**（§8.10.6）；禁止手改 etcd/CDN |
-| enforce 晋升 | Registry `dry_run` → `canary` → `full`；可**不重编译**正文 |
+| enforce 晋升 | `rollout_state`：`dry_run → canary → full`（**禁止** dry_run→full）；租户门禁/阶梯见 rule-rollout；可**不重编译**正文 |
 
 ### 8.7 编译产物一览
 
@@ -1961,31 +1986,38 @@ virbius_scan(ctx, text) -> ScanResult
 
 **不在 agent 内做**：Groovy 执行、Prompt 推理、enforce_mode 判断（均在 engine）。
 
-#### 11.6.7 规则运行时状态（dry_run / canary / full）
+#### 11.6.7 规则放量（rollout_state）与执行面 enforce
 
-MVP **包含** Registry 运行时状态与 engine 快照；**不包含** Flink 自动晋升（留 Phase 2）。
+MVP **包含** Registry 放量状态与 engine 快照；**门禁 / 阶梯自动化**见 [rule-rollout.md](openspec/rule-rollout.md) R2（Flink 自动晋升留 Phase 3）。
 
-| 项 | MVP 约定 |
-|----|----------|
-| 存储 | **`rule_history`** 追加 revision（含 `enforce_mode`、`canary_percent`） |
-| 与内容发布关系 | 新 Bundle **首次发布**默认 cloud 规则 `enforce_mode=dry_run`；gateway 静态规则可为 `full`（仅产 signal，由 engine 终判） |
-| enforce 晋升 | `rule_history` 新 revision（无正文变更）→ **EngineCacheSync（runtime_only）** 刷新 RuleCache |
-| 晋升路径 | Admin **手动**：`dry_run` → `canary`（设 `canary_percent`）→ `full`；支持一键 `disabled` 回滚 |
-| canary 实现 | `ActionMerge` + `inCanaryBucket`；桶外 `effective_action=review` |
-| dry_run 行为 | `effective_action=review`；`max_risk_score`>0；写审计 jsonl（§13.1） |
+| 项 | 约定 |
+|----|------|
+| **运营真源** | `rollout_state`：`draft` \| `disabled` \| `dry_run` \| `canary` \| `full`；`canary_percent` 仅 canary 时 |
+| **执行面** | 导出 `enforce_mode` + `canary_percent` → gateway 产物 / RuleCache（ActionMerge 不变） |
+| 存储 | **`rule_history`** 追加 revision |
+| 上线 | `draft → dry_run`（publish）；**禁止** `dry_run → full` |
+| 改 body | `dry_run|canary|full` 下变更 → **强制 `draft`** |
+| 租户策略 | `tb_tenant_rollout_policy`：门禁阈值、阶梯 `[5,20,50,100]`（**不可 per-rule**） |
+| 审计 | publish → Redis Stream（默认）/ Kafka → AuditIngest → DB；PoC 仍写 jsonl |
+| canary | `ActionMerge.inCanaryBucket`；桶外 `effective_action=review` |
+| dry_run | `effective_action=review`；写审计 |
 | 管层 | **仅**认 `effective_action`（403/428/放行） |
 
-**Admin API（MVP 最小）**：
+**Admin API（目标 R1+）**：
 
 ```text
-PATCH /api/v1/bundles/{id}/versions/{ver}/rules/{ruleId}/runtime
-  { "enforce_mode": "dry_run"|"canary"|"full"|"disabled", "canary_percent": 5 }
+PATCH /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/rollout
+  { "rollout_state": "canary", "canary_percent": 5 }
 
-POST /api/v1/bundles/{id}/versions/{ver}/runtime/publish-snapshot
-  → EngineCacheSyncAdapter（runtime_only）→ engine 从 Registry 刷新 RuleCache
+GET|PUT /api/v1/admin/tenants/{tenantId}/rollout-policy
+  # 租户级门禁 / 阶梯；不可 per-rule
+
+POST .../rollout/publish | rollback | disable | recover
 ```
 
-**RuleCache 中 runtime 视图示例**（内存结构，非挂载文件）：
+**PoC 过渡 API**（R1 前）：`PATCH .../status` + `PATCH .../runtime`（映射见 rule-rollout §2.5）。
+
+**RuleCache 运行时视图**（内存，enforce 由 rollout 导出）：
 
 ```json
 {
@@ -2160,14 +2192,16 @@ compiler → edge / gateway / cloud 编译产物
 PublishOrchestrator → CDN + etcd + EngineCacheSync（各层 ACK）
 ```
 
-**规则运行时状态（`enforce_mode`，存于 `rule_history`，可与内容发布解耦）**：
+**规则放量（`rollout_state`，可与内容发布解耦）** — 详见 [rule-rollout.md](openspec/rule-rollout.md)：
 
 ```text
-dry_run（`effective_action=review` 观测）→ canary（按比例真拦）→ full（全量 enforce）
-         ↑
-    Flink 误杀率达标 + 可选人工审批
-         ↓
-EngineCacheSync（runtime_only）→ virbius-engine 刷新 RuleCache
+draft → publish → dry_run（review 观测）→ canary（租户阶梯 5→20→50）→ full
+         ↑______________________________|  rollback / 门禁 / AuditIngest
+```
+
+**禁止** `dry_run → full`。改 body → 强制 `draft`。
+
+EngineCacheSync（runtime_only）→ virbius-engine 刷新 RuleCache（enforce 由 rollout 导出）
 ```
 
 `enforce_mode` **不在 Bundle 正文表**；晋升 snapshot **不必**重编译 gateway Lua。可选导出 `bundle.yaml` 仅存 MinIO/Git 镜像。
@@ -2476,7 +2510,7 @@ campaign_override（收紧）> tenant.fail_mode > rule.enforce_mode > default
 | `canary` | 按 `canary_percent` | 未命中比例记 `review` |
 | `full` | 是（经 engine effective） | 全量审计 |
 
-晋升：`dry_run` →（Flink FP 率、样本量 N）→ `canary` → `full`；回滚任一时刻可置 `disabled`。
+晋升（R2+）：租户级门禁 pass 后 `dry_run → canary → full`（阶梯 Job 或 assisted 人工）；**禁止** dry_run→full；回退 → `dry_run` 或 `disabled`。审计经 Redis Stream / Kafka ingest。
 
 ### 21.2 Flink 职责
 
@@ -2600,5 +2634,6 @@ Flink campaign 事件
 | v2.17 | 2026-05-20 | **§8.3 / §8.5.0**：`runtime` 含 **native**；**`enforce_mode`** 与 OpenAPI、[POC-SEED-API.md](POC-SEED-API.md) 对齐 |
 | v2.18 | 2026-05-20 | **P0–P2**：agent `vars` 优先；**registry.openapi** Admin 规范面；删 `draft/import`；发布 **200** 同步；`publish-snapshot` 注明忽略 `ruleId` |
 | v2.19 | 2026-05-20 | **`rule_status`**（active/disabled）逻辑删除；**enforce** 去掉 disabled；disabled 规则不可改、不进产物 |
+| v2.20 | 2026-05-20 | **rollout_state** 运营放量定稿（[rule-rollout.md](openspec/rule-rollout.md)）；body→draft；禁止 dry_run→full；租户级门禁/阶梯；audit Redis/Kafka ingest |
 | v2.20 | 2026-05-20 | **§8.5.0.1** 累计规则 CounterStore 设计；[openspec/cumulative-counter.md](openspec/cumulative-counter.md) |
 | v2.21 | 2026-05-20 | **§8.5.0.2** 名单 ListStore；[list-match.md](openspec/list-match.md)、[value-resolution.md](openspec/value-resolution.md) |

@@ -2,12 +2,10 @@ package io.virbius.control.repository;
 
 import io.virbius.control.domain.BundleMetadataResources;
 import io.virbius.control.domain.BundleVersion;
+import io.virbius.control.domain.RolloutStateHelper;
 import io.virbius.control.domain.RiskScore;
 import io.virbius.control.domain.RuleRevision;
-import io.virbius.control.domain.RuleStatusHelper;
-import io.virbius.control.domain.enums.RuleStatus;
-import io.virbius.control.domain.enums.AccessListDimension;
-import io.virbius.control.domain.enums.EnforceMode;
+import io.virbius.control.domain.enums.RolloutState;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -100,14 +98,15 @@ public class JdbcRegistryRepository implements RegistryRepository {
 
         String bodyJson = JsonHelper.toJson(draft.body());
         String scopeJson = JsonHelper.toJson(draft.scope());
+        String rollout = draft.rolloutState() != null ? draft.rolloutState() : RolloutState.DRAFT.value();
 
         jdbc.update(
                 """
                 INSERT INTO tb_rule_history (
                   tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
                   reason_code, risk_score, intent_action, scope_json, body_json,
-                  enforce_mode, canary_percent, rule_status, effective_from, modified_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  rollout_state, canary_percent, effective_from, modified_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 tenantId,
                 ruleId,
@@ -122,23 +121,23 @@ public class JdbcRegistryRepository implements RegistryRepository {
                         : io.virbius.policy.IntentAction.defaultForRisk(draft.riskScore()),
                 scopeJson,
                 bodyJson,
-                draft.enforceMode() != null ? draft.enforceMode() : "dry_run",
+                rollout,
                 draft.canaryPercent(),
-                draft.ruleStatus() != null ? draft.ruleStatus() : RuleStatus.DRAFT.value(),
                 nowStr,
                 nowStr);
 
-        upsertRulesCurrent(tenantId, ruleId, next, draft, nowStr);
+        upsertRulesCurrent(tenantId, ruleId, next, draft, nowStr, rollout);
 
         return getRuleRevision(tenantId, ruleId, next).orElseThrow();
     }
 
-    private void upsertRulesCurrent(String tenantId, String ruleId, int revision, RuleRevision draft, String nowStr) {
+    private void upsertRulesCurrent(
+            String tenantId, String ruleId, int revision, RuleRevision draft, String nowStr, String rollout) {
         int updated = jdbc.update(
                 """
                 UPDATE tb_rules_current SET
                   current_revision = ?, bundle_id = ?, layer = ?, runtime = ?,
-                  reason_code = ?, intent_action = ?, enforce_mode = ?, rule_status = ?, updated_at = ?
+                  reason_code = ?, intent_action = ?, rollout_state = ?, updated_at = ?
                 WHERE tenant_id = ? AND rule_id = ?
                 """,
                 revision,
@@ -149,8 +148,7 @@ public class JdbcRegistryRepository implements RegistryRepository {
                 draft.intentAction() != null
                         ? draft.intentAction()
                         : io.virbius.policy.IntentAction.defaultForRisk(draft.riskScore()),
-                draft.enforceMode() != null ? draft.enforceMode() : "dry_run",
-                draft.ruleStatus() != null ? draft.ruleStatus() : RuleStatus.DRAFT.value(),
+                rollout,
                 nowStr,
                 tenantId,
                 ruleId);
@@ -161,8 +159,9 @@ public class JdbcRegistryRepository implements RegistryRepository {
             jdbc.update(
                     """
                     INSERT INTO tb_rules_current (
-                      tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, intent_action, enforce_mode, rule_status, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      tenant_id, rule_id, current_revision, bundle_id, layer, runtime,
+                      reason_code, intent_action, rollout_state, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     tenantId,
                     ruleId,
@@ -174,11 +173,10 @@ public class JdbcRegistryRepository implements RegistryRepository {
                     draft.intentAction() != null
                             ? draft.intentAction()
                             : io.virbius.policy.IntentAction.defaultForRisk(draft.riskScore()),
-                    draft.enforceMode() != null ? draft.enforceMode() : "dry_run",
-                    draft.ruleStatus() != null ? draft.ruleStatus() : RuleStatus.DRAFT.value(),
+                    rollout,
                     nowStr);
         } catch (DuplicateKeyException e) {
-            upsertRulesCurrent(tenantId, ruleId, revision, draft, nowStr);
+            upsertRulesCurrent(tenantId, ruleId, revision, draft, nowStr, rollout);
         }
     }
 
@@ -208,10 +206,8 @@ public class JdbcRegistryRepository implements RegistryRepository {
     }
 
     @Override
-    public RuleRevision updateRuntime(String tenantId, String ruleId, String enforceMode, Integer canaryPercent) {
-        EnforceMode.parse(enforceMode);
+    public RuleRevision updateRollout(String tenantId, String ruleId, String rolloutState, Integer canaryPercent) {
         RuleRevision current = getCurrentRule(tenantId, ruleId).orElseThrow();
-        RuleStatusHelper.requireActive(current);
         RuleRevision draft = new RuleRevision(
                 tenantId,
                 ruleId,
@@ -224,9 +220,8 @@ public class JdbcRegistryRepository implements RegistryRepository {
                 current.intentAction(),
                 current.scope(),
                 current.body(),
-                enforceMode,
+                rolloutState,
                 canaryPercent,
-                current.ruleStatus(),
                 null,
                 null,
                 null);
@@ -234,31 +229,34 @@ public class JdbcRegistryRepository implements RegistryRepository {
     }
 
     @Override
-    public RuleRevision updateRuleStatus(String tenantId, String ruleId, String ruleStatus) {
-        String normalized = RuleStatusHelper.normalize(ruleStatus);
+    @Deprecated
+    public RuleRevision updateRuntime(String tenantId, String ruleId, String enforceMode, Integer canaryPercent) {
+        String rollout = switch (enforceMode != null ? enforceMode.toLowerCase() : "dry_run") {
+            case "canary" -> RolloutState.CANARY.value();
+            case "full" -> RolloutState.FULL.value();
+            default -> RolloutState.DRY_RUN.value();
+        };
         RuleRevision current = getCurrentRule(tenantId, ruleId).orElseThrow();
-        if (normalized.equals(RuleStatusHelper.statusOf(current))) {
+        if (RolloutState.DRY_RUN.value().equals(RolloutStateHelper.stateOf(current)) && RolloutState.FULL.value().equals(rollout)) {
+            throw new IllegalArgumentException("dry_run -> full is permanently forbidden");
+        }
+        return updateRollout(tenantId, ruleId, rollout, canaryPercent);
+    }
+
+    @Override
+    @Deprecated
+    public RuleRevision updateRuleStatus(String tenantId, String ruleId, String ruleStatus) {
+        RuleRevision current = getCurrentRule(tenantId, ruleId).orElseThrow();
+        String rollout =
+                switch (ruleStatus != null ? ruleStatus.toLowerCase() : "draft") {
+                    case "active" -> RolloutState.DRY_RUN.value();
+                    case "disabled" -> RolloutState.DISABLED.value();
+                    default -> RolloutState.DRAFT.value();
+                };
+        if (rollout.equals(RolloutStateHelper.stateOf(current))) {
             return current;
         }
-        RuleRevision draft = new RuleRevision(
-                tenantId,
-                ruleId,
-                0,
-                current.bundleId(),
-                current.layer(),
-                current.runtime(),
-                current.reasonCode(),
-                current.riskScore(),
-                current.intentAction(),
-                current.scope(),
-                current.body(),
-                current.enforceMode(),
-                current.canaryPercent(),
-                normalized,
-                null,
-                null,
-                null);
-        return upsertRule(tenantId, draft);
+        return updateRollout(tenantId, ruleId, rollout, null);
     }
 
     @Override
@@ -370,9 +368,8 @@ public class JdbcRegistryRepository implements RegistryRepository {
                 intent,
                 JsonHelper.mapFromJson(rs.getString("scope_json")),
                 JsonHelper.bodyFromJson(rs.getString("body_json")),
-                rs.getString("enforce_mode"),
+                rs.getString("rollout_state"),
                 (Integer) rs.getObject("canary_percent"),
-                rs.getString("rule_status"),
                 TimeHelper.parseInstant(rs.getString("modified_at")),
                 TimeHelper.parseInstant(rs.getString("effective_from")),
                 TimeHelper.parseInstant(rs.getString("effective_to")));

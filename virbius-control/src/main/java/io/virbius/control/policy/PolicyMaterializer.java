@@ -128,9 +128,8 @@ public class PolicyMaterializer {
                 rule.intentAction(),
                 rule.scope(),
                 body,
-                rule.enforceMode(),
+                rule.rolloutState(),
                 rule.canaryPercent(),
-                rule.ruleStatus(),
                 rule.modifiedAt(),
                 rule.effectiveFrom(),
                 rule.effectiveTo());

@@ -5,7 +5,7 @@
 - **JDK 17**（继承父 `pom.xml`）
 - 端口：`8080`
 - 契约：[docs/openspec/registry.openapi.yaml](../docs/openspec/registry.openapi.yaml)
-- 规则真源：**`tb_rule_history`**（见 [DESIGN §8.5.2](../docs/DESIGN.md)、**`runtime` / `enforce_mode` 说明 §8.5.0**）
+- 规则真源：**`tb_rule_history`**（见 [DESIGN §8.5.2](../docs/DESIGN.md)、[rule-rollout.md](../docs/openspec/rule-rollout.md) 放量、`rule-level-enforce.md` 执行面）
 - PoC 种子：**`src/main/resources/db/seed.sql`**
 - 操作说明：[docs/POC-SEED-API.md](../docs/POC-SEED-API.md)
 

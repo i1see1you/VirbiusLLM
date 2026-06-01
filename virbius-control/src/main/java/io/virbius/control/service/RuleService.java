@@ -2,36 +2,40 @@ package io.virbius.control.service;
 
 import io.virbius.control.domain.RuleRevision;
 import io.virbius.control.domain.RiskScore;
-import io.virbius.control.domain.RuleStatusHelper;
+import io.virbius.control.domain.RolloutStateHelper;
 import io.virbius.control.domain.dto.request.UpsertRuleRequest;
 import io.virbius.control.domain.dto.response.RuleResponseMapper;
 import io.virbius.control.domain.enums.IntentAction;
-import io.virbius.control.domain.enums.EnforceMode;
-import io.virbius.control.domain.enums.RuleStatus;
+import io.virbius.control.domain.enums.RolloutState;
 import io.virbius.control.groovy.GroovyRuleValidator;
 import io.virbius.control.repository.RegistryRepository;
+import io.virbius.control.repository.RolloutEventRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 
 @Service
 public class RuleService {
 
+    private static final ObjectMapper JSON = new ObjectMapper();
+
     private final RegistryRepository store;
     private final GroovyRuleValidator groovyRuleValidator;
-    private final AccessListService accessListService;
-    private final PublishService publishService;
+    private final RolloutEventRepository eventRepository;
+    private final RuleExecutionSync ruleExecutionSync;
 
     public RuleService(
             RegistryRepository store,
             GroovyRuleValidator groovyRuleValidator,
-            AccessListService accessListService,
-            PublishService publishService) {
+            RolloutEventRepository eventRepository,
+            RuleExecutionSync ruleExecutionSync) {
         this.store = store;
         this.groovyRuleValidator = groovyRuleValidator;
-        this.accessListService = accessListService;
-        this.publishService = publishService;
+        this.eventRepository = eventRepository;
+        this.ruleExecutionSync = ruleExecutionSync;
     }
 
     public List<Map<String, Object>> listRules(String tenantId, String layer) {
@@ -47,15 +51,25 @@ public class RuleService {
         }
         Optional<RuleRevision> existing = store.getCurrentRule(tenantId, req.ruleId());
         if (existing.isPresent()) {
-            RuleStatusHelper.requireEditable(existing.get());
+            RolloutStateHelper.requireNotDisabled(existing.get());
         }
-        String ruleStatus =
-                existing.map(RuleRevision::ruleStatus).orElse(RuleStatus.DRAFT.value());
+        String rolloutState =
+                existing.map(RuleRevision::rolloutState).orElse(RolloutState.DRAFT.value());
+        Integer canaryPercent = existing.map(RuleRevision::canaryPercent).orElse(null);
+
         int normalizedRisk = RiskScore.normalize(req.riskScore());
         String intentAction = req.intentAction() != null && !req.intentAction().isBlank()
                 ? IntentAction.parse(req.intentAction()).value()
                 : existing.map(RuleRevision::intentAction)
                         .orElse(IntentAction.defaultForRisk(normalizedRisk).value());
+
+        if (existing.isPresent() && contentChanged(existing.get(), req, normalizedRisk, intentAction)) {
+            if (RolloutStateHelper.inExecutionPlane(existing.get())) {
+                rolloutState = RolloutState.DRAFT.value();
+                canaryPercent = null;
+            }
+        }
+
         RuleRevision draft = new RuleRevision(
                 tenantId,
                 req.ruleId(),
@@ -68,9 +82,8 @@ public class RuleService {
                 intentAction,
                 req.scope() != null ? req.scope() : Map.of(),
                 req.body(),
-                existing.map(RuleRevision::enforceMode).orElse("dry_run"),
-                existing.map(RuleRevision::canaryPercent).orElse(null),
-                ruleStatus,
+                rolloutState,
+                canaryPercent,
                 null,
                 null,
                 null);
@@ -79,8 +92,25 @@ public class RuleService {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(e.getMessage());
         }
+        RuleRevision before = existing.orElse(null);
         RuleRevision saved = store.upsertRule(tenantId, draft);
-        syncArtifactsForActiveRule(tenantId, saved);
+        if (before != null
+                && RolloutStateHelper.inExecutionPlane(before)
+                && RolloutState.DRAFT.value().equals(saved.rolloutState())) {
+            eventRepository.recordEvent(
+                    tenantId,
+                    saved.ruleId(),
+                    saved.ruleRevision(),
+                    saved.rolloutState(),
+                    null,
+                    "body_change",
+                    "admin");
+        }
+        if (before != null) {
+            ruleExecutionSync.afterRolloutChange(tenantId, before, saved);
+        } else if (RolloutStateHelper.inExecutionPlane(saved)) {
+            ruleExecutionSync.afterContentChange(tenantId, saved);
+        }
         return RuleResponseMapper.toDetail(saved);
     }
 
@@ -102,46 +132,46 @@ public class RuleService {
         return RuleResponseMapper.toDetail(r);
     }
 
+    @Deprecated
     public Map<String, Object> updateRuntime(String tenantId, String ruleId, String enforceMode, Integer canaryPercent) {
-        EnforceMode mode = EnforceMode.parse(enforceMode);
-        if (mode == EnforceMode.CANARY
-                && (canaryPercent == null || canaryPercent < 1 || canaryPercent > 100)) {
-            throw new IllegalArgumentException("canary_percent required (1-100) when enforce_mode=canary");
-        }
-        RuleRevision current = store.getCurrentRule(tenantId, ruleId).orElseThrow();
-        RuleStatusHelper.requireActive(current);
         RuleRevision r = store.updateRuntime(tenantId, ruleId, enforceMode, canaryPercent);
-        syncArtifactsForActiveRule(tenantId, r);
+        ruleExecutionSync.afterRolloutChange(tenantId, r, r);
         return RuleResponseMapper.toDetail(r);
     }
 
+    @Deprecated
     public Map<String, Object> updateRuleStatus(String tenantId, String ruleId, String ruleStatus) {
         RuleRevision current = store.getCurrentRule(tenantId, ruleId).orElseThrow();
-        String normalized = RuleStatusHelper.normalize(ruleStatus);
-        RuleStatusHelper.validateTransition(RuleStatusHelper.statusOf(current), normalized);
-        boolean wasActive = RuleStatusHelper.isActive(current);
-        RuleRevision updated = store.updateRuleStatus(tenantId, ruleId, normalized);
-        if (wasActive || RuleStatusHelper.isActive(updated)) {
-            refreshExecutionPlane(tenantId);
-        }
+        RuleRevision updated = store.updateRuleStatus(tenantId, ruleId, ruleStatus);
+        ruleExecutionSync.afterRolloutChange(tenantId, current, updated);
         return RuleResponseMapper.toDetail(updated);
     }
 
-    private void syncArtifactsForActiveRule(String tenantId, RuleRevision rule) {
-        if (!RuleStatusHelper.isActive(rule)) {
-            return;
+    private boolean contentChanged(
+            RuleRevision existing, UpsertRuleRequest req, int riskScore, String intentAction) {
+        if (!Objects.equals(existing.layer(), req.layer())
+                || !Objects.equals(existing.runtime(), req.runtime())
+                || !Objects.equals(existing.reasonCode(), req.reasonCode())
+                || existing.riskScore() != riskScore
+                || !Objects.equals(existing.intentAction(), intentAction)) {
+            return true;
         }
-        if ("list_match".equals(rule.runtime()) || "cumulative".equals(rule.runtime())) {
-            accessListService.refreshArtifacts(tenantId);
-        }
-        if ("cloud".equals(rule.layer())
-                && ("list_match".equals(rule.runtime()) || "cumulative".equals(rule.runtime()))) {
-            publishService.runtimeSnapshot(tenantId);
-        }
+        String oldBody = toJson(existing.body());
+        String newBody = toJson(req.body());
+        return !Objects.equals(oldBody, newBody);
     }
 
-    private void refreshExecutionPlane(String tenantId) {
-        accessListService.refreshArtifacts(tenantId);
-        publishService.runtimeSnapshot(tenantId);
+    private static String toJson(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof String s) {
+            return s;
+        }
+        try {
+            return JSON.writeValueAsString(value);
+        } catch (Exception e) {
+            return String.valueOf(value);
+        }
     }
 }

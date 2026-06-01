@@ -2,7 +2,7 @@
 
 | 项目 | 说明 |
 |------|------|
-| 版本 | v1.0（2026-05-20） |
+| 版本 | v1.3（2026-05-20） |
 | 状态 | **设计定稿**（待实现） |
 | 替代 | 运营层 `rule_status` + `enforce_mode` 双字段；API `/status` + `/runtime` |
 | 关联 | [rule-level-enforce.md](./rule-level-enforce.md)、[audit-event.schema.json](./schemas/audit-event.schema.json)、[registry.openapi.yaml](./registry.openapi.yaml) |
@@ -641,9 +641,16 @@ for each rule where ladder_status=running:
 | **R2a** | audit 扩展；metrics_1h + rollup；看板 API + Tab | R1 + audit 写入 |
 | **R2b** | rollout_policy；GateService；gate_log；evaluate/apply 集成 | R2a |
 | **R2c** | LadderJob；assisted/auto；自动回退 | R2b |
-| **R3** | 分母 counter；Flink/CH；投诉信号接入门禁 | infra |
+| **R3a** | engine/gateway audit 补 rollout 字段；gateway-agent publish Stream | R2a |
+| **R3b** | HTTP audit ingest；Kafka 真实现（可选）；ingest 幂等/DLQ | R3a |
+| **R3c** | edge manifest.rules[]；compiler/control 产物 | R1 |
+| **R3d** | virbius-core enforce + audit 队列 + HTTP 上报 + **采样** | R3b + R3c |
+| **R3e** | 分母 counter；metrics hit_rate；evaluate `data_coverage` | R3d |
+| **R3f** | ops trace / 数据健康；RC-14+ 验收 | R3e |
+| **R3+** | Flink/CH；投诉信号接入门禁 | infra |
 
-PoC 可交付最小闭环：**R1 + R2a + R2b（assisted only）**。
+PoC 可交付最小闭环：**R1 + R2a + R2b（assisted only）**。  
+端/管/云看板与门禁对 **edge 规则** 生效，需 **R3a–R3f**。
 
 ---
 
@@ -674,6 +681,13 @@ PoC 可交付最小闭环：**R1 + R2a + R2b（assisted only）**。
 | RC-11 | dry_run 改 body | 强制 → draft，移出执行面 |
 | RC-12 | dry_run→full | 409 永久禁止 |
 | RC-13 | audit ingest | engine publish → Redis Stream → ingest 入库 |
+| RC-14 | edge dry_run 命中 | SDK 上报 review；本地不 block；metrics review+1 |
+| RC-15 | edge canary 5% | ~5% block，其余 review；`in_canary_bucket` 正确 |
+| RC-16 | edge HTTP ingest | 批量 POST 入库；幂等重试不重复 |
+| RC-17 | edge allow 采样 10% | allow 约 10% 上报；review/block 100%；rollup 分母可外推 |
+| RC-18 | edge dry_run 24h | review≥min_review；evaluate pass |
+| RC-19 | 跨层 trace | 同 trace_id 可查 edge/gateway/cloud 多行 audit |
+| RC-20 | manifest rollout 变更 | SDK 热更新后 audit 带新 rollout 快照 |
 
 ---
 
@@ -685,12 +699,197 @@ PoC 可交付最小闭环：**R1 + R2a + R2b（assisted only）**。
 | dry_run→full | **永久禁止**，必须 dry_run→canary→…→full |
 | 门禁 / 阶梯 | **仅租户级** `tb_tenant_rollout_policy`；**不可 per-rule** |
 | audit ingest | **消息总线**；默认 **Redis Stream**，可选 **Kafka** |
+| 端 audit 通道 | **HTTP batch** → control ingest（不直连 Redis） |
+| 端 audit 采样 | **`allow` 默认 10% 采样**；`review`/`block`/`captcha`/`degraded` **100%** |
+| 端 ingest URL | **可配置**整 URL；路径固定 `POST /api/v1/internal/audit/events` |
+| 运营字段名 | 保持 **`rollout_state`**（不改 `rule_state`） |
 
 ---
 
-## 16. 修订记录
+## 16. 长期方案（R3）：端管云 audit 闭环
+
+### 16.1 目标
+
+三端共用：**audit → ingest → tb_audit_events → metrics_1h → Gate / 看板**，运营 SOP 仍为 §4，不按 layer 分叉。
+
+### 16.2 端侧上报流程
+
+```text
+Config Bus → edge-manifest.json（rules[] 含 rollout/enforce 快照）
+    → virbius_init
+    → virbius_scan（匹配 + enforce → effective_action）
+    → 采样决策 → 本地队列
+    → 批量 POST audit_ingest_url
+    → control ingest → metrics → 策略上线 Tab
+```
+
+### 16.3 端侧配置（SDK / Config Bus）
+
+租户级或 App 级下发（**不可 per-rule**）：
+
+| 键 | 类型 | 默认 | 说明 |
+|----|------|------|------|
+| `audit_ingest_url` | string | **无（必配）** | 完整 URL，如 `https://control/api/v1/internal/audit/events` |
+| `audit_ingest_token` | string | — | Bearer token |
+| `audit_sample_rate_allow` | float | **0.1** | 仅对 `effective_action=allow` 采样 |
+| `audit_sample_rate_hit` | float | **1.0** | review/block/captcha 采样（默认全量） |
+| `audit_flush_interval_ms` | int | 30000 | 定时 flush |
+| `audit_queue_max` | int | 500 | 本地队列上限 |
+| `canary_session_key` | enum | `device_id` | 分桶键：`device_id` / `install_id` |
+
+可选：在 `tb_tenant_rollout_policy` 增列 `edge_audit_sample_rate_allow`（默认 0.1），与门禁策略同表维护；SDK 仍从 Config Bus 读生效值。
+
+### 16.4 采样策略（性能）
+
+```text
+if effective_action == allow:
+    report if random() < audit_sample_rate_allow   # 默认 10%
+else:
+    report always                                 # review/block/captcha/degraded 100%
+```
+
+rollup 时：对带 `sampled_allow=true` 的事件，`cnt_allow` 可乘 `1/audit_sample_rate_allow` 估算分母（ingest 或 MetricsRollupJob 实现）。
+
+### 16.5 HTTP Ingest API
+
+```http
+POST /api/v1/internal/audit/events
+Authorization: Bearer {audit_ingest_token}
+Content-Type: application/json
+
+{ "events": [ /* VirbiusAuditEvent[] */ ] }
+```
+
+单条事件 schema 见 [audit-event.schema.json](./schemas/audit-event.schema.json)。  
+Redis Stream 仍用于 engine/gateway：`XADD virbius:audit:events * payload '<json>'`。
+
+### 16.6 管/云补齐
+
+| layer | 通道 | 待补 |
+|-------|------|------|
+| cloud | Redis Stream | audit 补 `rollout_state`、`canary_percent`、`in_canary_bucket` |
+| gateway | Redis Stream | 新建 audit 模块；allow 也写 |
+| edge | HTTP batch | R3d 全量实现 |
+
+### 16.7 evaluate 数据充足性
+
+`POST .../rollout/evaluate` 响应增加：
+
+```json
+{
+  "data_coverage": {
+    "audit_events_24h": 120,
+    "layer": "edge",
+    "ingest_lag_p95_minutes": 2.5,
+    "sufficient": true
+  }
+}
+```
+
+`sufficient=false` 时 UI 提示「SDK 上报异常」，而非仅显示门禁失败。
+
+---
+
+## 17. 代码改动清单（R3，先设计后实现）
+
+> **当前 PoC 均未实现**下列 R3 项；R1–R2c 已有代码不在此重复。
+
+### 17.1 R3a — engine / gateway audit
+
+| 模块 | 文件 | 改动 |
+|------|------|------|
+| virbius-engine | `audit/AuditWriter.java` | 写 `rollout_state`、`canary_percent`、`in_canary_bucket` |
+| virbius-engine | `cache/RuleEntry.java` | 增加 rollout 快照字段 |
+| virbius-engine | `persist/RuleCachePersistence.java` | 持久化 rollout 相关字段 |
+| virbius-engine | `eval/EvaluateOrchestrator.java` | 传 RuleCache rollout 给 AuditWriter |
+| virbius-policy | `audit/AuditEventPublisher.java` | Kafka 从 stub → 真 Producer（可选） |
+| virbius-gateway-agent | **新建** `src/audit.rs` | 构造事件 + Redis XADD + jsonl |
+| virbius-gateway-agent | `src/main.rs` | 决策后 emit（含 allow） |
+| virbius-gateway-agent | `Cargo.toml` | redis / serde 依赖 |
+
+### 17.2 R3b — control ingest
+
+| 模块 | 文件 | 改动 |
+|------|------|------|
+| virbius-control | **新建** `audit/AuditEventIngestor.java` | 单条校验 + 入库（Stream/HTTP 共用） |
+| virbius-control | `audit/AuditIngestService.java` | 委托 Ingestor；可选 XREADGROUP + DLQ |
+| virbius-control | **新建** `api/InternalAuditController.java` | `POST /api/v1/internal/audit/events` |
+| virbius-control | **新建** `dto/request/AuditEventsBatchRequest.java` | `{ events: [] }` |
+| virbius-control | **新建** `config/AuditIngestSecurityConfig.java` | Bearer token 校验 |
+| virbius-control | `resources/application.yml` | `audit.ingest.http.*`、`audit.ingest.kafka.*` |
+| virbius-control | **新建** `audit/KafkaAuditIngestService.java` | 可选 |
+
+### 17.3 R3c — edge 产物
+
+| 模块 | 文件 | 改动 |
+|------|------|------|
+| virbius-compiler | `CompilerCli.java` | `--target=edge` 筛选执行面规则 |
+| virbius-compiler | **新建** `EdgeManifestEmitter.java` | manifest.rules[] + enforce 导出 |
+| virbius-control | `service/ArtifactService.java` | `writeEdge` 写 rules[]，非仅 gateway 名单 |
+| virbius-control | `service/RuleExecutionSync.java` | rollout 变更触发 edge 产物刷新 |
+| docs | `schemas/edge-manifest.schema.json` | 增加 `rules[]` |
+
+### 17.4 R3d — virbius-core（端 SDK）
+
+| 模块 | 文件 | 改动 |
+|------|------|------|
+| virbius-core | **新建** `src/manifest.rs` | 解析 rules[] + SDK 配置（ingest_url、sample_rate） |
+| virbius-core | **新建** `src/enforce.rs` | 与 gateway 同算法 |
+| virbius-core | **新建** `src/matcher.rs` | manifest 驱动匹配 |
+| virbius-core | **新建** `src/audit.rs` | 事件构造 + **采样** + 本地队列 |
+| virbius-core | **新建** `src/upload.rs` | HTTP batch flush 到 `audit_ingest_url` |
+| virbius-core | `src/lib.rs` | scan 流程接入 enforce + audit |
+| virbius-core | `include/virbius.h` | `virbius_init_config` 或扩展 init；`install_id` |
+| virbius-core | `Cargo.toml` | reqwest/ureq、rusqlite 等 |
+
+**采样实现要点（`audit.rs`）**
+
+- 读 `audit_sample_rate_allow`（默认 `0.1`）、`audit_sample_rate_hit`（默认 `1.0`）
+- allow 路径：`thread_rng().gen::<f64>() < rate`
+- 事件可选字段：`sampled_allow: true` 供 rollup 外推
+
+### 17.5 R3e — metrics / 门禁
+
+| 模块 | 文件 | 改动 |
+|------|------|------|
+| virbius-control | `resources/db/schema.sql` | `tb_tenant_request_stats_1h`；metrics 可选 `layer` |
+| virbius-control | `job/MetricsRollupJob.java` | allow 采样外推；分母 rollup |
+| virbius-control | `service/PromotionGateService.java` | `data_coverage`；baseline 7d（G4） |
+| virbius-control | `service/RolloutDashboardService.java` | hit_rate、ingest 健康 |
+| virbius-control | `admin/RolloutAdminController.java` | `GET .../traces/{traceId}` |
+| virbius-control | `resources/db/seed.sql` | 可选 `edge_audit_sample_rate_allow` 默认 0.1 |
+
+### 17.6 R3f — ops UI
+
+| 模块 | 文件 | 改动 |
+|------|------|------|
+| virbius-control | `resources/static/ops.html` | layer badge；data_coverage；trace 弹窗 |
+
+### 17.7 文档 / OpenAPI
+
+| 文件 | 改动 |
+|------|------|
+| `docs/openspec/rule-rollout.md` | 本节 §16–§17 |
+| `docs/openspec/schemas/audit-event.schema.json` | 可选 `sampled_allow` |
+| `docs/openspec/registry.openapi.yaml` | internal audit API |
+| `docs/openspec/MVP-OPENSPEC.md` | 端 HTTP ingest + 采样 |
+
+### 17.8 实施顺序
+
+```text
+R3a ──► R3b ──► R3d
+R3c ──────┘
+R3a+R3b ──► R3e ──► R3f
+```
+
+R3a 与 R3c 可并行；**R3d 依赖 R3b（HTTP ingest）+ R3c（manifest）**。
+
+---
+
+## 18. 修订记录
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | 1.0 | 2026-05-20 | 方案 A + 看板 + 门禁 + 阶梯 + 策略上线 SOP 合一 |
-| 1.1 | 2026-05-20 | 定稿：body→draft；禁止 dry_run→full；租户级 policy；audit Redis/Kafka |
+| 1.2 | 2026-05-20 | OpenSpec / DESIGN / registry.openapi / audit schema 统一口径 |
+| 1.3 | 2026-05-20 | **R3 长期方案**：端 HTTP ingest、allow 10% 采样、§17 代码改动清单、RC-14+ |

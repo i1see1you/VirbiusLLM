@@ -29,7 +29,7 @@
 
 Evaluate 前由引擎按规则预取名单/累计并注入；Groovy **不**调用 `matchList` / `getCumulate` 或直连 Redis。`value` 解析见 [value-resolution.md](./value-resolution.md)。
 
-`enforce_mode` 取值与含义见 [DESIGN.md §8.5.0](../DESIGN.md)。**规则级 canary 合并语义**见 [rule-level-enforce.md](./rule-level-enforce.md)。
+`enforce_mode` 取值与含义见 [DESIGN.md §8.5.0](../DESIGN.md)。**运营放量**见 [rule-rollout.md](./rule-rollout.md)；**执行面合并**见 [rule-level-enforce.md](./rule-level-enforce.md)。
 
 ## 默认脚本
 

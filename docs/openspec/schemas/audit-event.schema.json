@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://virbius.io/schemas/audit-event/v1/mvp",
   "title": "VirbiusAuditEvent",
-  "description": "MVP 审计 jsonl 单行事件。不记录 bundle_id/bundle_version。ControlContext（F-11）：trace_id 必填；user_id/device_id 若 App 提供则各层应写入。",
+  "description": "MVP 审计事件。各执行面 publish 至消息总线（默认 Redis Stream virbius:audit:events，可选 Kafka virbius.audit.events），由 AuditIngest 入库；PoC 可同时写本地 jsonl 备档。不记录 bundle_id/bundle_version。ControlContext（F-11）：trace_id 必填；user_id/device_id 若 App 提供则各层应写入。",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -60,6 +60,25 @@
     "intercepted_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "rollout_state": {
+      "type": "string",
+      "enum": ["draft", "disabled", "dry_run", "canary", "full"],
+      "description": "R2a+ 推荐；决策时规则运营状态"
+    },
+    "canary_percent": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "description": "rollout_state=canary 或 enforce_mode=canary 时"
+    },
+    "in_canary_bucket": {
+      "type": "boolean",
+      "description": "canary 放量时是否在分桶内"
+    },
+    "degraded": {
+      "type": "boolean",
+      "description": "fail-open 等降级路径"
     },
     "user_id": {
       "type": "string",

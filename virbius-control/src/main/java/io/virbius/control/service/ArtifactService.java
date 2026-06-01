@@ -3,7 +3,7 @@ package io.virbius.control.service;
 import io.virbius.control.domain.AccessListEntry;
 import io.virbius.control.domain.AccessListMeta;
 import io.virbius.control.domain.RuleRevision;
-import io.virbius.control.domain.RuleStatusHelper;
+import io.virbius.control.domain.RolloutStateHelper;
 import io.virbius.control.policy.RuleBodyRefs;
 import io.virbius.control.repository.CumulativeRepository;
 import io.virbius.control.repository.ListMetaRepository;
@@ -103,7 +103,7 @@ public class ArtifactService {
     private List<Map<String, Object>> buildCumulativeRuleBlocks(String tenantId) {
         List<Map<String, Object>> blocks = new ArrayList<>();
         for (RuleRevision rule : registryRepo.listCurrentRules(tenantId, "gateway")) {
-            if (!RuleStatusHelper.isActive(rule) || !"cumulative".equals(rule.runtime())) {
+            if (!RolloutStateHelper.inExecutionPlane(rule) || !"cumulative".equals(rule.runtime())) {
                 continue;
             }
             RuleBodyRefs refs = RuleBodyRefs.parse(rule.body());
@@ -125,7 +125,8 @@ public class ArtifactService {
                 block.put("reason_code", rule.reasonCode());
                 block.put("risk_score", rule.riskScore());
                 block.put("intent_action", rule.intentAction() != null ? rule.intentAction() : "deny");
-                block.put("enforce_mode", rule.enforceMode() != null ? rule.enforceMode() : "dry_run");
+                block.put("enforce_mode", rule.enforceMode());
+                block.put("canary_percent", rule.exportedCanaryPercent());
                 if (rule.canaryPercent() != null) {
                     block.put("canary_percent", rule.canaryPercent());
                 }
@@ -152,7 +153,7 @@ public class ArtifactService {
     private RuleBinding findListMatchBinding(String tenantId, String listName) {
         RuleBinding best = null;
         for (RuleRevision rule : registryRepo.listCurrentRules(tenantId, "gateway")) {
-            if (!RuleStatusHelper.isActive(rule) || !"list_match".equals(rule.runtime())) {
+            if (!RolloutStateHelper.inExecutionPlane(rule) || !"list_match".equals(rule.runtime())) {
                 continue;
             }
             RuleBodyRefs refs = RuleBodyRefs.parse(rule.body());

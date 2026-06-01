@@ -20,8 +20,12 @@ public interface RegistryRepository {
 
     Optional<RuleRevision> getRuleRevision(String tenantId, String ruleId, int revision);
 
+    RuleRevision updateRollout(String tenantId, String ruleId, String rolloutState, Integer canaryPercent);
+
+    @Deprecated
     RuleRevision updateRuntime(String tenantId, String ruleId, String enforceMode, Integer canaryPercent);
 
+    @Deprecated
     RuleRevision updateRuleStatus(String tenantId, String ruleId, String ruleStatus);
 
     void updateBundleStatus(String tenantId, String bundleId, String version, String status, String publishId, Object syncAck);

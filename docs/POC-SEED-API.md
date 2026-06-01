@@ -38,9 +38,9 @@ Body 示例（**数组**，与运营台一致）：
 
 `from`：`query` \| `header` \| `subject` \| `network`。`sync=true` 时重写 gateway/cloud 名单规则并写产物。
 
-## 2. 规则 `runtime` 与 `enforce_mode`
+## 2. 规则 `runtime` 与放量（`rollout_state`）
 
-详见 [DESIGN.md §8.5.0](DESIGN.md)（搜索「8.5.0 runtime」）。
+详见 [DESIGN.md §8.5.0](DESIGN.md)、[rule-rollout.md](openspec/rule-rollout.md)（**运营定稿**）、[rule-level-enforce.md](openspec/rule-level-enforce.md)（**执行面**）。
 
 ### `runtime`（执行形态）
 
@@ -51,30 +51,51 @@ Body 示例（**数组**，与运营台一致）：
 | `native` | cloud | `cloud_l1_blacklist`、`cloud_l1_request_*`（名单同步） |
 | `prompt` | cloud | `cloud_prompt_l1` |
 | `groovy` | cloud | `cloud_groovy_l3`（L3 终判） |
+| `list_match` | gateway / cloud | 名单规则 |
+| `cumulative` | gateway / cloud | 累计规则 |
 
-运营台按层限制可选 runtime：云 = native / prompt / groovy；管 = lua；端 = lua-dsl。
+运营台按层限制可选 runtime：云 = native / prompt / groovy / list_match / cumulative；管 = lua / list_match / cumulative；端 = lua-dsl。
 
-### `rule_status`
+### `rollout_state`（运营放量，R1+ 目标）
 
-| 值 | 含义 |
-|----|------|
-| `draft` | 草稿（**新建默认**）；Registry 存在，**不进** gateway 产物 / RuleCache，可编辑 |
-| `active` | 已上线；参与匹配；配合 `enforce_mode` 放量 |
-| `disabled` | 停用；不进执行面，**不可**再改 body / enforce |
+| 值 | 进执行面 | 命中后（deny/captcha） |
+|----|----------|------------------------|
+| `draft` | 否 | — |
+| `disabled` | 否 | — |
+| `dry_run` | 是 | `effective_action=review` |
+| `canary` | 是 | 桶内 block/captcha；桶外 review |
+| `full` | 是 | block/captcha |
 
-流转：`draft → active | disabled`；`active → disabled`；`disabled → draft`（恢复为草稿，非直接 active）。
+**上线**：`draft → dry_run`（`POST .../rollout/publish` 或 `PATCH .../rollout`）。
 
-`PATCH .../rules/{ruleId}/status` body 示例：`{"rule_status":"active"}`。变为 `active` 或从 `active` 离开时自动刷新产物 + engine。
+**永久禁止**：`dry_run → full`（须 dry_run → canary → … → full）。
 
-### `enforce_mode`（规则级真拦 vs 观测）
+**改 body**：在 `dry_run|canary|full` 下修改规则内容 → **强制回 `draft`**，移出执行面。
 
-| 值 | 含义 |
-|----|------|
-| `dry_run` | 命中后对外 `effective_action=review`（PoC 默认） |
-| `canary` | 按 `canary_percent` 部分会话真 `block`/`captcha` |
-| `full` | 真 `block`/`captcha`（由 `intent_action` 决定） |
+流转：`draft → dry_run | disabled`；`dry_run → canary | disabled`；`canary → canary（调 percent）| full | dry_run | disabled`；`full → dry_run | disabled`；`disabled → draft`。
 
-配合表列 **`intent_action`**（`allow`/`deny`/`captcha`/`review`）。管侧按产物 enforce 合并；`block→403`，`captcha→428`，`review→200` 并送 `prior_signals` 至 engine（内部）。详见 [rule-level-enforce.md](openspec/rule-level-enforce.md)。
+放量 API（R1）：`PATCH .../rules/{ruleId}/rollout`；租户门禁/阶梯：`GET|PUT .../tenants/{tenantId}/rollout-policy`（**不可 per-rule**）。
+
+### PoC 现行（过渡：`rule_status` + `enforce_mode`）
+
+R1 实现前，代码仍用双字段：
+
+| `rule_status` | 含义 |
+|---------------|------|
+| `draft` | 草稿（**新建默认**）；不进产物 |
+| `active` | 已上线；配合 `enforce_mode` 放量 |
+| `disabled` | 停用；不可编辑 |
+
+| `enforce_mode` | 含义 |
+|----------------|------|
+| `dry_run` | 命中 → `review`（PoC 默认） |
+| `canary` | 按 `canary_percent` 部分真拦 |
+| `full` | 全量 block/captcha |
+
+`PATCH .../rules/{ruleId}/status`：`{"rule_status":"active"}`（上线观测 = active + dry_run）。  
+`PATCH .../rules/{ruleId}/runtime`：`{"enforce_mode":"canary","canary_percent":5}`。**禁止** dry_run 直接改 full。
+
+配合 **`intent_action`**（`allow`/`deny`/`captcha`/`review`）。管侧按产物 enforce 合并；`block→403`，`captcha→428`，`review→200` 并送 `prior_signals` 至 engine（内部）。
 
 ## 3. SQL 种子
 
@@ -185,7 +206,7 @@ curl -s -X POST "http://127.0.0.1:9070/v1/evaluate" \
   -d '{"tenant_id":"default","scene":"chat","content":"hello","user_id":"u-banned-poc","trace_id":"550e8400-e29b-41d4-a716-446655440100"}'
 ```
 
-期望：dry_run 时 `effective_action":"review"`；将对应规则 `PATCH .../runtime` 为 `full` 后则为 `block`，`reason_code":"GW_SUBJECT_USER_DENY"`。
+期望：dry_run 时 `effective_action":"review"`；须先 `PATCH .../runtime` 为 `canary` 再至 `full`（**禁止** dry_run 直接 full）。full 后为 `block`，`reason_code":"GW_SUBJECT_USER_DENY"`。
 
 ## 8. Registry API（高级）
 

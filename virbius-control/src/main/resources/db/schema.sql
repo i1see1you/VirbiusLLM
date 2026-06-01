@@ -28,9 +28,8 @@ CREATE TABLE IF NOT EXISTS tb_rules_current (
     layer             VARCHAR(32) NOT NULL,
     runtime           VARCHAR(32) NOT NULL,
     reason_code       VARCHAR(64) NOT NULL,
-    enforce_mode    VARCHAR(32) NOT NULL DEFAULT 'dry_run',
-    intent_action   VARCHAR(32) NOT NULL DEFAULT 'deny',
-    rule_status       VARCHAR(16) NOT NULL DEFAULT 'draft',
+    intent_action     VARCHAR(32) NOT NULL DEFAULT 'deny',
+    rollout_state     VARCHAR(16) NOT NULL DEFAULT 'draft',
     updated_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tenant_id, rule_id)
 );
@@ -47,10 +46,9 @@ CREATE TABLE IF NOT EXISTS tb_rule_history (
     scope_json      TEXT,
     body_json       TEXT,
     body_hash       VARCHAR(64),
-    enforce_mode    VARCHAR(32) NOT NULL DEFAULT 'dry_run',
     intent_action   VARCHAR(32) NOT NULL DEFAULT 'deny',
-    canary_percent  INTEGER DEFAULT 5,
-    rule_status     VARCHAR(16) NOT NULL DEFAULT 'draft',
+    rollout_state   VARCHAR(16) NOT NULL DEFAULT 'draft',
+    canary_percent  INTEGER,
     effective_from  TIMESTAMP NOT NULL,
     effective_to    TIMESTAMP,
     modified_at     TIMESTAMP NOT NULL,
@@ -58,7 +56,11 @@ CREATE TABLE IF NOT EXISTS tb_rule_history (
     publish_id      VARCHAR(64),
     PRIMARY KEY (tenant_id, rule_id, rule_revision),
     CHECK (risk_score >= 0 AND risk_score <= 100),
-    CHECK (rule_status IN ('draft', 'active', 'disabled'))
+    CHECK (rollout_state IN ('draft', 'disabled', 'dry_run', 'canary', 'full')),
+    CHECK (
+        (rollout_state = 'canary' AND canary_percent BETWEEN 1 AND 100)
+        OR (rollout_state <> 'canary' AND canary_percent IS NULL)
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_tb_rule_history_tenant_layer
@@ -131,4 +133,94 @@ CREATE TABLE IF NOT EXISTS tb_cumulative (
     CHECK (window_kind IN ('rolling', 'calendar_day')),
     CHECK (status IN ('active', 'disabled')),
     CHECK (threshold >= 1)
+);
+
+CREATE TABLE IF NOT EXISTS tb_tenant_rollout_policy (
+    tenant_id                   VARCHAR(64) PRIMARY KEY,
+    auto_mode                   VARCHAR(16) NOT NULL DEFAULT 'assisted',
+    canary_ladder_json          TEXT NOT NULL DEFAULT '[5,20,50,100]',
+    min_dry_run_hours           INTEGER NOT NULL DEFAULT 24,
+    min_review_count            INTEGER NOT NULL DEFAULT 100,
+    max_review_rate             REAL NOT NULL DEFAULT 0.05,
+    max_review_spike_ratio      REAL NOT NULL DEFAULT 2.0,
+    min_hours_per_step          INTEGER NOT NULL DEFAULT 12,
+    min_block_samples_per_step  INTEGER NOT NULL DEFAULT 10,
+    allow_force                 INTEGER NOT NULL DEFAULT 1,
+    rollback_block_spike_ratio  REAL NOT NULL DEFAULT 3.0,
+    updated_at                  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS tb_rule_ladder_state (
+    tenant_id          VARCHAR(64) NOT NULL,
+    rule_id            VARCHAR(128) NOT NULL,
+    ladder_status      VARCHAR(16) NOT NULL DEFAULT 'idle',
+    ladder_started_at  TIMESTAMP,
+    updated_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, rule_id)
+);
+
+CREATE TABLE IF NOT EXISTS tb_rule_rollout_event (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id        VARCHAR(64) NOT NULL,
+    rule_id          VARCHAR(128) NOT NULL,
+    rule_revision    INTEGER NOT NULL,
+    rollout_state    VARCHAR(16) NOT NULL,
+    canary_percent   INTEGER,
+    trigger          VARCHAR(32) NOT NULL,
+    operator         VARCHAR(64),
+    effective_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS tb_rule_gate_log (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id             VARCHAR(64) NOT NULL,
+    rule_id               VARCHAR(128) NOT NULL,
+    from_state            VARCHAR(16),
+    to_state              VARCHAR(16),
+    pass                  INTEGER NOT NULL,
+    reasons_json          TEXT,
+    metrics_snapshot_json TEXT,
+    operator              VARCHAR(64),
+    comment               TEXT,
+    created_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS tb_audit_events (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id          VARCHAR(128),
+    trace_id          VARCHAR(128) NOT NULL,
+    trace_id_source   VARCHAR(16),
+    tenant_id         VARCHAR(64) NOT NULL,
+    scene             VARCHAR(64) NOT NULL,
+    layer             VARCHAR(16) NOT NULL,
+    rule_id           VARCHAR(128) NOT NULL,
+    rule_revision     INTEGER NOT NULL,
+    reason_code       VARCHAR(64) NOT NULL,
+    effective_action  VARCHAR(16) NOT NULL,
+    max_risk_score    INTEGER NOT NULL,
+    rollout_state     VARCHAR(16),
+    canary_percent    INTEGER,
+    in_canary_bucket  INTEGER,
+    degraded          INTEGER,
+    intercepted_at    TIMESTAMP NOT NULL,
+    user_id           VARCHAR(256),
+    device_id         VARCHAR(256),
+    created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_tb_audit_events_rule ON tb_audit_events (tenant_id, rule_id, intercepted_at);
+
+CREATE TABLE IF NOT EXISTS tb_rule_metrics_1h (
+    tenant_id           VARCHAR(64) NOT NULL,
+    rule_id             VARCHAR(128) NOT NULL,
+    hour_bucket         TIMESTAMP NOT NULL,
+    rollout_state       VARCHAR(16),
+    canary_percent      INTEGER,
+    cnt_review          INTEGER NOT NULL DEFAULT 0,
+    cnt_block           INTEGER NOT NULL DEFAULT 0,
+    cnt_captcha         INTEGER NOT NULL DEFAULT 0,
+    cnt_allow           INTEGER NOT NULL DEFAULT 0,
+    cnt_total_requests  INTEGER NOT NULL DEFAULT 0,
+    cnt_degraded        INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (tenant_id, rule_id, hour_bucket)
 );

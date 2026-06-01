@@ -26,6 +26,21 @@ virbius:
   engine:
     base-url: ${VIRBIUS_ENGINE_URL:http://127.0.0.1:8082}
 
+audit:
+  ingest:
+    enabled: true
+    backend: redis-stream
+    poll-ms: 5000
+    redis:
+      stream-key: virbius:audit:events
+    consumer-group: virbius-audit-ingest
+
+rollout:
+  metrics:
+    rollup-ms: 900000
+  ladder:
+    poll-ms: 900000
+
 management:
   endpoints:
     web:

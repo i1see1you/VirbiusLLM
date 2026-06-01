@@ -35,6 +35,22 @@
     .hint { font-size: 0.8rem; color: #64748b; margin: 0.25rem 0 0.75rem; }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
     @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+    .flow-strip { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.75rem 0 1rem; align-items: center; }
+    .flow-step { padding: 0.35rem 0.65rem; border-radius: 999px; font-size: 0.78rem; background: #e2e8f0; color: #475569; }
+    .flow-step.done { background: #dcfce7; color: #166534; }
+    .flow-step.active { background: #2563eb; color: #fff; font-weight: 600; }
+    .flow-arrow { color: #94a3b8; font-size: 0.75rem; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.65rem; margin-bottom: 1rem; }
+    .kpi-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.65rem 0.75rem; }
+    .kpi-card .label { font-size: 0.72rem; color: #64748b; margin-bottom: 0.15rem; }
+    .kpi-card .value { font-size: 1.15rem; font-weight: 600; }
+    .rollout-section { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; }
+    .rollout-section h3 { font-size: 0.92rem; margin: 0 0 0.5rem; color: #334155; }
+    .gate-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.75rem; font-size: 0.82rem; }
+    .gate-box.pass { border-color: #86efac; background: #f0fdf4; }
+    .gate-box.fail { border-color: #fca5a5; background: #fef2f2; }
+    .bar-cell { display: flex; align-items: flex-end; gap: 1px; height: 2rem; min-width: 3rem; }
+    .bar-seg { width: 4px; border-radius: 1px; }
   </style>
 </head>
 <body>
@@ -55,6 +71,7 @@
       <button type="button" class="tab" data-tab="cumulatives">累计</button>
       <button type="button" class="tab" data-tab="bindings">请求映射</button>
       <button type="button" class="tab" data-tab="rules">规则</button>
+      <button type="button" class="tab" data-tab="rollout">策略上线</button>
       <button type="button" class="tab" data-tab="publish">发布状态</button>
     </div>
   </div>
@@ -176,7 +193,7 @@
 
   <div id="panel-rules" class="panel card">
     <h2 style="margin:0 0 0.5rem;font-size:1rem">规则（Registry）</h2>
-    <p class="hint">新建规则默认为 <code>draft</code>（不进执行面）；<code>启用（上线）</code> 后变为 <code>active</code> 并参与匹配。停用后恢复为 <code>draft</code> 可再编辑。</p>
+    <p class="hint">新建规则默认为 <code>draft</code>（不进执行面）；保存后请到「<strong>策略上线</strong>」Tab 点 <code>上线</code> 进入 <code>dry_run</code> 观测。停用后可 <code>恢复草稿</code> 再编辑。</p>
     <div class="row">
       <button type="button" class="tab layer active" data-layer="cloud">云 cloud</button>
       <button type="button" class="tab layer" data-layer="gateway">管 gateway</button>
@@ -184,7 +201,7 @@
       <button type="button" id="btnNewRule">新建规则</button>
     </div>
     <table id="rulesTable">
-      <thead><tr><th>rule_id</th><th>runtime</th><th>status</th><th>rev</th><th>risk</th><th>intent</th><th>enforce</th><th>reason</th></tr></thead>
+      <thead><tr><th>rule_id</th><th>runtime</th><th>rollout</th><th>rev</th><th>risk</th><th>intent</th><th>enforce</th><th>reason</th></tr></thead>
       <tbody></tbody>
     </table>
     <div id="ruleEditor" style="display:none;margin-top:1rem">
@@ -231,6 +248,76 @@
     </div>
   </div>
 
+  <div id="panel-rollout" class="panel card">
+    <h2 style="margin:0 0 0.5rem;font-size:1rem">策略上线</h2>
+    <p class="hint">assisted 模式：先 <code>评估升级</code> 查看门禁，达标后 <code>应用建议</code>。draft 须先 <code>上线</code>；canary 阶梯与门禁阈值见表 <code>tb_tenant_rollout_policy</code>。</p>
+    <div class="row">
+      <label>规则
+        <select id="roRuleSelect" style="min-width:16rem"><option value="">— 选择规则 —</option></select>
+      </label>
+      <span id="roBadge"></span>
+      <button type="button" class="secondary" id="roRefresh">刷新看板</button>
+    </div>
+    <div id="roFlowStrip" class="flow-strip"></div>
+    <div id="roKpi" class="kpi-grid"></div>
+
+    <div class="rollout-section">
+      <h3>24h 按小时指标</h3>
+      <table id="roMetricsTable">
+        <thead><tr><th>时段</th><th>分布</th><th>review</th><th>block</th><th>captcha</th><th>allow</th><th>total</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="rollout-section">
+      <h3>放量变更时间线</h3>
+      <table id="roTimelineTable">
+        <thead><tr><th>时间</th><th>状态</th><th>canary%</th><th>触发</th><th>操作者</th><th>rev</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="rollout-section">
+      <h3>门禁评估</h3>
+      <div id="roGatePanel" class="gate-box">选择规则后点击「评估升级」</div>
+      <div class="row" style="margin-top:0.5rem">
+        <button type="button" id="roEvaluate">评估升级</button>
+        <button type="button" id="roApply">应用建议</button>
+        <label style="flex-direction:row;align-items:center;gap:0.25rem"><input type="checkbox" id="roForce" /> force 绕过</label>
+        <input id="roForceComment" placeholder="force 说明（勾选 force 时必填）" style="min-width:14rem" />
+      </div>
+      <p class="hint" id="roSuggestedHint"></p>
+    </div>
+
+    <div class="rollout-section">
+      <h3>操作</h3>
+      <div class="row">
+        <button type="button" id="roPublish">上线 (→ dry_run)</button>
+        <button type="button" class="secondary" id="roRollback">回退 (→ dry_run)</button>
+        <button type="button" class="danger" id="roDisable">停用</button>
+        <button type="button" class="secondary" id="roRecover">恢复草稿</button>
+        <button type="button" class="secondary" id="roLadderStart">启动阶梯 (auto)</button>
+        <button type="button" class="secondary" id="roLadderPause">暂停阶梯</button>
+      </div>
+    </div>
+
+    <div class="rollout-section">
+      <h3>审计样本 (review)</h3>
+      <table id="roSamplesTable">
+        <thead><tr><th>时间</th><th>trace_id</th><th>action</th><th>reason</th><th>risk</th><th>rollout</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="rollout-section">
+      <h3>门禁历史</h3>
+      <table id="roGatesTable">
+        <thead><tr><th>时间</th><th>from→to</th><th>结果</th><th>原因</th><th>comment</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
   <div id="panel-publish" class="panel card">
     <h2 style="margin:0 0 0.5rem;font-size:1rem">Bundle 发布状态</h2>
     <pre id="publishInfo" style="background:#f8fafc;padding:0.75rem;border-radius:4px;font-size:0.85rem">—</pre>
@@ -248,6 +335,12 @@
     let selectedCumulativeName = null;
     let isNewCumulative = false;
     let cumulativeRows = [];
+    let rolloutRuleMeta = null;
+    let rolloutEvalResult = null;
+    let rolloutAllRules = [];
+    let rolloutCanaryLadder = [5, 20, 50, 100];
+
+    const FLOW_STEPS = ['draft', 'dry_run', 'canary', 'full'];
 
     const LAYER_RUNTIMES = {
       cloud: ['prompt', 'groovy', 'list_match', 'cumulative'],
@@ -310,6 +403,10 @@
       return `<span class="tag ${cls}">${esc(s)}</span>`;
     }
 
+    function inExecutionPlane(st) {
+      return st === 'dry_run' || st === 'canary' || st === 'full';
+    }
+
     function setRuleEditorReadOnly(disabled) {
       const ro = !!disabled;
       ['fReason', 'fRisk', 'fIntent', 'fEnforce', 'fCanary', 'fBody', 'fRuleId', 'fRuntime'].forEach(id => {
@@ -322,17 +419,19 @@
       const st = status || 'draft';
       const isDisabled = st === 'disabled';
       const isDraft = st === 'draft';
-      const isActive = st === 'active';
+      const exec = inExecutionPlane(st);
       setRuleEditorReadOnly(isDisabled);
-      document.getElementById('btnSaveRule').style.display = (isDisabled || isNewRule) ? 'none' : '';
+      document.getElementById('btnSaveRule').style.display = isDisabled ? 'none' : '';
+      document.getElementById('btnSaveRule').textContent =
+        isNewRule ? '创建规则' : '保存规则（新 revision）';
       document.getElementById('btnActivateRule').style.display = (!isNewRule && isDraft) ? '' : 'none';
       document.getElementById('btnDisableRule').style.display = (!isNewRule && !isDisabled) ? '' : 'none';
       document.getElementById('btnEnableRule').style.display = (!isNewRule && isDisabled) ? '' : 'none';
-      setRuleEditorEnforceUi(isActive);
+      setRuleEditorEnforceUi(exec);
     }
 
-    function setRuleEditorEnforceUi(isActive) {
-      const showRuntime = !isNewRule && selectedRuleId && isActive;
+    function setRuleEditorEnforceUi(exec) {
+      const showRuntime = !isNewRule && selectedRuleId && exec;
       document.getElementById('enforceWrap').style.display = showRuntime ? '' : 'none';
       document.getElementById('canaryWrap').style.display = showRuntime ? '' : 'none';
       document.getElementById('btnSaveRuntime').style.display = showRuntime ? '' : 'none';
@@ -341,8 +440,8 @@
     }
 
     function setRuleEditorCloudOnly(layer) {
-      const st = editRuleMeta && editRuleMeta.rule_status;
-      setRuleEditorEnforceUi(st === 'active');
+      const st = editRuleMeta && editRuleMeta.rollout_state;
+      setRuleEditorEnforceUi(inExecutionPlane(st));
     }
 
     function openNewRuleEditor() {
@@ -632,8 +731,8 @@
         const tr = document.createElement('tr');
         if (r.rule_id === selectedRuleId) tr.classList.add('sel');
         tr.innerHTML = `<td>${esc(r.rule_id)}</td><td>${esc(r.runtime)}</td>
-          <td>${ruleStatusTag(r.rule_status)}</td><td>${r.current_revision}</td>
-          <td>${r.risk_score}</td><td>${esc(r.intent_action || 'deny')}</td><td>${esc(r.enforce_mode)}</td><td>${esc(r.reason_code)}</td>`;
+          <td>${ruleStatusTag(r.rollout_state)}</td><td>${r.current_revision}</td>
+          <td>${r.risk_score}</td><td>${esc(r.intent_action || 'deny')}</td><td>${esc(r.enforce_mode)}${r.canary_percent ? '@'+r.canary_percent+'%' : ''}</td><td>${esc(r.reason_code)}</td>`;
         tr.onclick = () => selectRule(r.rule_id);
         tbody.appendChild(tr);
       });
@@ -651,7 +750,8 @@
       document.getElementById('fReason').value = r.reason_code || '';
       document.getElementById('fRisk').value = r.risk_score ?? 100;
       document.getElementById('fIntent').value = r.intent_action || 'deny';
-      document.getElementById('fEnforce').value = r.enforce_mode || 'dry_run';
+      document.getElementById('fEnforce').value = r.rollout_state === 'canary' || r.rollout_state === 'full'
+        ? r.rollout_state : (r.rollout_state === 'dry_run' ? 'dry_run' : 'dry_run');
       document.getElementById('fCanary').value = r.canary_percent ?? '';
       const body = r.body;
       document.getElementById('fBody').value = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
@@ -660,13 +760,266 @@
         fillListNameSelect(body.list_name);
       }
       setRuleEditorCloudOnly(r.layer);
-      setRuleEditorStatusUi(r.rule_status);
+      setRuleEditorStatusUi(r.rollout_state);
       await loadRules();
+      const roSel = document.getElementById('roRuleSelect');
+      if (roSel && [...roSel.options].some(o => o.value === ruleId)) roSel.value = ruleId;
     }
 
     async function loadPublish() {
       const st = await admin(`/bundles/${encodeURIComponent(bundleId())}/versions/${encodeURIComponent(bundleVer())}/status`);
       document.getElementById('publishInfo').textContent = JSON.stringify(st, null, 2);
+    }
+
+    function rolloutRuleId() {
+      return document.getElementById('roRuleSelect').value.trim();
+    }
+
+    function fmtPct(n) {
+      if (n == null || Number.isNaN(n)) return 'N/A';
+      return (n * 100).toFixed(2) + '%';
+    }
+
+    function rolloutStateLabel(st, pct) {
+      if (st === 'canary' && pct != null) return `canary@${pct}%`;
+      return st || 'draft';
+    }
+
+    function renderRolloutFlow(st, pct) {
+      const el = document.getElementById('roFlowStrip');
+      const order = { draft: 0, disabled: -1, dry_run: 1, canary: 2, full: 3 };
+      const cur = st === 'disabled' ? 'draft' : (st || 'draft');
+      const curIdx = order[cur] ?? 0;
+      const parts = [];
+      FLOW_STEPS.forEach((step, i) => {
+        if (i > 0) parts.push('<span class="flow-arrow">→</span>');
+        let cls = 'flow-step';
+        if (step === cur) cls += ' active';
+        else if (i < curIdx) cls += ' done';
+        let label = step;
+        if (step === 'canary' && cur === 'canary' && pct != null) label = `canary ${pct}%`;
+        parts.push(`<span class="${cls}">${esc(label)}</span>`);
+      });
+      if (st === 'disabled') {
+        parts.push('<span class="flow-arrow">|</span><span class="flow-step active">disabled</span>');
+      }
+      el.innerHTML = parts.join('');
+    }
+
+    function renderRolloutKpi(totals) {
+      const t = totals || {};
+      const cards = [
+        ['review (24h)', t.review ?? 0],
+        ['block (24h)', t.block ?? 0],
+        ['captcha (24h)', t.captcha ?? 0],
+        ['total requests', t.total_requests ?? 0],
+        ['hit_rate', t.hit_rate != null ? fmtPct(t.hit_rate) : 'N/A'],
+        ['review_rate', t.review_rate != null ? fmtPct(t.review_rate) : 'N/A']
+      ];
+      document.getElementById('roKpi').innerHTML = cards.map(([label, value]) =>
+        `<div class="kpi-card"><div class="label">${esc(label)}</div><div class="value">${esc(String(value))}</div></div>`
+      ).join('');
+    }
+
+    function renderMiniBar(review, block, captcha, allow) {
+      const total = Math.max(review + block + captcha + allow, 1);
+      const segs = [
+        { n: review, c: '#fbbf24' },
+        { n: block, c: '#ef4444' },
+        { n: captcha, c: '#a855f7' },
+        { n: allow, c: '#22c55e' }
+      ];
+      return '<div class="bar-cell">' + segs.map(s => {
+        const h = Math.max(2, Math.round((s.n / total) * 32));
+        return `<div class="bar-seg" style="height:${h}px;background:${s.c}" title="${s.n}"></div>`;
+      }).join('') + '</div>';
+    }
+
+    function renderRolloutMetrics(series) {
+      const tbody = document.querySelector('#roMetricsTable tbody');
+      tbody.innerHTML = '';
+      (series || []).forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${esc(fmtTime(row.bucket))}</td>
+          <td>${renderMiniBar(row.review || 0, row.block || 0, row.captcha || 0, row.allow || 0)}</td>
+          <td>${row.review ?? 0}</td><td>${row.block ?? 0}</td><td>${row.captcha ?? 0}</td>
+          <td>${row.allow ?? 0}</td><td>${row.total_requests ?? 0}</td>`;
+        tbody.appendChild(tr);
+      });
+      if (!series || !series.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="hint">暂无指标（需 audit ingest + metrics rollup）</td></tr>';
+      }
+    }
+
+    function renderRolloutTimeline(events) {
+      const tbody = document.querySelector('#roTimelineTable tbody');
+      tbody.innerHTML = '';
+      (events || []).forEach(ev => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${esc(fmtTime(ev.effective_at))}</td>
+          <td>${ruleStatusTag(ev.rollout_state)}</td>
+          <td>${ev.canary_percent ?? '—'}</td><td>${esc(ev.trigger || '')}</td>
+          <td>${esc(ev.operator || '')}</td><td>${ev.rule_revision ?? ''}</td>`;
+        tbody.appendChild(tr);
+      });
+      if (!events || !events.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="hint">暂无变更记录</td></tr>';
+      }
+    }
+
+    function renderRolloutGate(evalResult) {
+      rolloutEvalResult = evalResult;
+      const panel = document.getElementById('roGatePanel');
+      if (!evalResult) {
+        panel.className = 'gate-box';
+        panel.textContent = '选择规则后点击「评估升级」';
+        document.getElementById('roSuggestedHint').textContent = '';
+        return;
+      }
+      const pass = !!evalResult.pass;
+      panel.className = 'gate-box ' + (pass ? 'pass' : 'fail');
+      const reasons = evalResult.reasons || [];
+      panel.innerHTML = `<div><strong>${pass ? '通过' : '未通过'}</strong> `
+        + `${esc(evalResult.from_state || '')} → ${esc(evalResult.to_state || '')}`
+        + (evalResult.target_canary_percent != null ? ` @ ${evalResult.target_canary_percent}%` : '')
+        + '</div>'
+        + (reasons.length ? `<ul style="margin:0.35rem 0 0 1rem">${reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : '')
+        + (evalResult.metrics ? `<pre style="margin:0.5rem 0 0;font-size:0.75rem">${esc(JSON.stringify(evalResult.metrics, null, 2))}</pre>` : '');
+      const sug = evalResult.suggested_next;
+      document.getElementById('roSuggestedHint').textContent = sug
+        ? `建议下一步：${rolloutStateLabel(sug.rollout_state, sug.canary_percent)}`
+        : (rolloutRuleMeta && rolloutRuleMeta.rollout_state === 'draft' ? 'draft 规则请先点「上线」进入 dry_run' : '当前无建议升级（可能已在 full）');
+    }
+
+    function renderRolloutSamples(samples) {
+      const tbody = document.querySelector('#roSamplesTable tbody');
+      tbody.innerHTML = '';
+      (samples || []).forEach(s => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${esc(fmtTime(s.intercepted_at))}</td>
+          <td><code>${esc(s.trace_id || '')}</code></td>
+          <td>${esc(s.effective_action || '')}</td><td>${esc(s.reason_code || '')}</td>
+          <td>${s.max_risk_score ?? ''}</td>
+          <td>${esc(rolloutStateLabel(s.rollout_state, s.canary_percent))}</td>`;
+        tbody.appendChild(tr);
+      });
+      if (!samples || !samples.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="hint">暂无 audit 样本</td></tr>';
+      }
+    }
+
+    function renderRolloutGates(gates) {
+      const tbody = document.querySelector('#roGatesTable tbody');
+      tbody.innerHTML = '';
+      (gates || []).forEach(g => {
+        let reasons = g.reasons_json || '';
+        try { reasons = JSON.parse(reasons).join('; '); } catch { /* keep raw */ }
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${esc(fmtTime(g.created_at))}</td>
+          <td>${esc(g.from_state || '')} → ${esc(g.to_state || '')}</td>
+          <td>${g.pass ? 'pass' : 'fail'}</td><td>${esc(reasons)}</td><td>${esc(g.comment || '')}</td>`;
+        tbody.appendChild(tr);
+      });
+      if (!gates || !gates.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="hint">暂无门禁记录</td></tr>';
+      }
+    }
+
+    function updateRolloutActions(meta) {
+      const st = meta ? meta.rollout_state : null;
+      const isDraft = st === 'draft';
+      const isDisabled = st === 'disabled';
+      const exec = inExecutionPlane(st);
+      document.getElementById('roPublish').style.display = isDraft ? '' : 'none';
+      document.getElementById('roRecover').style.display = isDisabled ? '' : 'none';
+      document.getElementById('roDisable').style.display = meta && !isDisabled ? '' : 'none';
+      document.getElementById('roRollback').style.display = exec && st !== 'dry_run' ? '' : 'none';
+      document.getElementById('roEvaluate').style.display = meta && !isDraft && !isDisabled && st !== 'full' ? '' : 'none';
+      document.getElementById('roApply').style.display = document.getElementById('roEvaluate').style.display;
+      document.getElementById('roLadderStart').style.display = exec && st !== 'full' ? '' : 'none';
+      document.getElementById('roLadderPause').style.display = exec ? '' : 'none';
+    }
+
+    function rolloutEvaluateTarget(meta) {
+      if (!meta) return null;
+      const st = meta.rollout_state;
+      const ladder = rolloutCanaryLadder;
+      if (st === 'dry_run') {
+        return { target_state: 'canary', canary_percent: ladder[0] };
+      }
+      if (st === 'canary') {
+        const pct = meta.canary_percent;
+        const idx = ladder.indexOf(pct != null ? pct : ladder[0]);
+        const nextIdx = idx < 0 ? 0 : idx + 1;
+        if (nextIdx >= ladder.length) return null;
+        const step = ladder[nextIdx];
+        if (step >= 100) return { target_state: 'full', canary_percent: null };
+        return { target_state: 'canary', canary_percent: step };
+      }
+      return null;
+    }
+
+    async function loadAllRulesForRollout() {
+      const layers = ['cloud', 'gateway', 'edge'];
+      const all = [];
+      for (const layer of layers) {
+        const rules = await admin('/rules?layer=' + encodeURIComponent(layer));
+        rules.forEach(r => all.push(r));
+      }
+      rolloutAllRules = all.sort((a, b) => a.rule_id.localeCompare(b.rule_id));
+      const sel = document.getElementById('roRuleSelect');
+      const prev = sel.value;
+      sel.innerHTML = '<option value="">— 选择规则 —</option>' +
+        rolloutAllRules.map(r => {
+          const label = `${r.rule_id} [${r.layer}] ${rolloutStateLabel(r.rollout_state, r.canary_percent)}`;
+          return `<option value="${escAttr(r.rule_id)}">${esc(label)}</option>`;
+        }).join('');
+      if (prev && rolloutAllRules.some(r => r.rule_id === prev)) sel.value = prev;
+    }
+
+    async function refreshRolloutDashboard() {
+      await loadAllRulesForRollout();
+      try {
+        const pol = await admin('/rollout-policy');
+        if (pol && pol.canary_ladder && pol.canary_ladder.length) {
+          rolloutCanaryLadder = pol.canary_ladder;
+        }
+      } catch (_) { /* 读 tb_tenant_rollout_policy；无 UI 配置 */ }
+      const ruleId = rolloutRuleId();
+      if (!ruleId) {
+        rolloutRuleMeta = null;
+        document.getElementById('roBadge').innerHTML = '';
+        renderRolloutFlow('draft');
+        renderRolloutKpi({});
+        renderRolloutMetrics([]);
+        renderRolloutTimeline([]);
+        renderRolloutGate(null);
+        renderRolloutSamples([]);
+        renderRolloutGates([]);
+        updateRolloutActions(null);
+        return;
+      }
+      const meta = await admin('/rules/' + encodeURIComponent(ruleId));
+      rolloutRuleMeta = meta;
+      const st = meta.rollout_state || 'draft';
+      const pct = meta.canary_percent;
+      document.getElementById('roBadge').innerHTML = ruleStatusTag(st)
+        + (pct != null ? ` <span class="tag">${pct}%</span>` : '')
+        + ` <span class="hint">${esc(meta.layer)}/${esc(meta.runtime)}</span>`;
+      renderRolloutFlow(st, pct);
+      updateRolloutActions(meta);
+      const [metrics, timeline, samples, gates] = await Promise.all([
+        admin('/rules/' + encodeURIComponent(ruleId) + '/metrics?hours=24').catch(() => ({ series: [], totals: {} })),
+        admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/timeline').catch(() => []),
+        admin('/rules/' + encodeURIComponent(ruleId) + '/audit-samples?effective_action=review&limit=30').catch(() => []),
+        admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/gates?limit=20').catch(() => [])
+      ]);
+      renderRolloutKpi(metrics.totals || {});
+      renderRolloutMetrics(metrics.series || []);
+      renderRolloutTimeline(timeline);
+      renderRolloutSamples(samples);
+      renderRolloutGates(gates);
+      renderRolloutGate(null);
     }
 
     async function reloadAll() {
@@ -675,6 +1028,9 @@
       await loadBindings();
       await loadRules();
       await loadPublish();
+      if (document.getElementById('panel-rollout').classList.contains('active')) {
+        await refreshRolloutDashboard();
+      }
       log({ ok: true, tenant: tenant(), bundle: bundleId(), version: bundleVer() });
     }
 
@@ -723,6 +1079,9 @@
         document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
         btn.classList.add('active');
         document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+        if (btn.dataset.tab === 'rollout') {
+          refreshRolloutDashboard().catch(e => log(e.message));
+        }
       };
     });
     document.querySelectorAll('button.tab.layer').forEach(btn => {
@@ -850,7 +1209,7 @@
     document.getElementById('fRisk').onchange = syncIntentFromRisk;
 
     document.getElementById('btnSaveRule').onclick = async () => {
-      if (editRuleMeta && editRuleMeta.rule_status === 'disabled') {
+      if (editRuleMeta && editRuleMeta.rollout_state === 'disabled') {
         log('规则已停用，不可修改');
         return;
       }
@@ -884,37 +1243,139 @@
       await selectRule(ruleId);
     };
     document.getElementById('btnSaveRuntime').onclick = () => {
-      if (!editRuleMeta || editRuleMeta.rule_status !== 'active') {
-        log('仅 active 规则可单独更新 enforce');
+      if (!editRuleMeta || !inExecutionPlane(editRuleMeta.rollout_state)) {
+        log('仅 dry_run/canary/full 规则可更新放量');
         return;
       }
-      const enforce = document.getElementById('fEnforce').value;
-      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/runtime', {
+      const mode = document.getElementById('fEnforce').value;
+      let rollout_state = mode;
+      let canary_percent = null;
+      if (mode === 'canary') {
+        rollout_state = 'canary';
+        canary_percent = Number(document.getElementById('fCanary').value);
+      } else if (mode === 'full') {
+        rollout_state = 'full';
+      } else {
+        rollout_state = 'dry_run';
+      }
+      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/rollout', {
         method: 'PATCH',
-        body: JSON.stringify({
-          enforce_mode: enforce,
-          canary_percent: enforce === 'canary' ? Number(document.getElementById('fCanary').value) : null
-        })
+        body: JSON.stringify({ rollout_state, canary_percent })
       }).then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message));
     };
     document.getElementById('btnDisableRule').onclick = () =>
-      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/status', {
-        method: 'PATCH',
-        body: JSON.stringify({ rule_status: 'disabled' })
-      }).then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message));
+      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/rollout/disable', { method: 'POST' })
+        .then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message));
     document.getElementById('btnActivateRule').onclick = () =>
-      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/status', {
-        method: 'PATCH',
-        body: JSON.stringify({ rule_status: 'active' })
-      }).then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message));
+      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/rollout/publish', { method: 'POST' })
+        .then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message));
     document.getElementById('btnEnableRule').onclick = () =>
-      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/status', {
-        method: 'PATCH',
-        body: JSON.stringify({ rule_status: 'draft' })
-      }).then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message));
+      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/rollout/recover', { method: 'POST' })
+        .then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message));
     document.getElementById('btnSnapshot').onclick = () =>
       admin('/rules/' + encodeURIComponent(selectedRuleId) + '/runtime/publish-snapshot', { method: 'POST' })
         .then(log).catch(e => log(e.message));
+
+    document.getElementById('roRuleSelect').onchange = () =>
+      refreshRolloutDashboard().catch(e => log(e.message));
+    document.getElementById('roRefresh').onclick = () =>
+      refreshRolloutDashboard().then(() => log('策略看板已刷新')).catch(e => log(e.message));
+
+    document.getElementById('roEvaluate').onclick = async () => {
+      const ruleId = rolloutRuleId();
+      if (!ruleId || !rolloutRuleMeta) return;
+      const target = rolloutEvaluateTarget(rolloutRuleMeta);
+      if (!target) {
+        log('当前状态无可评估的升级目标');
+        return;
+      }
+      try {
+        const evalResult = await admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/evaluate', {
+          method: 'POST',
+          body: JSON.stringify(target)
+        });
+        renderRolloutGate(evalResult);
+        log(evalResult.pass ? '门禁通过' : '门禁未通过');
+        const gates = await admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/gates?limit=20');
+        renderRolloutGates(gates);
+      } catch (e) {
+        log(e.message);
+      }
+    };
+
+    document.getElementById('roApply').onclick = async () => {
+      const ruleId = rolloutRuleId();
+      if (!ruleId || !rolloutRuleMeta) return;
+      let target = rolloutEvaluateTarget(rolloutRuleMeta);
+      if (rolloutEvalResult && rolloutEvalResult.to_state) {
+        target = {
+          rollout_state: rolloutEvalResult.to_state,
+          canary_percent: rolloutEvalResult.target_canary_percent
+        };
+      }
+      if (!target || (!target.rollout_state && !target.target_state)) {
+        log('请先「评估升级」且通过，或当前无建议目标');
+        return;
+      }
+      const force = document.getElementById('roForce').checked;
+      const comment = document.getElementById('roForceComment').value.trim();
+      if (force && !comment) {
+        log('force 绕过须填写说明');
+        return;
+      }
+      const rolloutState = target.rollout_state || target.target_state;
+      let canaryPercent = target.canary_percent;
+      if (rolloutState === 'full') canaryPercent = null;
+      const body = { rollout_state: rolloutState, canary_percent: canaryPercent, force, comment: force ? comment : null };
+      try {
+        const data = await admin('/rules/' + encodeURIComponent(ruleId) + '/rollout', {
+          method: 'PATCH',
+          body: JSON.stringify(body)
+        });
+        log(data);
+        await refreshRolloutDashboard();
+        if (selectedRuleId === ruleId) await selectRule(ruleId);
+      } catch (e) {
+        log(e.message);
+      }
+    };
+
+    document.getElementById('roPublish').onclick = () => {
+      const ruleId = rolloutRuleId();
+      if (!ruleId) return;
+      admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/publish', { method: 'POST' })
+        .then(log).then(() => refreshRolloutDashboard()).catch(e => log(e.message));
+    };
+    document.getElementById('roRollback').onclick = () => {
+      const ruleId = rolloutRuleId();
+      if (!ruleId) return;
+      admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/rollback', { method: 'POST' })
+        .then(log).then(() => refreshRolloutDashboard()).catch(e => log(e.message));
+    };
+    document.getElementById('roDisable').onclick = () => {
+      const ruleId = rolloutRuleId();
+      if (!ruleId) return;
+      admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/disable', { method: 'POST' })
+        .then(log).then(() => refreshRolloutDashboard()).catch(e => log(e.message));
+    };
+    document.getElementById('roRecover').onclick = () => {
+      const ruleId = rolloutRuleId();
+      if (!ruleId) return;
+      admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/recover', { method: 'POST' })
+        .then(log).then(() => refreshRolloutDashboard()).catch(e => log(e.message));
+    };
+    document.getElementById('roLadderStart').onclick = () => {
+      const ruleId = rolloutRuleId();
+      if (!ruleId) return;
+      admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/ladder/start', { method: 'POST' })
+        .then(log).catch(e => log(e.message));
+    };
+    document.getElementById('roLadderPause').onclick = () => {
+      const ruleId = rolloutRuleId();
+      if (!ruleId) return;
+      admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/ladder/pause', { method: 'POST' })
+        .then(log).catch(e => log(e.message));
+    };
 
     reloadAll().catch(e => log(e.message));
   </script>

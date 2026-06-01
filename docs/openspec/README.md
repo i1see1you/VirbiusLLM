@@ -1,6 +1,6 @@
 # VirbiusLLM MVP OpenSpec
 
-本目录为 **MVP（Phase 1）** 可实施接口与数据契约，与 [DESIGN.md v2.14](../DESIGN.md) 对齐，**§11.6.0 冻结清单** 为准。代码骨架见 [POC-REPO.md](../POC-REPO.md)。
+本目录为 **MVP（Phase 1）** 可实施接口与数据契约，与 [DESIGN.md v2.20](../DESIGN.md) 对齐，**§11.6.0 冻结清单** 为准。代码骨架见 [POC-REPO.md](../POC-REPO.md)。
 
 | 文件 | 说明 |
 |------|------|
@@ -18,7 +18,8 @@
 | [list-match.md](./list-match.md) | 名单规则 `list_name`、ListStore、名单快照（**待实现**） |
 | [value-resolution.md](./value-resolution.md) | 规则可选 `value_source`；`matchList` / `getCumulate` 的 value 解析 |
 | [list-and-cumulative-rules.md](./list-and-cumulative-rules.md) | **名单 + 累计最新合并设计（推荐阅读）** |
-| [rule-level-enforce.md](./rule-level-enforce.md) | **规则级 enforce / canary**（管侧真拦 + 云 PolicyMerge） |
+| [rule-level-enforce.md](./rule-level-enforce.md) | **执行面** enforce / ActionMerge（管侧真拦 + 云 PolicyMerge） |
+| [rule-rollout.md](./rule-rollout.md) | **运营面** rollout_state、放量 SOP、看板、门禁、canary 阶梯（**定稿**） |
 
 **默认基址（PoC）**
 

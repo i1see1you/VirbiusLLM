@@ -15,9 +15,17 @@ public record RuleRevision(
         String intentAction,
         Map<String, Object> scope,
         Object body,
-        String enforceMode,
+        String rolloutState,
         Integer canaryPercent,
-        String ruleStatus,
         Instant modifiedAt,
         Instant effectiveFrom,
-        Instant effectiveTo) {}
+        Instant effectiveTo) {
+
+    public String enforceMode() {
+        return RolloutEnforceExport.enforceMode(rolloutState);
+    }
+
+    public Integer exportedCanaryPercent() {
+        return RolloutEnforceExport.exportedCanaryPercent(rolloutState, canaryPercent);
+    }
+}

@@ -23,6 +23,13 @@ virbius:
     engine-path: ${VIRBIUS_ENGINE_AUDIT:/tmp/virbius/engine-audit.jsonl}
     sqlite-enabled: true
 
+audit:
+  publish:
+    backend: redis-stream
+    redis:
+      stream-key: virbius:audit:events
+    sqlite-enabled: true
+
 management:
   endpoints:
     web:
