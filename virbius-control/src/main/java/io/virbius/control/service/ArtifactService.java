@@ -4,10 +4,12 @@ import io.virbius.control.domain.AccessListEntry;
 import io.virbius.control.domain.AccessListMeta;
 import io.virbius.control.domain.RuleRevision;
 import io.virbius.control.domain.RolloutStateHelper;
+import io.virbius.control.domain.TenantRolloutPolicy;
 import io.virbius.control.policy.RuleBodyRefs;
 import io.virbius.control.repository.CumulativeRepository;
 import io.virbius.control.repository.ListMetaRepository;
 import io.virbius.control.repository.RegistryRepository;
+import io.virbius.control.repository.TenantRolloutPolicyRepository;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,16 +29,25 @@ public class ArtifactService {
     private final RegistryRepository registryRepo;
     private final ListMetaRepository listMetaRepo;
     private final CumulativeRepository cumulativeRepo;
+    private final TenantRolloutPolicyRepository policyRepository;
+    private final String auditIngestUrl;
+    private final String auditIngestToken;
 
     public ArtifactService(
             @Value("${virbius.data-dir:./data}") String dataDir,
             RegistryRepository registryRepo,
             ListMetaRepository listMetaRepo,
-            CumulativeRepository cumulativeRepo) {
+            CumulativeRepository cumulativeRepo,
+            TenantRolloutPolicyRepository policyRepository,
+            @Value("${audit.edge.ingest-url:}") String auditIngestUrl,
+            @Value("${audit.ingest.http.token:}") String auditIngestToken) {
         this.dataDir = java.nio.file.Path.of(dataDir);
         this.registryRepo = registryRepo;
         this.listMetaRepo = listMetaRepo;
         this.cumulativeRepo = cumulativeRepo;
+        this.policyRepository = policyRepository;
+        this.auditIngestUrl = auditIngestUrl != null ? auditIngestUrl : "";
+        this.auditIngestToken = auditIngestToken != null ? auditIngestToken : "";
     }
 
     public Map<String, String> write(String tenantId, Map<String, Object> bundleMetadata) {
@@ -201,11 +212,111 @@ public class ArtifactService {
     private java.nio.file.Path writeEdge(String tenantId) throws Exception {
         java.nio.file.Path dir = dataDir.resolve("edge");
         java.nio.file.Files.createDirectories(dir);
-        java.nio.file.Path file = dir.resolve(tenantId + "-content-lists.json");
+        java.nio.file.Path manifestFile = dir.resolve(tenantId + "-edge-manifest.json");
+        java.nio.file.Path legacyFile = dir.resolve(tenantId + "-content-lists.json");
+        TenantRolloutPolicy policy = policyRepository.getOrDefault(tenantId);
+
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("tenant_id", tenantId);
-        root.put("lists", buildListBlocks(tenantId));
-        mapper.writerWithDefaultPrettyPrinter().writeValue(file.toFile(), root);
-        return file;
+        root.put("manifest_version", "1");
+        root.put("rules", buildEdgeRuleBlocks(tenantId));
+
+        Map<String, Object> sdk = new LinkedHashMap<>();
+        if (!auditIngestUrl.isBlank()) {
+            sdk.put("audit_ingest_url", auditIngestUrl);
+        }
+        if (!auditIngestToken.isBlank()) {
+            sdk.put("audit_ingest_token", auditIngestToken);
+        }
+        sdk.put("audit_sample_rate_allow", policy.edgeAuditSampleRateAllow());
+        sdk.put("audit_sample_rate_hit", 1.0);
+        sdk.put("audit_flush_interval_ms", 30000);
+        sdk.put("audit_queue_max", 500);
+        sdk.put("canary_session_key", "device_id");
+        root.put("sdk_config", sdk);
+
+        Map<String, Object> legacyLists = new LinkedHashMap<>();
+        legacyLists.put("tenant_id", tenantId);
+        legacyLists.put("deny", Map.of("keywords", collectEdgeDenyKeywords(tenantId)));
+        legacyLists.put("allow", Map.of("keywords", collectEdgeAllowKeywords(tenantId)));
+        root.put("lists", legacyLists);
+
+        mapper.writerWithDefaultPrettyPrinter().writeValue(manifestFile.toFile(), root);
+        mapper.writerWithDefaultPrettyPrinter().writeValue(legacyFile.toFile(), legacyLists);
+        return manifestFile;
+    }
+
+    private List<Map<String, Object>> buildEdgeRuleBlocks(String tenantId) {
+        List<Map<String, Object>> blocks = new ArrayList<>();
+        for (RuleRevision rule : registryRepo.listCurrentRules(tenantId, "edge")) {
+            if (!RolloutStateHelper.inExecutionPlane(rule)) {
+                continue;
+            }
+            Map<String, Object> block = new LinkedHashMap<>();
+            block.put("rule_id", rule.ruleId());
+            block.put("rule_revision", rule.ruleRevision());
+            block.put("reason_code", rule.reasonCode());
+            block.put("risk_score", rule.riskScore());
+            block.put("intent_action", rule.intentAction() != null ? rule.intentAction() : "deny");
+            block.put("enforce_mode", rule.enforceMode());
+            block.put("rollout_state", rule.rolloutState() != null ? rule.rolloutState() : "dry_run");
+            if (rule.exportedCanaryPercent() != null) {
+                block.put("canary_percent", rule.exportedCanaryPercent());
+            } else if (rule.canaryPercent() != null) {
+                block.put("canary_percent", rule.canaryPercent());
+            }
+            if (rule.body() != null) {
+                block.put("body", rule.body());
+            }
+            blocks.add(block);
+        }
+        blocks.sort((a, b) -> String.valueOf(a.get("rule_id")).compareTo(String.valueOf(b.get("rule_id"))));
+        return blocks;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> collectEdgeDenyKeywords(String tenantId) {
+        List<String> out = new ArrayList<>();
+        for (Map<String, Object> block : buildEdgeRuleBlocks(tenantId)) {
+            Object body = block.get("body");
+            if (!(body instanceof Map<?, ?> bodyMap)) {
+                continue;
+            }
+            if (!"deny".equals(String.valueOf(bodyMap.get("list_type")))) {
+                continue;
+            }
+            Object keywords = bodyMap.get("keywords");
+            if (keywords instanceof List<?> list) {
+                for (Object kw : list) {
+                    if (kw != null) {
+                        out.add(kw.toString());
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> collectEdgeAllowKeywords(String tenantId) {
+        List<String> out = new ArrayList<>();
+        for (Map<String, Object> block : buildEdgeRuleBlocks(tenantId)) {
+            Object body = block.get("body");
+            if (!(body instanceof Map<?, ?> bodyMap)) {
+                continue;
+            }
+            if (!"allow".equals(String.valueOf(bodyMap.get("list_type")))) {
+                continue;
+            }
+            Object keywords = bodyMap.get("keywords");
+            if (keywords instanceof List<?> list) {
+                for (Object kw : list) {
+                    if (kw != null) {
+                        out.add(kw.toString());
+                    }
+                }
+            }
+        }
+        return out;
     }
 }

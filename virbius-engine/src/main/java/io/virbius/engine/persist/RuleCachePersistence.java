@@ -45,8 +45,9 @@ public class RuleCachePersistence {
                         """
                         INSERT INTO tb_rule_cache_entry (
                           tenant_id, rule_id, rule_revision, layer, runtime,
-                          reason_code, risk_score, intent_action, enforce_mode, canary_percent, body
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          reason_code, risk_score, intent_action, enforce_mode, rollout_state,
+                          canary_percent, body
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         rule.tenantId(),
                         rule.ruleId(),
@@ -57,6 +58,7 @@ public class RuleCachePersistence {
                         rule.riskScore(),
                         rule.intentAction() != null ? rule.intentAction() : "deny",
                         rule.enforceMode(),
+                        rule.rolloutStateOrDefault(),
                         rule.canaryPercent(),
                         rule.body());
             }

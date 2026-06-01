@@ -375,6 +375,7 @@ MVP 必填 rule：
 - 格式：**JSON Lines**，UTF-8，一行一事件  
 - Schema：[audit-event.schema.json](./schemas/audit-event.schema.json)  
 - **投递（R2a+）**：各层 publish → **Redis Stream**（默认 `virbius:audit:events`）或 **Kafka**（`virbius.audit.events`）→ control **AuditIngest** → `tb_audit_events`（见 [rule-rollout.md §5.7](./rule-rollout.md)）  
+- **端（R3d）**：SDK 批量 **HTTP POST** ` /api/v1/internal/audit/events`（`audit_ingest_url`）；`allow` 默认 **10% 采样**，review/block/captcha **100%**；事件可选 `sampled_allow`  
 - **PoC 备档**：`/var/log/virbius/{engine,gateway,edge}-audit.jsonl`  
 - **`trace_id`**：端/管/云同一交互**必须相同**（F-10）；按 `layer` 可有多行事件  
 
@@ -383,7 +384,13 @@ MVP 必填 rule：
 **端 block**：写审计时 **`trace_id` 必填**；`effective_action` 固定为 `block`，`max_risk_score` 按需填写。  
 **`user_id` / `device_id`**：若 `virbius_scan_ctx` 提供，**必须**写入 audit（F-11）。  
 **`trace_id_source`**：建议写入（F-10）。  
-**R2a+ 推荐扩展**：`rollout_state`、`canary_percent`、`in_canary_bucket`、`degraded`。
+**R2a+ 推荐扩展**：`rollout_state`、`canary_percent`、`in_canary_bucket`、`degraded`、`sampled_allow`（edge allow 采样）。
+
+---
+
+## 9.1 门禁 G4（dry_run→canary）
+
+`review_count_24h <= max_review_spike_ratio × max(baseline_7d_daily_avg, 10)`；基线见 [rule-rollout.md §9.2.1](./rule-rollout.md)。evaluate 响应含 `g4_pass`、`g4_skipped`、`review_spike_ratio`。
 
 ---
 

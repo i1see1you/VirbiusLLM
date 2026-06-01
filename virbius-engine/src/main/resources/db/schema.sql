@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS tb_rule_cache_entry (
     reason_code     VARCHAR(64) NOT NULL,
     risk_score      INTEGER NOT NULL DEFAULT 100,
     enforce_mode    VARCHAR(32) NOT NULL DEFAULT 'dry_run',
+    rollout_state   VARCHAR(16) NOT NULL DEFAULT 'dry_run',
     intent_action   VARCHAR(32) NOT NULL DEFAULT 'deny',
     canary_percent  INTEGER NOT NULL DEFAULT 5,
     body            TEXT,

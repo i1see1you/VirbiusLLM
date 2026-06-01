@@ -150,6 +150,71 @@ public class RolloutDashboardService {
                 ruleId);
     }
 
+    public List<Map<String, Object>> trace(String tenantId, String traceId) {
+        return jdbc.query(
+                """
+                SELECT trace_id, trace_id_source, tenant_id, scene, layer, rule_id, rule_revision,
+                       reason_code, effective_action, max_risk_score, rollout_state, canary_percent,
+                       in_canary_bucket, degraded, sampled_allow, intercepted_at, user_id, device_id
+                FROM tb_audit_events
+                WHERE tenant_id = ? AND trace_id = ?
+                ORDER BY intercepted_at
+                """,
+                (rs, i) -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("trace_id", rs.getString("trace_id"));
+                    row.put("trace_id_source", rs.getString("trace_id_source"));
+                    row.put("tenant_id", rs.getString("tenant_id"));
+                    row.put("scene", rs.getString("scene"));
+                    row.put("layer", rs.getString("layer"));
+                    row.put("rule_id", rs.getString("rule_id"));
+                    row.put("rule_revision", rs.getInt("rule_revision"));
+                    row.put("reason_code", rs.getString("reason_code"));
+                    row.put("effective_action", rs.getString("effective_action"));
+                    row.put("max_risk_score", rs.getInt("max_risk_score"));
+                    row.put("rollout_state", rs.getString("rollout_state"));
+                    row.put("canary_percent", rs.getObject("canary_percent"));
+                    row.put("in_canary_bucket", rs.getObject("in_canary_bucket"));
+                    row.put("degraded", rs.getObject("degraded"));
+                    row.put("sampled_allow", rs.getObject("sampled_allow"));
+                    row.put("intercepted_at", rs.getString("intercepted_at"));
+                    row.put("user_id", rs.getString("user_id"));
+                    row.put("device_id", rs.getString("device_id"));
+                    return row;
+                },
+                tenantId,
+                traceId);
+    }
+
+    public Map<String, Object> ingestHealth(String tenantId, String layer, int hours) {
+        Long events = jdbc.queryForObject(
+                """
+                SELECT COUNT(*) FROM tb_audit_events
+                WHERE tenant_id = ? AND layer = ?
+                  AND intercepted_at >= datetime('now', ?)
+                """,
+                Long.class,
+                tenantId,
+                layer,
+                "-" + hours + " hours");
+        Long total = jdbc.queryForObject(
+                """
+                SELECT COALESCE(SUM(cnt_total), 0) FROM tb_tenant_request_stats_1h
+                WHERE tenant_id = ? AND layer = ?
+                  AND hour_bucket >= datetime('now', ?)
+                """,
+                Long.class,
+                tenantId,
+                layer,
+                "-" + hours + " hours");
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("layer", layer);
+        out.put("audit_events", events != null ? events : 0L);
+        out.put("estimated_requests", total != null ? total : 0L);
+        out.put("hours", hours);
+        return out;
+    }
+
     public void setLadderStatus(String tenantId, String ruleId, String status) {
         int updated = jdbc.update(
                 """

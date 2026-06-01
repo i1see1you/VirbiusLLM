@@ -51,4 +51,43 @@ public class JdbcRolloutMetricsRepository implements RolloutMetricsRepository {
                 ruleId);
         return n != null ? n : 0L;
     }
+
+    @Override
+    public double baseline7dDailyAvgReview(String tenantId, String ruleId) {
+        Double avg = jdbc.queryForObject(
+                """
+                SELECT COALESCE(SUM(daily_review), 0) / 7.0
+                FROM (
+                  SELECT strftime('%%Y-%%m-%%d', hour_bucket) AS day,
+                         SUM(cnt_review) AS daily_review
+                  FROM tb_rule_metrics_1h
+                  WHERE tenant_id = ? AND rule_id = ?
+                    AND rollout_state = 'dry_run'
+                    AND hour_bucket >= datetime('now', '-8 days')
+                    AND hour_bucket < datetime('now', '-1 day')
+                  GROUP BY day
+                )
+                """,
+                Double.class,
+                tenantId,
+                ruleId);
+        return avg != null ? avg : 0.0;
+    }
+
+    @Override
+    public int countBaselineDaysWithData(String tenantId, String ruleId) {
+        Integer n = jdbc.queryForObject(
+                """
+                SELECT COUNT(DISTINCT strftime('%%Y-%%m-%%d', hour_bucket))
+                FROM tb_rule_metrics_1h
+                WHERE tenant_id = ? AND rule_id = ?
+                  AND rollout_state = 'dry_run'
+                  AND hour_bucket >= datetime('now', '-8 days')
+                  AND hour_bucket < datetime('now', '-1 day')
+                """,
+                Integer.class,
+                tenantId,
+                ruleId);
+        return n != null ? n : 0;
+    }
 }

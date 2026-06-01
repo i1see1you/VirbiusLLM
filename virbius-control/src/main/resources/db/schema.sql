@@ -147,6 +147,7 @@ CREATE TABLE IF NOT EXISTS tb_tenant_rollout_policy (
     min_block_samples_per_step  INTEGER NOT NULL DEFAULT 10,
     allow_force                 INTEGER NOT NULL DEFAULT 1,
     rollback_block_spike_ratio  REAL NOT NULL DEFAULT 3.0,
+    edge_audit_sample_rate_allow REAL NOT NULL DEFAULT 0.1,
     updated_at                  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -202,6 +203,7 @@ CREATE TABLE IF NOT EXISTS tb_audit_events (
     canary_percent    INTEGER,
     in_canary_bucket  INTEGER,
     degraded          INTEGER,
+    sampled_allow     INTEGER,
     intercepted_at    TIMESTAMP NOT NULL,
     user_id           VARCHAR(256),
     device_id         VARCHAR(256),
@@ -223,4 +225,13 @@ CREATE TABLE IF NOT EXISTS tb_rule_metrics_1h (
     cnt_total_requests  INTEGER NOT NULL DEFAULT 0,
     cnt_degraded        INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (tenant_id, rule_id, hour_bucket)
+);
+
+CREATE TABLE IF NOT EXISTS tb_tenant_request_stats_1h (
+    tenant_id    VARCHAR(64) NOT NULL,
+    scene        VARCHAR(64) NOT NULL,
+    layer        VARCHAR(16) NOT NULL,
+    hour_bucket  TIMESTAMP NOT NULL,
+    cnt_total    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (tenant_id, scene, layer, hour_bucket)
 );

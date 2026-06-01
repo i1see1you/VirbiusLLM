@@ -125,6 +125,7 @@ public class PublishService {
                 rule.put("risk_score", r.riskScore());
                 rule.put("intent_action", r.intentAction() != null ? r.intentAction() : "deny");
                 rule.put("enforce_mode", r.enforceMode());
+                rule.put("rollout_state", r.rolloutState() != null ? r.rolloutState() : "dry_run");
                 if (r.exportedCanaryPercent() != null) {
                     rule.put("canary_percent", r.exportedCanaryPercent());
                 }

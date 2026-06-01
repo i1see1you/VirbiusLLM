@@ -1,4 +1,5 @@
 mod access_lists;
+mod audit;
 mod cumulative;
 mod engine;
 mod enforce;
@@ -27,7 +28,6 @@ struct AppState {
     engine: EngineClient,
     lists: Arc<access_lists::AccessListChecker>,
 }
-
 #[derive(Debug, Deserialize)]
 struct AgentEvaluateRequest {
     tenant_id: String,
@@ -124,6 +124,15 @@ async fn evaluate(
         req.vars.as_ref(),
     ) {
         if enforce::is_terminal(&gw.effective_action) {
+            audit::emit_from_gateway(
+                &req.trace_id,
+                &req.scene,
+                &gw,
+                req.session_id.as_deref(),
+                false,
+                req.user_id.as_deref(),
+                req.device_id.as_deref(),
+            );
             return Json(gateway_response(&req.trace_id, &gw, false)).into_response();
         }
         if gw.effective_action == "review" {
@@ -143,6 +152,12 @@ async fn forward_engine(
     vars_ctx: HashMap<String, String>,
     prior_signals: Option<Vec<engine::Signal>>,
 ) -> Response {
+    let trace_id = req.trace_id.clone();
+    let scene = req.scene.clone();
+    let session_id = req.session_id.clone();
+    let user_id = req.user_id.clone();
+    let device_id = req.device_id.clone();
+
     let eng_req = EvaluateRequest {
         tenant_id: req.tenant_id,
         scene: req.scene,
@@ -153,7 +168,7 @@ async fn forward_engine(
         },
         session_id: req.session_id,
         content: req.content,
-        trace_id: req.trace_id.clone(),
+        trace_id: trace_id.clone(),
         user_id: req.user_id,
         device_id: req.device_id,
         prior_signals,
@@ -161,18 +176,64 @@ async fn forward_engine(
     };
 
     match state.engine.evaluate(eng_req).await {
-        Ok(resp) => Json(to_agent_response(resp, false)).into_response(),
-        Err(_) => Json(AgentEvaluateResponse {
-            effective_action: "allow".into(),
-            max_risk_score: 0,
-            rule_id: None,
-            rule_revision: None,
-            reason_code: None,
-            trace_id: req.trace_id,
-            degraded: true,
-        })
-        .into_response(),
+        Ok(resp) => {
+            let agent = to_agent_response(resp, false);
+            audit::emit(build_engine_audit(
+                &trace_id,
+                &scene,
+                &session_id,
+                &user_id,
+                &device_id,
+                &agent,
+            ));
+            Json(agent).into_response()
+        }
+        Err(_) => {
+            audit::emit_allow(
+                &trace_id,
+                &scene,
+                session_id.as_deref(),
+                true,
+                user_id.as_deref(),
+                device_id.as_deref(),
+            );
+            Json(AgentEvaluateResponse {
+                effective_action: "allow".into(),
+                max_risk_score: 0,
+                rule_id: None,
+                rule_revision: None,
+                reason_code: None,
+                trace_id,
+                degraded: true,
+            })
+            .into_response()
+        }
     }
+}
+
+fn build_engine_audit(
+    trace_id: &str,
+    scene: &str,
+    session_id: &Option<String>,
+    user_id: &Option<String>,
+    device_id: &Option<String>,
+    agent: &AgentEvaluateResponse,
+) -> audit::AuditEvent {
+    audit::build_event(
+        trace_id,
+        scene,
+        agent.rule_id.as_deref(),
+        agent.rule_revision,
+        agent.reason_code.as_deref(),
+        &agent.effective_action,
+        agent.max_risk_score,
+        None,
+        None,
+        session_id.as_deref(),
+        agent.degraded,
+        user_id.as_deref(),
+        device_id.as_deref(),
+    )
 }
 
 fn gateway_response(trace_id: &str, gw: &GatewayCheckResult, degraded: bool) -> AgentEvaluateResponse {

@@ -27,8 +27,11 @@ public class MetricsRollupJob {
                        SUM(CASE WHEN effective_action = 'review' THEN 1 ELSE 0 END),
                        SUM(CASE WHEN effective_action = 'block' THEN 1 ELSE 0 END),
                        SUM(CASE WHEN effective_action = 'captcha' THEN 1 ELSE 0 END),
-                       SUM(CASE WHEN effective_action = 'allow' THEN 1 ELSE 0 END),
-                       COUNT(*),
+                       SUM(CASE WHEN effective_action = 'allow' THEN
+                         CASE WHEN sampled_allow = 1 THEN CAST(1.0 / 0.1 AS INTEGER) ELSE 1 END
+                       ELSE 0 END),
+                       SUM(CASE WHEN sampled_allow = 1 AND effective_action = 'allow'
+                         THEN CAST(1.0 / 0.1 AS INTEGER) ELSE 1 END),
                        SUM(CASE WHEN degraded = 1 THEN 1 ELSE 0 END)
                 FROM tb_audit_events
                 WHERE intercepted_at >= datetime('now', '-2 hours')

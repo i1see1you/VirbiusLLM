@@ -34,6 +34,12 @@ audit:
     redis:
       stream-key: virbius:audit:events
     consumer-group: virbius-audit-ingest
+    http:
+      enabled: true
+      token: ${AUDIT_INGEST_TOKEN:}
+      max-batch-size: 100
+  edge:
+    ingest-url: ${VIRBIUS_AUDIT_INGEST_URL:http://127.0.0.1:8080/api/v1/internal/audit/events}
 
 rollout:
   metrics:

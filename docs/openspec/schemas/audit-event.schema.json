@@ -94,6 +94,16 @@
       "type": "string",
       "enum": ["client", "sdk", "gateway"],
       "description": "trace_id 来源（F-10）；建议各层写入"
+    },
+    "sampled_allow": {
+      "type": "boolean",
+      "description": "edge allow 采样命中时为 true，供 metrics rollup 外推分母"
+    },
+    "sample_rate_allow": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "采样时使用的 allow 采样率（默认 0.1）"
     }
   }
 }

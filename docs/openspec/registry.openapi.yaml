@@ -25,6 +25,8 @@ tags:
   - name: admin-rules
   - name: admin-publish
   - name: legacy
+  - name: internal-audit
+    description: 端侧 HTTP audit ingest（非 Admin UI）
 
 paths:
   /api/v1/health:
@@ -592,6 +594,81 @@ paths:
       responses:
         '200':
           description: Gate result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResultObject'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RolloutGateEvaluateResult'
+
+  /api/v1/admin/tenants/{tenantId}/traces/{traceId}:
+    get:
+      tags: [admin-rules]
+      summary: 跨层 audit trace（edge/gateway/cloud）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: traceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: audit hops for trace_id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultAuditTraceList'
+
+  /api/v1/admin/tenants/{tenantId}/rollout/ingest-health:
+    get:
+      tags: [admin-rules]
+      summary: 指定 layer 的 ingest 健康（audit 条数 / 估算请求量）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: layer
+          in: query
+          schema:
+            type: string
+            enum: [edge, gateway, cloud]
+            default: edge
+        - name: hours
+          in: query
+          schema:
+            type: integer
+            default: 24
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/internal/audit/events:
+    post:
+      tags: [internal-audit]
+      summary: 端侧 audit 批量 ingest（HTTP）
+      description: |
+        Edge SDK 批量上报；engine/gateway 默认走 Redis Stream。
+        Bearer `AUDIT_INGEST_TOKEN` 或 `X-Virbius-Audit-Token`。
+        见 [rule-rollout.md §16.5](./rule-rollout.md)。
+      security:
+        - auditIngestBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditEventsBatchRequest'
+      responses:
+        '200':
+          description: ingest summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditIngestBatchResponse'
+        '401':
+          description: invalid token
 
   /api/v1/admin/tenants/{tenantId}/rollout-policy:
     get:
@@ -877,6 +954,12 @@ paths:
                 $ref: '#/components/schemas/RuleRevision'
 
 components:
+  securitySchemes:
+    auditIngestBearer:
+      type: http
+      scheme: bearer
+      description: AUDIT_INGEST_TOKEN；或请求头 X-Virbius-Audit-Token
+
   parameters:
     tenantId:
       name: tenantId
@@ -1348,6 +1431,105 @@ components:
           minimum: 1
           maximum: 100
           description: target_state=canary 时必填
+
+    RolloutGateEvaluateResult:
+      type: object
+      properties:
+        pass:
+          type: boolean
+        reasons:
+          type: array
+          items:
+            type: string
+        from_state:
+          type: string
+        to_state:
+          type: string
+        target_canary_percent:
+          type: integer
+          nullable: true
+        suggested_next:
+          type: object
+          nullable: true
+        metrics:
+          $ref: '#/components/schemas/RolloutGateMetrics'
+        data_coverage:
+          $ref: '#/components/schemas/RolloutDataCoverage'
+
+    RolloutGateMetrics:
+      type: object
+      description: 门禁评估快照；G4 字段见 rule-rollout.md §9.2.1
+      properties:
+        dry_run_hours:
+          type: number
+        review_24h:
+          type: integer
+        total_requests_24h:
+          type: integer
+        review_rate:
+          type: number
+        baseline_7d_daily_avg:
+          type: number
+        baseline_days_with_data:
+          type: integer
+        max_review_spike_ratio:
+          type: number
+        review_spike_ratio:
+          type: number
+        g4_threshold:
+          type: number
+        g4_pass:
+          type: boolean
+        g4_skipped:
+          type: boolean
+        hours_at_current_step:
+          type: number
+        block_in_bucket_24h:
+          type: integer
+
+    RolloutDataCoverage:
+      type: object
+      properties:
+        layer:
+          type: string
+        audit_events_24h:
+          type: integer
+        ingest_lag_p95_minutes:
+          type: number
+        sufficient:
+          type: boolean
+
+    AuditEventsBatchRequest:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          minItems: 1
+          items:
+            $ref: './schemas/audit-event.schema.json'
+
+    AuditIngestBatchResponse:
+      type: object
+      properties:
+        accepted:
+          type: integer
+        duplicated:
+          type: integer
+        rejected:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+
+    ApiResultAuditTraceList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: './schemas/audit-event.schema.json'
 
     TenantRolloutPolicy:
       type: object

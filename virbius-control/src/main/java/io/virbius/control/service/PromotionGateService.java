@@ -21,6 +21,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class PromotionGateService {
 
+    private static final int MIN_BASELINE_DAYS_FOR_G4 = 3;
+    private static final double BASELINE_REVIEW_FLOOR = 10.0;
+
     private final TenantRolloutPolicyRepository policyRepository;
     private final RolloutMetricsRepository metricsRepository;
     private final JdbcTemplate jdbc;
@@ -69,6 +72,7 @@ public class PromotionGateService {
                     reasons.add("review_rate=" + reviewRate + " > max_review_rate=" + policy.maxReviewRate());
                 }
             }
+            evaluateG4(tenantId, current.ruleId(), review24h, policy, metrics, reasons);
             if (targetCanaryPercent != null && !targetCanaryPercent.equals(policy.canaryLadder().get(0))) {
                 reasons.add("canary_percent must be first ladder step " + policy.canaryLadder().get(0));
             }
@@ -99,7 +103,90 @@ public class PromotionGateService {
         result.put("to_state", to);
         result.put("target_canary_percent", targetCanaryPercent);
         result.put("suggested_next", suggestedNext(current, policy));
+        result.put("data_coverage", buildDataCoverage(tenantId, current, policy));
         return result;
+    }
+
+    private void evaluateG4(
+            String tenantId,
+            String ruleId,
+            long review24h,
+            TenantRolloutPolicy policy,
+            Map<String, Object> metrics,
+            List<String> reasons) {
+        double baselineAvg = metricsRepository.baseline7dDailyAvgReview(tenantId, ruleId);
+        int baselineDays = metricsRepository.countBaselineDaysWithData(tenantId, ruleId);
+        double effectiveBaseline = Math.max(baselineAvg, BASELINE_REVIEW_FLOOR);
+        double threshold = policy.maxReviewSpikeRatio() * effectiveBaseline;
+        double spikeRatio = review24h / Math.max(effectiveBaseline, 1.0);
+
+        metrics.put("baseline_7d_daily_avg", baselineAvg);
+        metrics.put("baseline_days_with_data", baselineDays);
+        metrics.put("max_review_spike_ratio", policy.maxReviewSpikeRatio());
+        metrics.put("g4_threshold", threshold);
+        metrics.put("review_spike_ratio", spikeRatio);
+
+        if (baselineDays < MIN_BASELINE_DAYS_FOR_G4) {
+            metrics.put("g4_skipped", true);
+            metrics.put("g4_pass", true);
+            return;
+        }
+        metrics.put("g4_skipped", false);
+        boolean g4Pass = review24h <= threshold;
+        metrics.put("g4_pass", g4Pass);
+        if (!g4Pass) {
+            reasons.add(
+                    "review_spike: review_24h="
+                            + review24h
+                            + " > threshold="
+                            + threshold
+                            + " (baseline_7d_daily_avg="
+                            + baselineAvg
+                            + " × max_review_spike_ratio="
+                            + policy.maxReviewSpikeRatio()
+                            + ")");
+        }
+    }
+
+    private Map<String, Object> buildDataCoverage(
+            String tenantId, RuleRevision rule, TenantRolloutPolicy policy) {
+        Map<String, Object> coverage = new LinkedHashMap<>();
+        String layer = rule.layer() != null ? rule.layer() : "cloud";
+        coverage.put("layer", layer);
+
+        Long audit24h = jdbc.queryForObject(
+                """
+                SELECT COUNT(*) FROM tb_audit_events
+                WHERE tenant_id = ? AND rule_id = ?
+                  AND intercepted_at >= datetime('now', '-24 hours')
+                """,
+                Long.class,
+                tenantId,
+                rule.ruleId());
+        long events = audit24h != null ? audit24h : 0L;
+        coverage.put("audit_events_24h", events);
+
+        Double lagP95 = jdbc.queryForObject(
+                """
+                SELECT COALESCE(
+                  (SELECT MAX(
+                     (julianday(created_at) - julianday(intercepted_at)) * 24 * 60
+                   ) FROM tb_audit_events
+                   WHERE tenant_id = ? AND rule_id = ?
+                     AND intercepted_at >= datetime('now', '-24 hours')),
+                  0)
+                """,
+                Double.class,
+                tenantId,
+                rule.ruleId());
+        coverage.put("ingest_lag_p95_minutes", lagP95 != null ? lagP95 : 0.0);
+
+        int minEvents = "edge".equalsIgnoreCase(layer)
+                ? Math.max(5, policy.minReviewCount() / 20)
+                : 1;
+        boolean sufficient = events >= minEvents;
+        coverage.put("sufficient", sufficient);
+        return coverage;
     }
 
     public void requirePassOrForce(

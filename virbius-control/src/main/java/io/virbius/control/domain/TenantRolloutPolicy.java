@@ -13,7 +13,8 @@ public record TenantRolloutPolicy(
         int minHoursPerStep,
         int minBlockSamplesPerStep,
         boolean allowForce,
-        double rollbackBlockSpikeRatio) {
+        double rollbackBlockSpikeRatio,
+        double edgeAuditSampleRateAllow) {
 
     public static TenantRolloutPolicy defaults(String tenantId) {
         return new TenantRolloutPolicy(
@@ -27,6 +28,7 @@ public record TenantRolloutPolicy(
                 12,
                 10,
                 true,
-                3.0);
+                3.0,
+                0.1);
     }
 }

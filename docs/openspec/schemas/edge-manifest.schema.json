@@ -2,34 +2,103 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://virbius.io/schemas/edge-manifest/v1/mvp",
   "title": "VirbiusEdgeManifest",
-  "description": "端侧 CDN 部署清单（非规则真源）",
+  "description": "端侧 SDK 清单：rules[] 含 rollout/enforce 快照 + sdk_config（ingest、采样）",
   "type": "object",
-  "required": ["apiVersion", "bundle_id", "bundle_version", "tenant", "files"],
+  "required": ["tenant_id", "manifest_version", "rules", "sdk_config"],
   "properties": {
-    "apiVersion": {
-      "type": "string",
-      "const": "virbius.io/v1"
-    },
+    "tenant_id": { "type": "string" },
+    "manifest_version": { "type": "string", "const": "1" },
     "bundle_id": { "type": "string" },
     "bundle_version": { "type": "string" },
-    "tenant": { "type": "string" },
-    "published_at": {
-      "type": "string",
-      "format": "date-time"
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edgeRule" }
     },
-    "files": {
+    "sdk_config": { "$ref": "#/$defs/sdkConfig" },
+    "lists": {
       "type": "object",
-      "required": ["dict", "regex", "blacklist"],
+      "description": "legacy 关键词名单（兼容 content-lists.json）",
       "properties": {
-        "dict": { "$ref": "#/$defs/fileEntry" },
-        "regex": { "$ref": "#/$defs/fileEntry" },
-        "blacklist": { "$ref": "#/$defs/fileEntry" }
+        "tenant_id": { "type": "string" },
+        "deny": { "$ref": "#/$defs/keywordSide" },
+        "allow": { "$ref": "#/$defs/keywordSide" }
       }
-    },
-    "signature": { "type": "string" },
-    "min_sdk_version": { "type": "string" }
+    }
   },
   "$defs": {
+    "keywordSide": {
+      "type": "object",
+      "properties": {
+        "keywords": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "edgeRule": {
+      "type": "object",
+      "required": [
+        "rule_id",
+        "rule_revision",
+        "reason_code",
+        "risk_score",
+        "intent_action",
+        "enforce_mode",
+        "rollout_state"
+      ],
+      "properties": {
+        "rule_id": { "type": "string" },
+        "rule_revision": { "type": "integer", "minimum": 1 },
+        "reason_code": { "type": "string" },
+        "risk_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "intent_action": {
+          "type": "string",
+          "enum": ["allow", "deny", "captcha", "review"]
+        },
+        "enforce_mode": {
+          "type": "string",
+          "enum": ["dry_run", "canary", "full"]
+        },
+        "rollout_state": {
+          "type": "string",
+          "enum": ["draft", "disabled", "dry_run", "canary", "full"]
+        },
+        "canary_percent": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "body": {
+          "oneOf": [{ "type": "object" }, { "type": "string" }]
+        }
+      }
+    },
+    "sdkConfig": {
+      "type": "object",
+      "properties": {
+        "audit_ingest_url": { "type": "string", "format": "uri" },
+        "audit_ingest_token": { "type": "string" },
+        "audit_sample_rate_allow": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.1
+        },
+        "audit_sample_rate_hit": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 1.0
+        },
+        "audit_flush_interval_ms": { "type": "integer", "default": 30000 },
+        "audit_queue_max": { "type": "integer", "default": 500 },
+        "canary_session_key": {
+          "type": "string",
+          "enum": ["device_id", "install_id", "user_id"],
+          "default": "device_id"
+        }
+      }
+    },
     "fileEntry": {
       "type": "object",
       "required": ["url", "sha256"],

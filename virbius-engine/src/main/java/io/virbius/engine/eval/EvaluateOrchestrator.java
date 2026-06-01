@@ -83,7 +83,7 @@ public class EvaluateOrchestrator {
         int primaryRevision = primary != null ? primary.ruleRevision() : 1;
         String reasonCode = primary != null ? primary.reasonCode() : "POLICY_FINAL";
 
-        auditWriter.write(req, decision, primaryRuleId, primaryRevision, reasonCode);
+        auditWriter.write(req, decision, primaryRuleId, primaryRevision, reasonCode, degraded);
 
         return new EvaluateResponseDto(
                 decision.effectiveAction(),

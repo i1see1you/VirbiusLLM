@@ -106,7 +106,8 @@ public class RolloutAdminController {
                         body.minHoursPerStep() > 0 ? body.minHoursPerStep() : 12,
                         body.minBlockSamplesPerStep() > 0 ? body.minBlockSamplesPerStep() : 10,
                         body.allowForce(),
-                        body.rollbackBlockSpikeRatio() > 0 ? body.rollbackBlockSpikeRatio() : 3.0);
+                        body.rollbackBlockSpikeRatio() > 0 ? body.rollbackBlockSpikeRatio() : 3.0,
+                        body.edgeAuditSampleRateAllow() > 0 ? body.edgeAuditSampleRateAllow() : 0.1);
         return ApiResult.ok(policyRepository.save(merged));
     }
 
@@ -131,6 +132,20 @@ public class RolloutAdminController {
             @RequestParam(value = "effective_action", defaultValue = "review") String effectiveAction,
             @RequestParam(value = "limit", defaultValue = "30") int limit) {
         return ApiResult.ok(dashboardService.auditSamples(tenantId, ruleId, effectiveAction, limit));
+    }
+
+    @GetMapping("/traces/{traceId}")
+    public ApiResult<List<Map<String, Object>>> trace(
+            @PathVariable("tenantId") String tenantId, @PathVariable("traceId") String traceId) {
+        return ApiResult.ok(dashboardService.trace(tenantId, traceId));
+    }
+
+    @GetMapping("/rollout/ingest-health")
+    public ApiResult<Map<String, Object>> ingestHealth(
+            @PathVariable("tenantId") String tenantId,
+            @RequestParam(value = "layer", defaultValue = "edge") String layer,
+            @RequestParam(value = "hours", defaultValue = "24") int hours) {
+        return ApiResult.ok(dashboardService.ingestHealth(tenantId, layer, hours));
     }
 
     @GetMapping("/rules/{ruleId}/rollout/gates")

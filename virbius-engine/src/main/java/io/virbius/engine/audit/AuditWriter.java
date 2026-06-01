@@ -1,10 +1,13 @@
 package io.virbius.engine.audit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.virbius.policy.audit.AuditEventPublisher;
-import io.virbius.policy.CounterStore;
+import io.virbius.engine.cache.RuleCache;
+import io.virbius.engine.cache.RuleEntry;
 import io.virbius.engine.eval.EngineDecisionDto;
 import io.virbius.engine.eval.EvaluateRequestDto;
+import io.virbius.engine.persist.AuditEventRepository;
+import io.virbius.policy.ActionMerge;
+import io.virbius.policy.audit.AuditEventPublisher;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -14,12 +17,8 @@ import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import io.virbius.engine.persist.AuditEventRepository;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.stereotype.Component;
-import redis.clients.jedis.JedisPool;
 
 @Component
 public class AuditWriter {
@@ -31,19 +30,28 @@ public class AuditWriter {
     private final AuditEventRepository auditRepository;
     private final boolean sqliteEnabled;
     private final AuditEventPublisher publisher;
+    private final RuleCache ruleCache;
 
     public AuditWriter(
             @Value("${virbius.audit.engine-path:/tmp/virbius/engine-audit.jsonl}") String path,
             @Value("${virbius.audit.sqlite-enabled:true}") boolean sqliteEnabled,
             AuditEventRepository auditRepository,
-            AuditEventPublisher publisher) {
+            AuditEventPublisher publisher,
+            RuleCache ruleCache) {
         this.auditPath = Path.of(path);
         this.sqliteEnabled = sqliteEnabled;
         this.auditRepository = auditRepository;
         this.publisher = publisher;
+        this.ruleCache = ruleCache;
     }
 
-    public void write(EvaluateRequestDto req, EngineDecisionDto decision, String ruleId, int ruleRevision, String reasonCode) {
+    public void write(
+            EvaluateRequestDto req,
+            EngineDecisionDto decision,
+            String ruleId,
+            int ruleRevision,
+            String reasonCode,
+            boolean degraded) {
         if (sqliteEnabled) {
             try {
                 auditRepository.insert(req, decision, ruleId, ruleRevision, reasonCode, "client");
@@ -52,6 +60,15 @@ public class AuditWriter {
             }
         }
         try {
+            RuleEntry rule = ruleId != null ? ruleCache.get(req.tenantId(), ruleId) : null;
+            String rolloutState = rule != null ? rule.rolloutStateOrDefault() : "dry_run";
+            Integer canaryPercent = null;
+            Boolean inBucket = null;
+            if (rule != null && "canary".equalsIgnoreCase(rolloutState) && rule.canaryPercent() > 0) {
+                canaryPercent = rule.canaryPercent();
+                inBucket = ActionMerge.inCanaryBucket(req.sessionId(), canaryPercent);
+            }
+
             Files.createDirectories(auditPath.getParent());
             Map<String, Object> event = new HashMap<>();
             event.put("trace_id", req.traceId());
@@ -64,7 +81,14 @@ public class AuditWriter {
             event.put("reason_code", reasonCode != null ? reasonCode : "");
             event.put("effective_action", decision.effectiveAction());
             event.put("max_risk_score", decision.maxRiskScore());
-            event.put("degraded", false);
+            event.put("rollout_state", rolloutState);
+            if (canaryPercent != null) {
+                event.put("canary_percent", canaryPercent);
+            }
+            if (inBucket != null) {
+                event.put("in_canary_bucket", inBucket);
+            }
+            event.put("degraded", degraded);
             event.put("intercepted_at", Instant.now().toString());
             if (req.userId() != null && !req.userId().isBlank()) {
                 event.put("user_id", req.userId());
@@ -79,22 +103,5 @@ public class AuditWriter {
         } catch (Exception e) {
             log.warn("audit write failed: {}", e.getMessage());
         }
-    }
-}
-
-@Configuration
-class EngineAuditConfig {
-
-    @Bean
-    public Optional<JedisPool> engineJedisPool(@Value("${virbius.redis.url:}") String redisUrl) {
-        return CounterStore.createPool(redisUrl);
-    }
-
-    @Bean
-    public AuditEventPublisher auditEventPublisher(
-            Optional<JedisPool> engineJedisPool,
-            @Value("${audit.publish.backend:redis-stream}") String backend,
-            @Value("${audit.publish.redis.stream-key:virbius:audit:events}") String streamKey) {
-        return new AuditEventPublisher(engineJedisPool, backend, streamKey);
     }
 }

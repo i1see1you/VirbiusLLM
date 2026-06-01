@@ -309,6 +309,16 @@
       </table>
     </div>
 
+    <div id="roTraceModal" class="card" style="display:none;margin-top:0.75rem">
+      <h3 style="margin:0 0 0.5rem;font-size:0.95rem">Trace 详情</h3>
+      <p class="hint" id="roTraceHint"></p>
+      <table id="roTraceTable">
+        <thead><tr><th>时间</th><th>layer</th><th>action</th><th>rule</th><th>rollout</th><th>risk</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <button type="button" class="secondary" id="roTraceClose" style="margin-top:0.5rem">关闭</button>
+    </div>
+
     <div class="rollout-section">
       <h3>门禁历史</h3>
       <table id="roGatesTable">
@@ -879,10 +889,34 @@
       const pass = !!evalResult.pass;
       panel.className = 'gate-box ' + (pass ? 'pass' : 'fail');
       const reasons = evalResult.reasons || [];
+      const dc = evalResult.data_coverage;
+      let dcHtml = '';
+      if (dc) {
+        const ok = !!dc.sufficient;
+        dcHtml = `<div style="margin-top:0.35rem;font-size:0.85rem;color:${ok ? '#166534' : '#b45309'}">`
+          + `数据覆盖 [${esc(dc.layer || '')}]: audit_24h=${dc.audit_events_24h ?? 0}`
+          + `, lag≈${(dc.ingest_lag_p95_minutes ?? 0).toFixed?.(1) ?? dc.ingest_lag_p95_minutes}min`
+          + (ok ? ' ✓' : ' — SDK 上报可能异常')
+          + '</div>';
+      }
+      const m = evalResult.metrics || {};
+      let g4Html = '';
+      if (m.g4_threshold != null) {
+        const g4ok = m.g4_skipped ? null : !!m.g4_pass;
+        const color = m.g4_skipped ? '#64748b' : (g4ok ? '#166534' : '#b45309');
+        g4Html = `<div style="margin-top:0.35rem;font-size:0.85rem;color:${color}">`
+          + `G4 突增: review_24h=${m.review_24h ?? '—'}`
+          + `, baseline_7d=${(m.baseline_7d_daily_avg ?? 0).toFixed?.(1) ?? m.baseline_7d_daily_avg}`
+          + `, threshold=${(m.g4_threshold ?? 0).toFixed?.(1) ?? m.g4_threshold}`
+          + (m.g4_skipped ? ' (skip: 基线不足3日)' : (g4ok ? ' ✓' : ' ✗'))
+          + '</div>';
+      }
       panel.innerHTML = `<div><strong>${pass ? '通过' : '未通过'}</strong> `
         + `${esc(evalResult.from_state || '')} → ${esc(evalResult.to_state || '')}`
         + (evalResult.target_canary_percent != null ? ` @ ${evalResult.target_canary_percent}%` : '')
         + '</div>'
+        + g4Html
+        + dcHtml
         + (reasons.length ? `<ul style="margin:0.35rem 0 0 1rem">${reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : '')
         + (evalResult.metrics ? `<pre style="margin:0.5rem 0 0;font-size:0.75rem">${esc(JSON.stringify(evalResult.metrics, null, 2))}</pre>` : '');
       const sug = evalResult.suggested_next;
@@ -896,15 +930,52 @@
       tbody.innerHTML = '';
       (samples || []).forEach(s => {
         const tr = document.createElement('tr');
+        const traceCell = s.trace_id
+          ? `<a href="#" class="trace-link" data-trace="${escAttr(s.trace_id)}"><code>${esc(s.trace_id)}</code></a>`
+          : '';
         tr.innerHTML = `<td>${esc(fmtTime(s.intercepted_at))}</td>
-          <td><code>${esc(s.trace_id || '')}</code></td>
+          <td>${traceCell}</td>
           <td>${esc(s.effective_action || '')}</td><td>${esc(s.reason_code || '')}</td>
           <td>${s.max_risk_score ?? ''}</td>
           <td>${esc(rolloutStateLabel(s.rollout_state, s.canary_percent))}</td>`;
         tbody.appendChild(tr);
       });
+      tbody.querySelectorAll('.trace-link').forEach(a => {
+        a.onclick = (e) => {
+          e.preventDefault();
+          openTraceModal(a.getAttribute('data-trace'));
+        };
+      });
       if (!samples || !samples.length) {
         tbody.innerHTML = '<tr><td colspan="6" class="hint">暂无 audit 样本</td></tr>';
+      }
+    }
+
+    async function openTraceModal(traceId) {
+      if (!traceId) return;
+      const modal = document.getElementById('roTraceModal');
+      const hint = document.getElementById('roTraceHint');
+      const tbody = document.querySelector('#roTraceTable tbody');
+      modal.style.display = '';
+      hint.textContent = `trace_id: ${traceId}`;
+      tbody.innerHTML = '<tr><td colspan="6" class="hint">加载中…</td></tr>';
+      try {
+        const hops = await admin('/traces/' + encodeURIComponent(traceId));
+        tbody.innerHTML = '';
+        (hops || []).forEach(h => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${esc(fmtTime(h.intercepted_at))}</td>
+            <td>${esc(h.layer || '')}</td><td>${esc(h.effective_action || '')}</td>
+            <td>${esc(h.rule_id || '')}@${h.rule_revision ?? ''}</td>
+            <td>${esc(rolloutStateLabel(h.rollout_state, h.canary_percent))}</td>
+            <td>${h.max_risk_score ?? ''}</td>`;
+          tbody.appendChild(tr);
+        });
+        if (!hops || !hops.length) {
+          tbody.innerHTML = '<tr><td colspan="6" class="hint">无跨层 audit 记录</td></tr>';
+        }
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" class="hint">${esc(e.message)}</td></tr>`;
       }
     }
 
@@ -1006,6 +1077,12 @@
       document.getElementById('roBadge').innerHTML = ruleStatusTag(st)
         + (pct != null ? ` <span class="tag">${pct}%</span>` : '')
         + ` <span class="hint">${esc(meta.layer)}/${esc(meta.runtime)}</span>`;
+      if (meta.layer === 'edge') {
+        try {
+          const health = await admin('/rollout/ingest-health?layer=edge&hours=24');
+          document.getElementById('roBadge').innerHTML += ` <span class="hint">edge audit 24h: ${health.audit_events ?? 0}</span>`;
+        } catch (_) { /* optional */ }
+      }
       renderRolloutFlow(st, pct);
       updateRolloutActions(meta);
       const [metrics, timeline, samples, gates] = await Promise.all([
@@ -1375,6 +1452,9 @@
       if (!ruleId) return;
       admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/ladder/pause', { method: 'POST' })
         .then(log).catch(e => log(e.message));
+    };
+    document.getElementById('roTraceClose').onclick = () => {
+      document.getElementById('roTraceModal').style.display = 'none';
     };
 
     reloadAll().catch(e => log(e.message));
