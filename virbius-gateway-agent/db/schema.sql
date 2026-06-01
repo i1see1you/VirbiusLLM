@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS tb_agent_evaluate_log (
     scene            VARCHAR(64) NOT NULL,
     created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     effective_action VARCHAR(32),
-    would_block      INTEGER,
+    max_risk_score   INTEGER NOT NULL DEFAULT 0,
     degraded         INTEGER NOT NULL DEFAULT 0,
     latency_ms       INTEGER,
     PRIMARY KEY (trace_id, tenant_id, scene, created_at)

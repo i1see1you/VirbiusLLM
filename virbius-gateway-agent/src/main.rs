@@ -1,5 +1,8 @@
 mod access_lists;
+mod cumulative;
 mod engine;
+mod enforce;
+mod policy_engine;
 mod trace;
 
 use axum::{
@@ -10,6 +13,7 @@ use axum::{
     Json, Router,
 };
 use engine::{EngineClient, EvaluateRequest, EvaluateResponse};
+use enforce::GatewayCheckResult;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -62,18 +66,14 @@ struct HealthBody {
 
 #[derive(Serialize)]
 struct AgentEvaluateResponse {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    signals: Option<Vec<engine::Signal>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    decision: Option<engine::EngineDecision>,
+    effective_action: String,
+    max_risk_score: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     rule_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     rule_revision: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reason_code: Option<String>,
-    effective_action: String,
-    would_block: bool,
     trace_id: String,
     degraded: bool,
 }
@@ -101,6 +101,7 @@ async fn evaluate(
         );
     }
 
+    let mut req = req;
     let query = req.query.clone().unwrap_or_default();
     let headers = req.headers.clone().unwrap_or_default();
     let vars_ctx = state.lists.effective_vars(
@@ -112,29 +113,36 @@ async fn evaluate(
         &headers,
     );
 
-    if let Some(hit) = state.lists.check(
+    if let Some(gw) = state.lists.check(
         &req.content,
         req.user_id.as_deref(),
         req.device_id.as_deref(),
         req.client_ip.as_deref(),
+        req.session_id.as_deref(),
         &query,
         &headers,
         req.vars.as_ref(),
     ) {
-        return Json(AgentEvaluateResponse {
-            signals: None,
-            decision: None,
-            rule_id: Some(hit.rule_id),
-            rule_revision: Some(1),
-            reason_code: Some(hit.reason_code),
-            effective_action: hit.effective_action,
-            would_block: hit.would_block,
-            trace_id: req.trace_id,
-            degraded: false,
-        })
-        .into_response();
+        if enforce::is_terminal(&gw.effective_action) {
+            return Json(gateway_response(&req.trace_id, &gw, false)).into_response();
+        }
+        if gw.effective_action == "review" {
+            let mut prior = req.prior_signals.take().unwrap_or_default();
+            prior.extend(gw.prior_signals);
+            return forward_engine(state, req, vars_ctx, Some(prior)).await;
+        }
     }
 
+    let prior_signals = req.prior_signals.take();
+    forward_engine(state, req, vars_ctx, prior_signals).await
+}
+
+async fn forward_engine(
+    state: Arc<AppState>,
+    req: AgentEvaluateRequest,
+    vars_ctx: HashMap<String, String>,
+    prior_signals: Option<Vec<engine::Signal>>,
+) -> Response {
     let eng_req = EvaluateRequest {
         tenant_id: req.tenant_id,
         scene: req.scene,
@@ -148,20 +156,18 @@ async fn evaluate(
         trace_id: req.trace_id.clone(),
         user_id: req.user_id,
         device_id: req.device_id,
-        prior_signals: req.prior_signals,
+        prior_signals,
         vars: Some(vars_ctx),
     };
 
     match state.engine.evaluate(eng_req).await {
         Ok(resp) => Json(to_agent_response(resp, false)).into_response(),
         Err(_) => Json(AgentEvaluateResponse {
-            signals: None,
-            decision: None,
+            effective_action: "allow".into(),
+            max_risk_score: 0,
             rule_id: None,
             rule_revision: None,
             reason_code: None,
-            effective_action: "allow".into(),
-            would_block: false,
             trace_id: req.trace_id,
             degraded: true,
         })
@@ -169,15 +175,26 @@ async fn evaluate(
     }
 }
 
+fn gateway_response(trace_id: &str, gw: &GatewayCheckResult, degraded: bool) -> AgentEvaluateResponse {
+    let primary = gw.primary.as_ref();
+    AgentEvaluateResponse {
+        effective_action: gw.effective_action.clone(),
+        max_risk_score: gw.max_risk_score,
+        rule_id: primary.map(|p| p.rule_id.clone()),
+        rule_revision: primary.map(|p| p.rule_revision),
+        reason_code: primary.map(|p| p.reason_code.clone()),
+        trace_id: trace_id.to_string(),
+        degraded,
+    }
+}
+
 fn to_agent_response(resp: EvaluateResponse, degraded: bool) -> AgentEvaluateResponse {
     AgentEvaluateResponse {
-        signals: Some(resp.signals),
-        decision: Some(resp.decision.clone()),
+        effective_action: resp.effective_action,
+        max_risk_score: resp.max_risk_score,
         rule_id: Some(resp.rule_id),
         rule_revision: Some(resp.rule_revision),
         reason_code: Some(resp.reason_code),
-        effective_action: resp.decision.effective_action,
-        would_block: resp.decision.would_block,
         trace_id: resp.trace_id,
         degraded,
     }

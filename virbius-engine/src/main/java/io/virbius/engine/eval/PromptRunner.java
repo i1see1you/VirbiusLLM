@@ -36,8 +36,10 @@ public class PromptRunner {
                         "cloud",
                         "cloud",
                         rule.riskScore(),
-                        RiskScore.suggest(rule.riskScore()),
-                        rule.reasonCode()));
+                        rule.reasonCode(),
+                        rule.intentAction(),
+                        rule.enforceMode(),
+                        rule.canaryPercent() > 0 ? rule.canaryPercent() : null));
             }
         }
         return signals;

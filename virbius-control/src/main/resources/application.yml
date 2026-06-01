@@ -21,6 +21,8 @@ spring:
 
 virbius:
   data-dir: ${VIRBIUS_DATA_DIR:./data}
+  redis:
+    url: ${VIRBIUS_REDIS_URL:redis://127.0.0.1:6379}
   engine:
     base-url: ${VIRBIUS_ENGINE_URL:http://127.0.0.1:8082}
 

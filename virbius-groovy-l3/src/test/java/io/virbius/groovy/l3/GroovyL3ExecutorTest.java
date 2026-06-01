@@ -1,9 +1,7 @@
 package io.virbius.groovy.l3;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
@@ -14,11 +12,10 @@ class GroovyL3ExecutorTest {
     private final GroovyL3Executor executor = new GroovyL3Executor(500);
 
     @Test
-    void dryRunWouldBlock() throws Exception {
+    void dryRunReturnsReview() throws Exception {
         PolicyContext ctx = context("dry_run", signalBlock());
         GroovyL3Decision d = executor.execute(GroovyL3Defaults.DEFAULT_DECIDE_SCRIPT, ctx);
-        assertEquals("allow", d.effectiveAction());
-        assertTrue(d.wouldBlock());
+        assertEquals("review", d.effectiveAction());
     }
 
     @Test
@@ -26,7 +23,6 @@ class GroovyL3ExecutorTest {
         PolicyContext ctx = context("full", signalBlock());
         GroovyL3Decision d = executor.execute(GroovyL3Defaults.DEFAULT_DECIDE_SCRIPT, ctx);
         assertEquals("block", d.effectiveAction());
-        assertFalse(d.wouldBlock());
     }
 
     @Test

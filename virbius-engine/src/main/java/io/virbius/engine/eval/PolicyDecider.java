@@ -2,9 +2,10 @@ package io.virbius.engine.eval;
 
 import io.virbius.engine.cache.RuleCache;
 import io.virbius.engine.cache.RuleEntry;
-import java.nio.charset.StandardCharsets;
+import io.virbius.policy.ActionMerge;
+import io.virbius.policy.IntentAction;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.zip.CRC32;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -21,41 +22,43 @@ public class PolicyDecider {
             String sessionId,
             List<SignalDto> signals,
             String primaryRuleId) {
-        boolean wouldHit = signals.stream().anyMatch(s -> RiskScore.isBlock((int) s.score())
-                || "block".equalsIgnoreCase(s.suggest()));
-        RuleEntry l3 = cache.get(tenantId, primaryRuleId != null ? primaryRuleId : "cloud_groovy_l3");
-        if (l3 == null) {
-            l3 = cache.rulesForTenant(tenantId).stream()
-                    .filter(r -> "groovy".equals(r.runtime()))
-                    .findFirst()
-                    .orElse(null);
+        List<ActionMerge.RuleHit> hits = new ArrayList<>();
+        for (SignalDto s : signals) {
+            if (s.intentAction() != null && IntentAction.isAllowIntent(s.intentAction())) {
+                return new EngineDecisionDto(IntentAction.ALLOW, 0, "dry_run");
+            }
+            String intent = s.intentAction();
+            String enforce = s.enforceMode();
+            Integer canary = s.canaryPercent();
+            if (intent == null || intent.isBlank() || enforce == null || enforce.isBlank()) {
+                RuleEntry rule = cache.get(tenantId, s.ruleId());
+                if (rule != null) {
+                    if (intent == null || intent.isBlank()) {
+                        intent = rule.intentAction();
+                    }
+                    if (enforce == null || enforce.isBlank()) {
+                        enforce = rule.enforceMode();
+                    }
+                    if (canary == null) {
+                        canary = rule.canaryPercent() > 0 ? rule.canaryPercent() : null;
+                    }
+                }
+            }
+            intent = IntentAction.normalize(intent, (int) s.score());
+            if (IntentAction.isAllowIntent(intent)) {
+                return new EngineDecisionDto(IntentAction.ALLOW, 0, "dry_run");
+            }
+            hits.add(new ActionMerge.RuleHit(
+                    s.ruleId(),
+                    s.ruleRevision(),
+                    s.reasonCode(),
+                    (int) s.score(),
+                    intent,
+                    enforce != null ? enforce : "dry_run",
+                    canary));
         }
-        String mode = l3 != null ? l3.enforceMode() : "full";
-        int canaryPercent = l3 != null ? l3.canaryPercent() : 100;
-
-        if (!wouldHit) {
-            return new EngineDecisionDto("allow", false, null, mode);
-        }
-        if ("dry_run".equals(mode)) {
-            return new EngineDecisionDto("allow", true, null, mode);
-        }
-        if ("canary".equals(mode) && !inCanaryBucket(sessionId, canaryPercent)) {
-            return new EngineDecisionDto("allow", true, null, mode);
-        }
-        return new EngineDecisionDto("block", false, null, mode);
-    }
-
-    private boolean inCanaryBucket(String sessionId, int percent) {
-        if (percent >= 100) {
-            return true;
-        }
-        if (percent <= 0) {
-            return false;
-        }
-        String key = sessionId == null || sessionId.isBlank() ? "default" : sessionId;
-        CRC32 crc = new CRC32();
-        crc.update(key.getBytes(StandardCharsets.UTF_8));
-        long bucket = crc.getValue() % 100;
-        return bucket < percent;
+        ActionMerge.MergeResult merged = ActionMerge.merge(hits, sessionId);
+        String mode = merged.primary() != null ? merged.primary().enforceMode() : "dry_run";
+        return new EngineDecisionDto(merged.effectiveAction(), merged.maxRiskScore(), mode);
     }
 }

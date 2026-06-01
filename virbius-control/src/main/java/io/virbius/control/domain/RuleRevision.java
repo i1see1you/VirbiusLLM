@@ -12,6 +12,7 @@ public record RuleRevision(
         String runtime,
         String reasonCode,
         int riskScore,
+        String intentAction,
         Map<String, Object> scope,
         Object body,
         String enforceMode,

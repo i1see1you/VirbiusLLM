@@ -31,52 +31,52 @@ public class RuleAdminController {
 
     @GetMapping
     public ApiResult<List<Map<String, Object>>> listRules(
-            @PathVariable String tenantId, @RequestParam(required = false) String layer) {
+            @PathVariable("tenantId") String tenantId, @RequestParam(value = "layer", required = false) String layer) {
         return ApiResult.ok(ruleService.listRules(tenantId, layer));
     }
 
     @PostMapping
     public ApiResult<Map<String, Object>> upsertRule(
-            @PathVariable String tenantId, @RequestBody UpsertRuleRequest body) {
+            @PathVariable("tenantId") String tenantId, @RequestBody UpsertRuleRequest body) {
         return ApiResult.ok(ruleService.upsertRule(tenantId, body));
     }
 
     @GetMapping("/{ruleId}")
     public ApiResult<Map<String, Object>> getRule(
-            @PathVariable String tenantId, @PathVariable String ruleId) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("ruleId") String ruleId) {
         return ApiResult.ok(ruleService.getRule(tenantId, ruleId));
     }
 
     @GetMapping("/{ruleId}/revisions")
     public ApiResult<List<Map<String, Object>>> listRevisions(
-            @PathVariable String tenantId, @PathVariable String ruleId) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("ruleId") String ruleId) {
         return ApiResult.ok(ruleService.listRevisions(tenantId, ruleId));
     }
 
     @GetMapping("/{ruleId}/revisions/{revision}")
     public ApiResult<Map<String, Object>> getRevision(
-            @PathVariable String tenantId, @PathVariable String ruleId, @PathVariable int revision) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("ruleId") String ruleId, @PathVariable("revision") int revision) {
         return ApiResult.ok(ruleService.getRevision(tenantId, ruleId, revision));
     }
 
     @PatchMapping("/{ruleId}/status")
     public ApiResult<Map<String, Object>> updateRuleStatus(
-            @PathVariable String tenantId,
-            @PathVariable String ruleId,
+            @PathVariable("tenantId") String tenantId,
+            @PathVariable("ruleId") String ruleId,
             @RequestBody UpdateRuleStatusRequest body) {
         return ApiResult.ok(ruleService.updateRuleStatus(tenantId, ruleId, body.ruleStatus()));
     }
 
     @PatchMapping("/{ruleId}/runtime")
     public ApiResult<Map<String, Object>> updateRuntime(
-            @PathVariable String tenantId, @PathVariable String ruleId, @RequestBody UpdateRuntimeRequest body) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("ruleId") String ruleId, @RequestBody UpdateRuntimeRequest body) {
         return ApiResult.ok(ruleService.updateRuntime(tenantId, ruleId, body.enforceMode(), body.canaryPercent()));
     }
 
     /** PoC: {@code ruleId} is ignored; refreshes entire tenant RuleCache (runtime_only). */
     @PostMapping("/{ruleId}/runtime/publish-snapshot")
     public ApiResult<Map<String, Object>> runtimeSnapshot(
-            @PathVariable String tenantId, @PathVariable String ruleId) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("ruleId") String ruleId) {
         return ApiResult.ok(publishService.runtimeSnapshot(tenantId));
     }
 }

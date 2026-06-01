@@ -1,6 +1,7 @@
 package io.virbius.control.domain.enums;
 
 public enum RuleStatus {
+    DRAFT("draft"),
     ACTIVE("active"),
     DISABLED("disabled");
 
@@ -16,13 +17,13 @@ public enum RuleStatus {
 
     public static RuleStatus parse(String raw) {
         if (raw == null || raw.isBlank()) {
-            return ACTIVE;
+            return DRAFT;
         }
         for (RuleStatus s : values()) {
             if (s.value.equalsIgnoreCase(raw.trim())) {
                 return s;
             }
         }
-        throw new IllegalArgumentException("rule_status must be active or disabled");
+        throw new IllegalArgumentException("rule_status must be draft, active, or disabled");
     }
 }

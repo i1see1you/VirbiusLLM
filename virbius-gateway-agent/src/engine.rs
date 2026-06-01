@@ -36,24 +36,19 @@ pub struct Signal {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub suggest: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub reason_code: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct EngineDecision {
-    pub effective_action: String,
-    pub would_block: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intent_action: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enforce_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub canary_percent: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct EvaluateResponse {
-    #[serde(default)]
-    pub signals: Vec<Signal>,
-    pub decision: EngineDecision,
+    pub effective_action: String,
+    pub max_risk_score: i32,
     pub rule_id: String,
     pub rule_revision: i32,
     pub reason_code: String,

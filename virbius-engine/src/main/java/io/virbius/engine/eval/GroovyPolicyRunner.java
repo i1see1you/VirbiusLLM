@@ -7,8 +7,11 @@ import io.virbius.groovy.l3.GroovyL3Executor;
 import io.virbius.groovy.l3.L3RuleView;
 import io.virbius.groovy.l3.L3SignalView;
 import io.virbius.groovy.l3.PolicyContext;
+import io.virbius.policy.ActionMerge;
+import io.virbius.policy.IntentAction;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,19 +55,40 @@ public class GroovyPolicyRunner {
             PolicyContext ctx = buildContext(tenantId, sessionId, scene, ruleId, vars, signals);
             String body = l3.body() != null ? l3.body() : "";
             GroovyL3Decision raw = executor.execute(body, ctx);
-            return new GroovyPolicyResult(
-                    new EngineDecisionDto(
-                            raw.effectiveAction(),
-                            raw.wouldBlock(),
-                            raw.safeReplyId(),
-                            raw.enforceMode()),
-                    false,
-                    null);
+            return new GroovyPolicyResult(mapGroovyDecision(raw, sessionId, l3), false, null);
         } catch (Exception e) {
             log.warn("groovy L3 failed tenant={} rule={}: {}", tenantId, ruleId, e.getMessage());
             EngineDecisionDto fb = fallback.decide(tenantId, sessionId, signals, ruleId);
             return new GroovyPolicyResult(fb, true, e.getMessage());
         }
+    }
+
+    private EngineDecisionDto mapGroovyDecision(GroovyL3Decision raw, String sessionId, RuleEntry l3) {
+        String mode = raw.enforceMode() != null ? raw.enforceMode() : l3.enforceMode();
+        if (mode == null || mode.isBlank()) {
+            mode = "dry_run";
+        }
+        String action = raw.effectiveAction() != null ? raw.effectiveAction().toLowerCase(Locale.ROOT) : "allow";
+        int canaryPct = l3.canaryPercent() > 0 ? l3.canaryPercent() : 0;
+        boolean effective = isEffective(mode, sessionId, canaryPct);
+        String resolved =
+                switch (action) {
+                    case "block", "deny" -> effective ? "block" : "review";
+                    case "captcha" -> effective ? "captcha" : "review";
+                    case "review" -> "review";
+                    default -> "allow";
+                };
+        return new EngineDecisionDto(resolved, 0, mode);
+    }
+
+    private static boolean isEffective(String mode, String sessionId, int canaryPercent) {
+        if ("full".equalsIgnoreCase(mode)) {
+            return true;
+        }
+        if ("canary".equalsIgnoreCase(mode)) {
+            return ActionMerge.inCanaryBucket(sessionId, canaryPercent);
+        }
+        return false;
     }
 
     private PolicyContext buildContext(
@@ -94,7 +118,7 @@ public class GroovyPolicyRunner {
                         s.ruleRevision(),
                         s.layer(),
                         s.score(),
-                        s.suggest(),
+                        toSuggest(s.intentAction(), (int) s.score()),
                         s.reasonCode()))
                 .toList();
         return new PolicyContext(
@@ -105,6 +129,16 @@ public class GroovyPolicyRunner {
                 rules,
                 l3Signals,
                 vars != null ? vars : Map.of());
+    }
+
+    private static String toSuggest(String intent, int score) {
+        if (intent != null && !intent.isBlank()) {
+            if (IntentAction.DENY.equals(intent)) {
+                return "block";
+            }
+            return intent;
+        }
+        return RiskScore.suggest(score);
     }
 
     public record GroovyPolicyResult(EngineDecisionDto decision, boolean degraded, String error) {}

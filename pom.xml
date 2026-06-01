@@ -12,6 +12,7 @@
 
   <modules>
     <module>virbius-groovy-l3</module>
+    <module>virbius-policy</module>
     <module>virbius-control</module>
     <module>virbius-engine</module>
     <module>virbius-compiler</module>

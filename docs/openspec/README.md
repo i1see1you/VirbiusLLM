@@ -14,6 +14,11 @@
 | [schemas/control-context.schema.json](./schemas/control-context.schema.json) | 端/管/云公用防控请求上下文 |
 | [schemas/edge-manifest.schema.json](./schemas/edge-manifest.schema.json) | 端侧 CDN 清单 |
 | [groovy-l3-contract.md](./groovy-l3-contract.md) | 云侧 Groovy L3 脚本与 `ctx` API |
+| [cumulative-counter.md](./cumulative-counter.md) | 累计规则 `tb_cumulative`、CounterStore、Redis 桶与 Lua（**待实现**） |
+| [list-match.md](./list-match.md) | 名单规则 `list_name`、ListStore、名单快照（**待实现**） |
+| [value-resolution.md](./value-resolution.md) | 规则可选 `value_source`；`matchList` / `getCumulate` 的 value 解析 |
+| [list-and-cumulative-rules.md](./list-and-cumulative-rules.md) | **名单 + 累计最新合并设计（推荐阅读）** |
+| [rule-level-enforce.md](./rule-level-enforce.md) | **规则级 enforce / canary**（管侧真拦 + 云 PolicyMerge） |
 
 **默认基址（PoC）**
 

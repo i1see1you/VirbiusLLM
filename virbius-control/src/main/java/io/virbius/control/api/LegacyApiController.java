@@ -51,13 +51,13 @@ public class LegacyApiController {
     }
 
     @GetMapping("/access-lists")
-    public Map<String, Object> accessListsAll(@PathVariable String tenantId) {
+    public Map<String, Object> accessListsAll(@PathVariable("tenantId") String tenantId) {
         return accessListService.getAll(tenantId);
     }
 
     @GetMapping("/access-lists/{dimension}/{polarity}")
     public Map<String, Object> accessListsOne(
-            @PathVariable String tenantId, @PathVariable String dimension, @PathVariable String polarity) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("dimension") String dimension, @PathVariable("polarity") String polarity) {
         return Map.of(
                 "tenant_id", tenantId,
                 "dimension", dimension,
@@ -69,9 +69,9 @@ public class LegacyApiController {
 
     @PostMapping("/access-lists/{dimension}/{polarity}/entries")
     public Map<String, Object> accessListsAdd(
-            @PathVariable String tenantId,
-            @PathVariable String dimension,
-            @PathVariable String polarity,
+            @PathVariable("tenantId") String tenantId,
+            @PathVariable("dimension") String dimension,
+            @PathVariable("polarity") String polarity,
             @RequestBody AccessListEntriesRequest body) {
         return accessListService.addEntriesAndPush(
                 tenantId,
@@ -82,80 +82,80 @@ public class LegacyApiController {
 
     @DeleteMapping("/access-lists/{dimension}/{polarity}/entries/{value}")
     public Map<String, Object> accessListsRemove(
-            @PathVariable String tenantId,
-            @PathVariable String dimension,
-            @PathVariable String polarity,
-            @PathVariable String value) {
+            @PathVariable("tenantId") String tenantId,
+            @PathVariable("dimension") String dimension,
+            @PathVariable("polarity") String polarity,
+            @PathVariable("value") String value) {
         return accessListService.removeEntryAndPush(
                 tenantId, AccessListPolarity.parse(polarity), AccessListDimension.parse(dimension), value);
     }
 
     @PostMapping("/access-lists/sync-rules")
-    public Map<String, Object> syncRules(@PathVariable String tenantId) {
+    public Map<String, Object> syncRules(@PathVariable("tenantId") String tenantId) {
         return accessListService.syncRules(tenantId);
     }
 
     @PostMapping("/access-lists/push-engine")
-    public Map<String, Object> pushEngine(@PathVariable String tenantId) {
+    public Map<String, Object> pushEngine(@PathVariable("tenantId") String tenantId) {
         return accessListService.pushToEngine(tenantId);
     }
 
     @PostMapping("/access-lists/sync-and-publish")
     public Map<String, Object> syncAndPublish(
-            @PathVariable String tenantId,
-            @RequestParam(defaultValue = "poc-default") String bundleId,
-            @RequestParam(defaultValue = "0.1.0") String version) {
+            @PathVariable("tenantId") String tenantId,
+            @RequestParam(value = "bundleId", defaultValue = "poc-default") String bundleId,
+            @RequestParam(value = "version", defaultValue = "0.1.0") String version) {
         return accessListService.syncAndPublish(tenantId, bundleId, version);
     }
 
     @GetMapping("/bundles")
-    public List<Map<String, Object>> listBundles(@PathVariable String tenantId) {
+    public List<Map<String, Object>> listBundles(@PathVariable("tenantId") String tenantId) {
         return bundleService.listBundles(tenantId);
     }
 
     @GetMapping("/bundles/{bundleId}/versions/{version}")
     public Map<String, Object> getBundleVersion(
-            @PathVariable String tenantId, @PathVariable String bundleId, @PathVariable String version) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("bundleId") String bundleId, @PathVariable("version") String version) {
         return bundleService.getBundleVersion(tenantId, bundleId, version);
     }
 
     @PostMapping("/bundles/{bundleId}/versions/{version}/publish")
     public Map<String, Object> publish(
-            @PathVariable String tenantId, @PathVariable String bundleId, @PathVariable String version) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("bundleId") String bundleId, @PathVariable("version") String version) {
         return publishService.publish(tenantId, bundleId, version);
     }
 
     @GetMapping("/rules")
     public List<Map<String, Object>> listRules(
-            @PathVariable String tenantId, @RequestParam(required = false) String layer) {
+            @PathVariable("tenantId") String tenantId, @RequestParam(value = "layer", required = false) String layer) {
         return ruleService.listRules(tenantId, layer);
     }
 
     @PostMapping("/rules")
-    public Map<String, Object> upsertRule(@PathVariable String tenantId, @RequestBody UpsertRuleRequest body) {
+    public Map<String, Object> upsertRule(@PathVariable("tenantId") String tenantId, @RequestBody UpsertRuleRequest body) {
         return ruleService.upsertRule(tenantId, body);
     }
 
     @GetMapping("/rules/{ruleId}")
-    public Map<String, Object> getRule(@PathVariable String tenantId, @PathVariable String ruleId) {
+    public Map<String, Object> getRule(@PathVariable("tenantId") String tenantId, @PathVariable("ruleId") String ruleId) {
         return ruleService.getRule(tenantId, ruleId);
     }
 
     @PatchMapping("/rules/{ruleId}/status")
     public Map<String, Object> updateRuleStatus(
-            @PathVariable String tenantId, @PathVariable String ruleId, @RequestBody UpdateRuleStatusRequest body) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("ruleId") String ruleId, @RequestBody UpdateRuleStatusRequest body) {
         return ruleService.updateRuleStatus(tenantId, ruleId, body.ruleStatus());
     }
 
     @PatchMapping("/rules/{ruleId}/runtime")
     public Map<String, Object> updateRuntime(
-            @PathVariable String tenantId, @PathVariable String ruleId, @RequestBody UpdateRuntimeRequest body) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("ruleId") String ruleId, @RequestBody UpdateRuntimeRequest body) {
         return ruleService.updateRuntime(tenantId, ruleId, body.enforceMode(), body.canaryPercent());
     }
 
     @GetMapping("/bundles/{bundleId}/versions/{version}/metadata")
     public Map<String, Object> getMetadata(
-            @PathVariable String tenantId, @PathVariable String bundleId, @PathVariable String version) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("bundleId") String bundleId, @PathVariable("version") String version) {
         return metadataService.getMetadata(tenantId, bundleId, version);
     }
 

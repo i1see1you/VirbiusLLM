@@ -27,7 +27,7 @@ public class AuditEventRepository {
                 INSERT INTO tb_audit_events (
                   trace_id, trace_id_source, tenant_id, scene, layer,
                   rule_id, rule_revision, reason_code,
-                  effective_action, would_block, intercepted_at, user_id, device_id
+                  effective_action, max_risk_score, intercepted_at, user_id, device_id
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 req.traceId(),
@@ -39,7 +39,7 @@ public class AuditEventRepository {
                 ruleRevision,
                 reasonCode != null ? reasonCode : "",
                 decision.effectiveAction(),
-                decision.wouldBlock() ? 1 : 0,
+                decision.maxRiskScore(),
                 Instant.now().toString(),
                 blankToNull(req.userId()),
                 blankToNull(req.deviceId()));

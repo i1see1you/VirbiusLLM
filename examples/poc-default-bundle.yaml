@@ -81,21 +81,20 @@ rules:
         - 炸弹制作
         - jailbreak
         - 绕过
-  - rule_id: cloud_l1_blacklist
+  - rule_id: cloud_rl_deny_keywords
     layer: cloud
-    runtime: native
-    reason_code: EDGE_KEYWORD_BLACKLIST
+    runtime: list_match
+    reason_code: CLOUD_KEYWORD_DENY
     risk_score: 100
     body:
-      list_type: deny
-      keywords:
-        - 招嫖
-        - 办证
-        - 暴恐
-        - 枪支刀具
-        - 炸弹制作
-        - jailbreak
-        - 绕过
+      list_name: deny_keyword
+  - rule_id: cloud_rl_deny_vars
+    layer: cloud
+    runtime: list_match
+    reason_code: CLOUD_VAR_DENY
+    risk_score: 100
+    body:
+      list_name: deny_var
   - rule_id: cloud_prompt_l1
     layer: cloud
     runtime: prompt
@@ -111,9 +110,9 @@ rules:
       def decide(ctx) {
         def ruleId = ctx.currentRuleId()
         def mode = ctx.enforceMode(ruleId)
-        if (!ctx.wouldHitBlock()) return [action: 'allow', would_block: false]
-        if (mode == 'dry_run') return [action: 'allow', would_block: true]
+        if (!ctx.wouldHitBlock()) return [action: 'allow']
+        if (mode == 'dry_run') return [action: 'review']
         if (mode == 'canary' && !ctx.inCanaryBucket(ctx.sessionId(), ctx.canaryPercent(ruleId)))
-          return [action: 'allow', would_block: true]
-        return [action: 'block', would_block: false]
+          return [action: 'review']
+        return [action: 'block']
       }

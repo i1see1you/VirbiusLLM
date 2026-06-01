@@ -6,5 +6,7 @@ public record SignalDto(
         String source,
         String layer,
         double score,
-        String suggest,
-        String reasonCode) {}
+        String reasonCode,
+        String intentAction,
+        String enforceMode,
+        Integer canaryPercent) {}

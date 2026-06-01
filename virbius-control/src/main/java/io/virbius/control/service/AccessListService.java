@@ -1,33 +1,37 @@
 package io.virbius.control.service;
 
-import io.virbius.control.domain.RuleRevision;
-import io.virbius.control.domain.RuleStatusHelper;
-import io.virbius.control.domain.RiskScore;
+import io.virbius.control.domain.AccessListEntry;
+import io.virbius.control.domain.AccessListMeta;
+import io.virbius.control.domain.dto.request.AccessListEntryInput;
 import io.virbius.control.domain.enums.AccessListDimension;
 import io.virbius.control.domain.enums.AccessListPolarity;
 import io.virbius.control.repository.AccessListRepository;
+import io.virbius.control.repository.ListMetaRepository;
 import io.virbius.control.repository.RegistryRepository;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.springframework.stereotype.Service;
 
 @Service
 public class AccessListService {
 
-    private final AccessListRepository listRepo;
+    private final AccessListRepository legacyListRepo;
+    private final ListMetaRepository listMetaRepo;
     private final RegistryRepository registryRepo;
     private final PublishService publishService;
     private final ArtifactService artifactService;
 
     public AccessListService(
-            AccessListRepository listRepo,
+            AccessListRepository legacyListRepo,
+            ListMetaRepository listMetaRepo,
             RegistryRepository registryRepo,
             PublishService publishService,
             ArtifactService artifactService) {
-        this.listRepo = listRepo;
+        this.legacyListRepo = legacyListRepo;
+        this.listMetaRepo = listMetaRepo;
         this.registryRepo = registryRepo;
         this.publishService = publishService;
         this.artifactService = artifactService;
@@ -36,115 +40,110 @@ public class AccessListService {
     public Map<String, Object> getAll(String tenantId) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("tenant_id", tenantId);
-        out.put("lists", listRepo.listAll(tenantId));
-        out.put("blacklist", listRepo.list(tenantId, AccessListPolarity.DENY, AccessListDimension.KEYWORD));
-        out.put("whitelist", listRepo.list(tenantId, AccessListPolarity.ALLOW, AccessListDimension.KEYWORD));
+        List<Map<String, Object>> lists = new ArrayList<>();
+        for (AccessListMeta meta : listMetaRepo.listMeta(tenantId)) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("list_name", meta.listName());
+            item.put("dimension", meta.dimension());
+            item.put("remark", meta.remark());
+            item.put("entries", entryMaps(listMetaRepo.listEntries(tenantId, meta.listName())));
+            lists.add(item);
+        }
+        out.put("lists", lists);
         return out;
     }
 
+    public List<AccessListEntry> getEntries(String tenantId, String listName) {
+        listMetaRepo.getMeta(tenantId, listName).orElseThrow(() -> new IllegalArgumentException("list not found"));
+        return listMetaRepo.listEntries(tenantId, listName);
+    }
+
+    /** Legacy shim: maps polarity+dimension to historical list_name `{polarity}_{dimension}`. */
     public List<String> get(String tenantId, AccessListPolarity polarity, AccessListDimension dimension) {
-        return listRepo.list(tenantId, polarity, dimension);
+        String listName = legacyListName(polarity, dimension);
+        if (listMetaRepo.getMeta(tenantId, listName).isPresent()) {
+            return listMetaRepo.listEntries(tenantId, listName).stream().map(AccessListEntry::value).toList();
+        }
+        return legacyListRepo.list(tenantId, polarity, dimension);
     }
 
     public Map<String, Object> replaceAndPush(
             String tenantId, AccessListPolarity polarity, AccessListDimension dimension, List<String> values) {
-        listRepo.replaceAll(tenantId, polarity, dimension, normalizeValues(tenantId, dimension, values));
-        return syncRulesAndPush(tenantId, Map.of());
+        String listName = legacyListName(polarity, dimension);
+        ensureLegacyMeta(tenantId, listName, dimension);
+        listMetaRepo.replaceEntries(tenantId, listName, toValueOnlyEntries(normalizeValues(tenantId, dimension, values)));
+        return refreshArtifactsAndPush(tenantId, Map.of());
     }
 
     public Map<String, Object> addEntriesAndPush(
             String tenantId, AccessListPolarity polarity, AccessListDimension dimension, List<String> values) {
+        String listName = legacyListName(polarity, dimension);
+        ensureLegacyMeta(tenantId, listName, dimension);
         int added = 0;
-        for (String v : values) {
-            if (listRepo.add(
-                    tenantId,
-                    polarity,
-                    dimension,
-                    AccessListEntryValidator.normalizeAndValidate(dimension, v, bundleMetadata(tenantId)))) {
+        for (String v : normalizeValues(tenantId, dimension, values)) {
+            if (listMetaRepo.addEntry(tenantId, listName, v, null, null)) {
                 added++;
             }
         }
-        return syncRulesAndPush(tenantId, Map.of("added", added));
+        return refreshArtifactsAndPush(tenantId, Map.of("added", added));
     }
 
     public Map<String, Object> removeEntryAndPush(
             String tenantId, AccessListPolarity polarity, AccessListDimension dimension, String value) {
-        boolean removed = listRepo.remove(tenantId, polarity, dimension, value);
-        return syncRulesAndPush(tenantId, Map.of("removed", removed));
+        String listName = legacyListName(polarity, dimension);
+        boolean removed = listMetaRepo.removeEntry(tenantId, listName, value);
+        return refreshArtifactsAndPush(tenantId, Map.of("removed", removed));
+    }
+
+    public Map<String, Object> addEntry(
+            String tenantId, String listName, String value, String remark, Instant expiresAt) {
+        listMetaRepo.getMeta(tenantId, listName).orElseThrow(() -> new IllegalArgumentException("list not found"));
+        String normalized = value == null ? "" : value.trim();
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException("value required");
+        }
+        listMetaRepo.addEntry(tenantId, listName, normalized, remark, expiresAt);
+        return refreshArtifactsAndPush(tenantId, Map.of("added", true));
+    }
+
+    public Map<String, Object> replaceNamedEntries(String tenantId, String listName, List<AccessListEntryInput> inputs) {
+        AccessListMeta meta = listMetaRepo
+                .getMeta(tenantId, listName)
+                .orElseThrow(() -> new IllegalArgumentException("list not found"));
+        List<AccessListEntry> entries = new ArrayList<>();
+        if (inputs != null) {
+            for (AccessListEntryInput in : inputs) {
+                if (in == null || in.value() == null || in.value().isBlank()) {
+                    continue;
+                }
+                String v = AccessListEntryValidator.normalizeAndValidate(
+                        AccessListDimension.parse(meta.dimension()), in.value().trim(), bundleMetadata(tenantId));
+                entries.add(new AccessListEntry(v, in.remark(), null, in.expiresAt()));
+            }
+        }
+        listMetaRepo.replaceEntries(tenantId, listName, entries);
+        return refreshArtifacts(tenantId);
     }
 
     public Map<String, Object> pushToEngine(String tenantId) {
         return Map.of("engine_reload", publishService.runtimeSnapshot(tenantId));
     }
 
-    public Map<String, Object> syncRules(String tenantId) {
-        List<String> denyKw = listRepo.list(tenantId, AccessListPolarity.DENY, AccessListDimension.KEYWORD);
-        List<String> allowKw = listRepo.list(tenantId, AccessListPolarity.ALLOW, AccessListDimension.KEYWORD);
-
-        syncProjectedRule(tenantId, AccessListRules.contentRule(
-                tenantId, AccessListRules.EDGE_CONTENT_DENY, "edge", "lua-dsl",
-                AccessListRules.REASON_EDGE_CONTENT_DENY, RiskScore.DEFAULT, denyKw, "deny"));
-        syncProjectedRule(tenantId, AccessListRules.contentRule(
-                tenantId, AccessListRules.EDGE_CONTENT_ALLOW, "edge", "lua-dsl",
-                AccessListRules.REASON_EDGE_CONTENT_ALLOW, RiskScore.ALLOW, allowKw, "allow"));
-
-        syncProjectedRule(tenantId, AccessListRules.gatewaySubjectRule(tenantId, AccessListPolarity.DENY,
-                listRepo.list(tenantId, AccessListPolarity.DENY, AccessListDimension.USER_ID),
-                listRepo.list(tenantId, AccessListPolarity.DENY, AccessListDimension.DEVICE_ID),
-                listRepo.list(tenantId, AccessListPolarity.DENY, AccessListDimension.IP_CIDR)));
-        syncProjectedRule(tenantId, AccessListRules.gatewaySubjectRule(tenantId, AccessListPolarity.ALLOW,
-                listRepo.list(tenantId, AccessListPolarity.ALLOW, AccessListDimension.USER_ID),
-                listRepo.list(tenantId, AccessListPolarity.ALLOW, AccessListDimension.DEVICE_ID),
-                listRepo.list(tenantId, AccessListPolarity.ALLOW, AccessListDimension.IP_CIDR)));
-        syncProjectedRule(tenantId, AccessListRules.gatewayContentRule(
-                tenantId, AccessListRules.GW_CONTENT_DENY, AccessListRules.REASON_GW_KEYWORD_DENY,
-                RiskScore.DEFAULT, denyKw, "deny"));
-        syncProjectedRule(tenantId, AccessListRules.gatewayContentRule(
-                tenantId, AccessListRules.GW_CONTENT_ALLOW, AccessListRules.REASON_CLOUD_CONTENT_ALLOW,
-                RiskScore.ALLOW, allowKw, "allow"));
-
-        syncProjectedRule(tenantId, AccessListRules.contentRule(
-                tenantId, AccessListRules.CLOUD_CONTENT_DENY, "cloud", "native",
-                AccessListRules.REASON_CLOUD_CONTENT_DENY, RiskScore.DEFAULT, denyKw, "deny"));
-        syncProjectedRule(tenantId, AccessListRules.contentRule(
-                tenantId, AccessListRules.CLOUD_CONTENT_ALLOW, "cloud", "native",
-                AccessListRules.REASON_CLOUD_CONTENT_ALLOW, RiskScore.ALLOW, allowKw, "allow"));
-
-        List<String> denyVars = listRepo.list(tenantId, AccessListPolarity.DENY, AccessListDimension.VAR);
-        List<String> allowVars = listRepo.list(tenantId, AccessListPolarity.ALLOW, AccessListDimension.VAR);
-
-        syncProjectedRule(tenantId, AccessListRules.contextVarRule(
-                tenantId, AccessListRules.GW_REQUEST_DENY, "gateway", "lua",
-                AccessListRules.REASON_GW_CONTEXT_VAR_DENY, RiskScore.DEFAULT, denyVars, "deny"));
-        syncProjectedRule(tenantId, AccessListRules.contextVarRule(
-                tenantId, AccessListRules.GW_REQUEST_ALLOW, "gateway", "lua",
-                AccessListRules.REASON_GW_CONTEXT_VAR_DENY, RiskScore.ALLOW, allowVars, "allow"));
-        syncProjectedRule(tenantId, AccessListRules.contextVarRule(
-                tenantId, AccessListRules.CLOUD_REQUEST_DENY, "cloud", "native",
-                AccessListRules.REASON_CLOUD_CONTEXT_VAR_DENY, RiskScore.DEFAULT, denyVars, "deny"));
-        syncProjectedRule(tenantId, AccessListRules.contextVarRule(
-                tenantId, AccessListRules.CLOUD_REQUEST_ALLOW, "cloud", "native",
-                AccessListRules.REASON_CLOUD_CONTEXT_VAR_DENY, RiskScore.ALLOW, allowVars, "allow"));
-
+    public Map<String, Object> refreshArtifacts(String tenantId) {
         Map<String, Object> metadata = bundleMetadata(tenantId);
-        Map<String, String> artifacts = artifactService.write(tenantId, listRepo, metadata);
-
+        Map<String, String> artifacts = artifactService.write(tenantId, metadata);
         Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("synced", true);
+        summary.put("refreshed", true);
         summary.put("artifacts", artifacts);
-        summary.put("deny_keyword_count", denyKw.size());
-        summary.put("allow_keyword_count", allowKw.size());
-        summary.put("deny_user_count", listRepo.list(tenantId, AccessListPolarity.DENY, AccessListDimension.USER_ID).size());
-        summary.put("deny_device_count", listRepo.list(tenantId, AccessListPolarity.DENY, AccessListDimension.DEVICE_ID).size());
-        summary.put("deny_ip_count", listRepo.list(tenantId, AccessListPolarity.DENY, AccessListDimension.IP_CIDR).size());
-        summary.put("deny_var_count", denyVars.size());
-        summary.put("allow_var_count", allowVars.size());
-        summary.put("rule_ids", AccessListRules.allRuleIds());
         return summary;
     }
 
+    public Map<String, Object> syncRules(String tenantId) {
+        return refreshArtifacts(tenantId);
+    }
+
     public Map<String, Object> syncAndPublish(String tenantId, String bundleId, String version) {
-        Map<String, Object> sync = new LinkedHashMap<>(syncRules(tenantId));
+        Map<String, Object> sync = new LinkedHashMap<>(refreshArtifacts(tenantId));
         if (registryRepo.listBundles(tenantId).isEmpty()) {
             registryRepo.createBundle(tenantId, bundleId);
         }
@@ -156,26 +155,28 @@ public class AccessListService {
         return sync;
     }
 
-    private void syncProjectedRule(String tenantId, RuleRevision draft) {
-        Optional<RuleRevision> current = registryRepo.getCurrentRule(tenantId, draft.ruleId());
-        if (current.isPresent() && !RuleStatusHelper.isActive(current.get())) {
-            return;
-        }
-        registryRepo.upsertRule(tenantId, draft);
-    }
-
-    private Map<String, Object> bundleMetadata(String tenantId) {
-        Optional<io.virbius.control.domain.BundleVersion> bundle =
-                registryRepo.getBundle(tenantId, AccessListRules.DEFAULT_BUNDLE, "0.1.0");
-        return bundle.map(b -> b.metadata() != null ? b.metadata() : Map.<String, Object>of())
-                .orElse(Map.of());
-    }
-
-    private Map<String, Object> syncRulesAndPush(String tenantId, Map<String, Object> extra) {
-        Map<String, Object> out = new LinkedHashMap<>(syncRules(tenantId));
+    private Map<String, Object> refreshArtifactsAndPush(String tenantId, Map<String, Object> extra) {
+        Map<String, Object> out = new LinkedHashMap<>(refreshArtifacts(tenantId));
         out.putAll(extra);
         out.put("engine_reload", publishService.runtimeSnapshot(tenantId));
         return out;
+    }
+
+    private void ensureLegacyMeta(String tenantId, String listName, AccessListDimension dimension) {
+        if (listMetaRepo.getMeta(tenantId, listName).isEmpty()) {
+            listMetaRepo.upsertMeta(new AccessListMeta(tenantId, listName, dimension.value(), null));
+        }
+    }
+
+    public static String legacyListName(AccessListPolarity polarity, AccessListDimension dimension) {
+        return polarity.value() + "_" + dimension.value();
+    }
+
+    private Map<String, Object> bundleMetadata(String tenantId) {
+        return registryRepo
+                .getBundle(tenantId, "poc-default", "0.1.0")
+                .map(b -> b.metadata() != null ? b.metadata() : Map.<String, Object>of())
+                .orElse(Map.of());
     }
 
     private List<String> normalizeValues(String tenantId, AccessListDimension dimension, List<String> values) {
@@ -186,6 +187,33 @@ public class AccessListService {
         Map<String, Object> metadata = bundleMetadata(tenantId);
         for (String v : values) {
             out.add(AccessListEntryValidator.normalizeAndValidate(dimension, v, metadata));
+        }
+        return out;
+    }
+
+    private static List<AccessListEntry> toValueOnlyEntries(List<String> values) {
+        List<AccessListEntry> out = new ArrayList<>();
+        for (String v : values) {
+            out.add(new AccessListEntry(v, null, null, null));
+        }
+        return out;
+    }
+
+    public static List<Map<String, Object>> entryMaps(List<AccessListEntry> entries) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (AccessListEntry e : entries) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("value", e.value());
+            if (e.remark() != null) {
+                m.put("remark", e.remark());
+            }
+            if (e.createdAt() != null) {
+                m.put("created_at", e.createdAt().toString());
+            }
+            if (e.expiresAt() != null) {
+                m.put("expires_at", e.expiresAt().toString());
+            }
+            out.add(m);
         }
         return out;
     }

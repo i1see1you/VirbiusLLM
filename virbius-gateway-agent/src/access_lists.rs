@@ -1,27 +1,15 @@
+use crate::cumulative;
+use crate::enforce::{self, GatewayCheckResult};
+use crate::policy_engine::{collect_named_list_hits, CumulativeRuleBlock, NamedListBlock};
 use serde::Deserialize;
 use std::{
     collections::HashMap,
     env,
     fs,
-    net::Ipv4Addr,
     path::PathBuf,
     sync::RwLock,
     time::SystemTime,
 };
-
-#[derive(Debug, Clone, Default, Deserialize)]
-struct ListSide {
-    #[serde(default)]
-    user_ids: Vec<String>,
-    #[serde(default)]
-    device_ids: Vec<String>,
-    #[serde(default)]
-    ip_cidrs: Vec<String>,
-    #[serde(default)]
-    keywords: Vec<String>,
-    #[serde(default)]
-    vars: Vec<String>,
-}
 
 #[derive(Debug, Clone, Default, Deserialize)]
 struct VarDef {
@@ -42,19 +30,11 @@ struct ContextBindings {
 #[derive(Debug, Clone, Deserialize)]
 struct ListsFile {
     #[serde(default)]
-    deny: ListSide,
+    lists: Vec<NamedListBlock>,
     #[serde(default)]
-    allow: ListSide,
+    cumulative_rules: Vec<CumulativeRuleBlock>,
     #[serde(default)]
     context_bindings: ContextBindings,
-}
-
-#[derive(Debug, Clone)]
-pub struct ListHit {
-    pub effective_action: String,
-    pub would_block: bool,
-    pub reason_code: String,
-    pub rule_id: String,
 }
 
 pub struct AccessListChecker {
@@ -82,7 +62,6 @@ impl AccessListChecker {
         }
     }
 
-    /// Pre-resolved `provided_vars` wins when non-empty (e.g. from virbius-guard); otherwise parse from query/headers.
     pub fn effective_vars(
         &self,
         provided_vars: Option<&HashMap<String, String>>,
@@ -113,10 +92,11 @@ impl AccessListChecker {
         user_id: Option<&str>,
         device_id: Option<&str>,
         client_ip: Option<&str>,
+        session_id: Option<&str>,
         query: &HashMap<String, String>,
         headers: &HashMap<String, String>,
         provided_vars: Option<&HashMap<String, String>>,
-    ) -> Option<ListHit> {
+    ) -> Option<GatewayCheckResult> {
         let lists = self.load().ok()?;
         let vars = effective_vars_map(
             provided_vars,
@@ -127,10 +107,33 @@ impl AccessListChecker {
             query,
             headers,
         );
-        if side_allows(&lists.allow, content, user_id, device_id, client_ip, &vars) {
+        let mut hits = collect_named_list_hits(
+            &lists.lists,
+            content,
+            user_id,
+            device_id,
+            client_ip,
+            session_id,
+            &vars,
+        );
+        if !lists.cumulative_rules.is_empty() {
+            let tenant = env::var("VIRBIUS_TENANT_ID").unwrap_or_else(|_| "default".into());
+            hits.extend(cumulative::collect_hits(
+                &tenant,
+                &lists.cumulative_rules,
+                content,
+                user_id,
+                device_id,
+                client_ip,
+                session_id,
+                &vars,
+            ));
+        }
+        if hits.is_empty() {
             return None;
         }
-        side_denies(&lists.deny, content, user_id, device_id, client_ip, &vars)
+        let merged = enforce::merge(&hits, session_id);
+        Some(merged)
     }
 
     fn load(&self) -> Result<ListsFile, String> {
@@ -212,133 +215,6 @@ fn resolve_vars(
     out
 }
 
-fn side_allows(
-    side: &ListSide,
-    content: &str,
-    user_id: Option<&str>,
-    device_id: Option<&str>,
-    client_ip: Option<&str>,
-    vars: &HashMap<String, String>,
-) -> bool {
-    if let Some(uid) = user_id {
-        if side.user_ids.iter().any(|v| v == uid) {
-            return true;
-        }
-    }
-    if let Some(did) = device_id {
-        if side.device_ids.iter().any(|v| v == did) {
-            return true;
-        }
-    }
-    if let Some(ip) = client_ip {
-        if ip_in_any(ip, &side.ip_cidrs) {
-            return true;
-        }
-    }
-    if var_list_hit(&side.vars, vars) {
-        return true;
-    }
-    keyword_hit(content, &side.keywords)
-}
-
-fn side_denies(
-    side: &ListSide,
-    content: &str,
-    user_id: Option<&str>,
-    device_id: Option<&str>,
-    client_ip: Option<&str>,
-    vars: &HashMap<String, String>,
-) -> Option<ListHit> {
-    if let Some(uid) = user_id {
-        if side.user_ids.iter().any(|v| v == uid) {
-            return Some(hit("GW_SUBJECT_USER_DENY", "gw_subject_network_deny"));
-        }
-    }
-    if let Some(did) = device_id {
-        if side.device_ids.iter().any(|v| v == did) {
-            return Some(hit("GW_SUBJECT_DEVICE_DENY", "gw_subject_network_deny"));
-        }
-    }
-    if let Some(ip) = client_ip {
-        if ip_in_any(ip, &side.ip_cidrs) {
-            return Some(hit("GW_NETWORK_IP_DENY", "gw_subject_network_deny"));
-        }
-    }
-    if var_list_hit(&side.vars, vars) {
-        return Some(hit("GW_CONTEXT_VAR_DENY", "gw_request_param_deny"));
-    }
-    if keyword_hit(content, &side.keywords) {
-        return Some(hit("GW_CONTENT_KEYWORD_DENY", "gw_content_deny"));
-    }
-    None
-}
-
-fn var_list_hit(entries: &[String], vars: &HashMap<String, String>) -> bool {
-    entries.iter().any(|entry| {
-        let Some((logical, want)) = split_var_entry(entry) else {
-            return false;
-        };
-        vars.get(logical).map(|v| v == want).unwrap_or(false)
-    })
-}
-
-fn split_var_entry(entry: &str) -> Option<(&str, &str)> {
-    let eq = entry.find('=')?;
-    if eq == 0 || eq >= entry.len() - 1 {
-        return None;
-    }
-    Some((&entry[..eq], &entry[eq + 1..]))
-}
-
-fn hit(reason_code: &str, rule_id: &str) -> ListHit {
-    ListHit {
-        effective_action: "block".into(),
-        would_block: true,
-        reason_code: reason_code.into(),
-        rule_id: rule_id.into(),
-    }
-}
-
-fn keyword_hit(content: &str, keywords: &[String]) -> bool {
-    if content.is_empty() {
-        return false;
-    }
-    let lower = content.to_ascii_lowercase();
-    keywords.iter().any(|kw| {
-        if kw.is_empty() {
-            return false;
-        }
-        if kw.chars().any(|c| c > '\u{007f}') {
-            content.contains(kw.as_str())
-        } else {
-            lower.contains(&kw.to_ascii_lowercase())
-        }
-    })
-}
-
-fn ip_in_any(ip: &str, cidrs: &[String]) -> bool {
-    let addr: Ipv4Addr = match ip.parse() {
-        Ok(a) => a,
-        Err(_) => return false,
-    };
-    let ip_u = u32::from(addr);
-    for cidr in cidrs {
-        if let Some((net, prefix)) = parse_v4_cidr(cidr) {
-            let mask = if prefix == 0 {
-                0
-            } else {
-                !0u32 << (32 - prefix)
-            };
-            if (ip_u & mask) == (net & mask) {
-                return true;
-            }
-        } else if cidr == ip {
-            return true;
-        }
-    }
-    false
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -361,11 +237,6 @@ mod tests {
         let headers = HashMap::new();
         let vars = effective_vars_map(Some(&provided), &bindings, None, None, None, &query, &headers);
         assert_eq!(vars.get("app_id").map(String::as_str), Some("evil"));
-        let deny = ListSide {
-            vars: vec!["app_id=evil".into()],
-            ..Default::default()
-        };
-        assert!(var_list_hit(&deny.vars, &vars));
     }
 
     #[test]
@@ -387,17 +258,4 @@ mod tests {
         let vars = effective_vars_map(Some(&provided), &bindings, None, None, None, &query, &headers);
         assert_eq!(vars.get("debug_flag").map(String::as_str), Some("1"));
     }
-}
-
-fn parse_v4_cidr(cidr: &str) -> Option<(u32, u32)> {
-    let parts: Vec<&str> = cidr.split('/').collect();
-    if parts.len() != 2 {
-        return None;
-    }
-    let addr: Ipv4Addr = parts[0].parse().ok()?;
-    let prefix: u32 = parts[1].parse().ok()?;
-    if prefix > 32 {
-        return None;
-    }
-    Some((u32::from(addr), prefix))
 }

@@ -28,7 +28,7 @@ local schema = {
 }
 
 local _M = {
-    version = 0.5,
+    version = 0.8,
     priority = 7999,
     name = plugin_name,
     schema = schema,
@@ -221,48 +221,263 @@ local function var_list_hit(vars_map, entries)
     return false
 end
 
-local function side_allows(side, content, user_id, device_id, client_ip, vars_map)
-    if not side then
+local function entry_active(expires_at)
+    if not expires_at or expires_at == "" then
+        return true
+    end
+    local now = ngx.time()
+    local y, m, d, hh, mm, ss = expires_at:match("^(%d+)%-(%d+)%-(%d+)T(%d+):(%d+):(%d+)")
+    if not y then
+        return true
+    end
+    local exp = os.time({
+        year = tonumber(y),
+        month = tonumber(m),
+        day = tonumber(d),
+        hour = tonumber(hh),
+        min = tonumber(mm),
+        sec = tonumber(ss),
+    })
+    return exp > now
+end
+
+local function active_values(entries)
+    local out = {}
+    if not entries then
+        return out
+    end
+    for _, e in ipairs(entries) do
+        local val = e
+        local exp = nil
+        if type(e) == "table" then
+            val = e.value
+            exp = e.expires_at
+        end
+        if val and val ~= "" and entry_active(exp) then
+            out[#out + 1] = val
+        end
+    end
+    return out
+end
+
+local function match_list_block(block, content, user_id, device_id, client_ip, vars_map)
+    local dim = block.dimension or ""
+    local values = active_values(block.entries)
+    if #values == 0 then
         return false
     end
-    if in_set(user_id, side.user_ids) then
-        return true
+    if dim == "keyword" then
+        return keyword_hit(content, values)
     end
-    if in_set(device_id, side.device_ids) then
-        return true
+    if dim == "user_id" then
+        return in_set(user_id, values)
     end
-    if ip_in_any(client_ip, side.ip_cidrs) then
-        return true
+    if dim == "device_id" then
+        return in_set(device_id, values)
     end
-    if var_list_hit(vars_map, side.vars) then
-        return true
+    if dim == "ip_cidr" or dim == "ip" then
+        return ip_in_any(client_ip, values)
     end
-    if keyword_hit(content, side.keywords) then
-        return true
+    if dim == "var" then
+        return var_list_hit(vars_map, values)
     end
     return false
 end
 
-local function side_denies(side, content, user_id, device_id, client_ip, vars_map)
-    if not side then
-        return nil
+local function in_canary_bucket(session_id, percent)
+    if not percent then
+        return false
     end
-    if in_set(user_id, side.user_ids) then
-        return "GW_SUBJECT_USER_DENY", "gw_subject_network_deny"
+    if percent >= 100 then
+        return true
     end
-    if in_set(device_id, side.device_ids) then
-        return "GW_SUBJECT_DEVICE_DENY", "gw_subject_network_deny"
+    if percent <= 0 then
+        return false
     end
-    if ip_in_any(client_ip, side.ip_cidrs) then
-        return "GW_NETWORK_IP_DENY", "gw_subject_network_deny"
+    local key = session_id
+    if not key or key == "" then
+        key = "default"
     end
-    if var_list_hit(vars_map, side.vars) then
-        return "GW_CONTEXT_VAR_DENY", "gw_request_param_deny"
+    local bucket = ngx.crc32_long(key) % 100
+    return bucket < percent
+end
+
+local function normalize_mode(mode)
+    if not mode or mode == "" then
+        return "dry_run"
     end
-    if keyword_hit(content, side.keywords) then
-        return "GW_CONTENT_KEYWORD_DENY", "gw_content_deny"
+    return string.lower(mode)
+end
+
+local function intent_priority(intent)
+    if not intent or intent == "" then
+        return 0
     end
-    return nil
+    intent = string.lower(intent)
+    if intent == "deny" then
+        return 100
+    elseif intent == "captcha" then
+        return 50
+    elseif intent == "review" then
+        return 30
+    end
+    return 0
+end
+
+local function is_allow_intent(intent)
+    if not intent or intent == "" then
+        return false
+    end
+    return string.lower(intent) == "allow"
+end
+
+local function normalize_intent(intent, risk_score)
+    if intent and intent ~= "" then
+        intent = string.lower(intent)
+        if intent == "allow" or intent == "deny" or intent == "captcha"
+            or intent == "review" then
+            return intent
+        end
+    end
+    risk_score = risk_score or 0
+    if risk_score >= 100 then
+        return "deny"
+    elseif risk_score <= 0 then
+        return "allow"
+    end
+    return "review"
+end
+
+local function is_full(mode)
+    return normalize_mode(mode) == "full"
+end
+
+local function is_canary_effective(hit, session_id)
+    if normalize_mode(hit.enforce_mode) ~= "canary" then
+        return false
+    end
+    return in_canary_bucket(session_id, hit.canary_percent)
+end
+
+local function effective_enforce(hits, session_id)
+    for _, h in ipairs(hits) do
+        if is_full(h.enforce_mode) then
+            return true
+        end
+    end
+    for _, h in ipairs(hits) do
+        if is_canary_effective(h, session_id) then
+            return true
+        end
+    end
+    return false
+end
+
+local function pick_primary(hits)
+    local primary = hits[1]
+    for _, h in ipairs(hits) do
+        if (h.risk_score or 0) > (primary.risk_score or 0) then
+            primary = h
+        elseif (h.risk_score or 0) == (primary.risk_score or 0)
+            and (h.rule_revision or 1) > (primary.rule_revision or 1) then
+            primary = h
+        elseif (h.risk_score or 0) == (primary.risk_score or 0)
+            and (h.rule_revision or 1) == (primary.rule_revision or 1)
+            and (h.rule_id or "") > (primary.rule_id or "") then
+            primary = h
+        end
+    end
+    return primary
+end
+
+local function merge_actions(hits, session_id)
+    if not hits or #hits == 0 then
+        return { effective_action = "allow", max_risk_score = 0, primary = nil }
+    end
+    for _, h in ipairs(hits) do
+        if is_allow_intent(h.intent_action) then
+            return { effective_action = "allow", max_risk_score = 0, primary = nil }
+        end
+    end
+    local max_priority = 0
+    for _, h in ipairs(hits) do
+        local p = intent_priority(h.intent_action)
+        if p > max_priority then
+            max_priority = p
+        end
+    end
+    if max_priority <= 0 then
+        return { effective_action = "allow", max_risk_score = 0, primary = nil }
+    end
+    local top = {}
+    for _, h in ipairs(hits) do
+        if intent_priority(h.intent_action) == max_priority then
+            top[#top + 1] = h
+        end
+    end
+    local max_risk_score = 0
+    for _, h in ipairs(top) do
+        if (h.risk_score or 0) > max_risk_score then
+            max_risk_score = h.risk_score or 0
+        end
+    end
+    local primary = pick_primary(top)
+    local intent = normalize_intent(primary.intent_action, primary.risk_score)
+    local effective = effective_enforce(top, session_id)
+    local effective_action = "allow"
+    if intent == "deny" then
+        effective_action = effective and "block" or "review"
+    elseif intent == "captcha" then
+        effective_action = effective and "captcha" or "review"
+    elseif intent == "review" then
+        effective_action = "review"
+    end
+    return { effective_action = effective_action, max_risk_score = max_risk_score, primary = primary }
+end
+
+local function hits_to_prior_signals(hits)
+    local out = {}
+    for _, h in ipairs(hits) do
+        if not is_allow_intent(h.intent_action) then
+            out[#out + 1] = {
+                rule_id = h.rule_id,
+                rule_revision = h.rule_revision or 1,
+                source = "gateway",
+                layer = "gateway",
+                score = h.risk_score,
+                intent_action = h.intent_action or normalize_intent(nil, h.risk_score),
+                reason_code = h.reason_code,
+                enforce_mode = h.enforce_mode or "dry_run",
+                canary_percent = h.canary_percent,
+            }
+        end
+    end
+    return out
+end
+
+local function collect_named_list_hits(lists, content, user_id, device_id, client_ip, vars_map)
+    if not lists then
+        return {}
+    end
+    local hits = {}
+    for _, block in ipairs(lists) do
+        if match_list_block(block, content, user_id, device_id, client_ip, vars_map) then
+            local score = block.risk_score or 100
+            if score <= 0 then
+                return {}
+            end
+            hits[#hits + 1] = {
+                rule_id = block.rule_id or block.list_name or "list_match",
+                rule_revision = block.rule_revision or 1,
+                reason_code = block.reason_code or "LIST_MATCH",
+                risk_score = score,
+                intent_action = block.intent_action or normalize_intent(nil, score),
+                enforce_mode = block.enforce_mode or "dry_run",
+                canary_percent = block.canary_percent,
+            }
+        end
+    end
+    return hits
 end
 
 local function check_access_lists(conf, ctx, content, user_id, device_id, client_ip)
@@ -272,14 +487,11 @@ local function check_access_lists(conf, ctx, content, user_id, device_id, client
     end
     local bindings = lists.context_bindings or {}
     local vars_ctx = resolve_context_vars(ctx, bindings, user_id, device_id, client_ip)
-    if side_allows(lists.allow, content, user_id, device_id, client_ip, vars_ctx) then
+    local hits = collect_named_list_hits(lists.lists, content, user_id, device_id, client_ip, vars_ctx)
+    if #hits == 0 then
         return nil, vars_ctx
     end
-    local reason, rule_id = side_denies(lists.deny, content, user_id, device_id, client_ip, vars_ctx)
-    if reason then
-        return { reason, rule_id }, vars_ctx
-    end
-    return nil, vars_ctx
+    return hits, vars_ctx
 end
 
 function _M.access(conf, ctx)
@@ -303,18 +515,39 @@ function _M.access(conf, ctx)
 
     local user_id = core.request.header(ctx, "X-Virbius-User-Id")
     local device_id = core.request.header(ctx, "X-Virbius-Device-Id")
+    local session_id = core.request.header(ctx, "X-Virbius-Session-Id")
     local client_ip = ngx.var.remote_addr
     local content = read_body()
 
-    local block, vars_ctx = check_access_lists(conf, ctx, content, user_id, device_id, client_ip)
-    if block then
-        return core.response.exit(403, {
-            code = "POLICY_BLOCK",
-            message = "blocked by gateway access list",
-            trace_id = trace_id,
-            reason_code = block[1],
-            rule_id = block[2],
-        })
+    local hits, vars_ctx = check_access_lists(conf, ctx, content, user_id, device_id, client_ip)
+    local prior_signals = nil
+    if hits and #hits > 0 then
+        local merged = merge_actions(hits, session_id)
+        if merged.effective_action == "block" and merged.primary then
+            return core.response.exit(403, {
+                code = "POLICY_BLOCK",
+                message = "blocked by gateway access list",
+                trace_id = trace_id,
+                reason_code = merged.primary.reason_code,
+                rule_id = merged.primary.rule_id,
+                effective_action = "block",
+                max_risk_score = merged.max_risk_score,
+            })
+        end
+        if merged.effective_action == "captcha" and merged.primary then
+            return core.response.exit(428, {
+                code = "POLICY_CAPTCHA",
+                message = "captcha required by gateway access list",
+                trace_id = trace_id,
+                reason_code = merged.primary.reason_code,
+                rule_id = merged.primary.rule_id,
+                effective_action = "captcha",
+                max_risk_score = merged.max_risk_score,
+            })
+        end
+        if merged.effective_action == "review" then
+            prior_signals = hits_to_prior_signals(hits)
+        end
     end
 
     if content == "" then
@@ -330,10 +563,12 @@ function _M.access(conf, ctx)
         role = "user",
         content = content,
         trace_id = trace_id,
+        session_id = session_id,
         user_id = user_id,
         device_id = device_id,
         client_ip = client_ip,
         vars = vars_ctx,
+        prior_signals = prior_signals,
     })
     local res, err = httpc:request_uri(conf.agent_url .. "/v1/evaluate", {
         method = "POST",
@@ -365,6 +600,20 @@ function _M.access(conf, ctx)
             message = "blocked by virbius policy",
             trace_id = trace_id,
             reason_code = out.reason_code,
+            rule_id = out.rule_id,
+            effective_action = "block",
+            max_risk_score = out.max_risk_score,
+        })
+    end
+    if out and out.effective_action == "captcha" then
+        return core.response.exit(428, {
+            code = "POLICY_CAPTCHA",
+            message = "captcha required by virbius policy",
+            trace_id = trace_id,
+            reason_code = out.reason_code,
+            rule_id = out.rule_id,
+            effective_action = "captcha",
+            max_risk_score = out.max_risk_score,
         })
     end
 

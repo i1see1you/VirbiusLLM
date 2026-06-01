@@ -53,7 +53,7 @@ public class AuditWriter {
             node.put("rule_revision", ruleRevision);
             node.put("reason_code", reasonCode != null ? reasonCode : "");
             node.put("effective_action", decision.effectiveAction());
-            node.put("would_block", decision.wouldBlock());
+            node.put("max_risk_score", decision.maxRiskScore());
             node.put("intercepted_at", Instant.now().toString());
             if (req.userId() != null && !req.userId().isBlank()) {
                 node.put("user_id", req.userId());

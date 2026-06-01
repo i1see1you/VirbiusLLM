@@ -21,8 +21,8 @@ public class AccessListBootstrap {
     @EventListener(ApplicationReadyEvent.class)
     public void syncDefaultArtifacts() {
         try {
-            accessListService.syncRules("default");
-            log.info("access lists synced for tenant=default (gateway/edge artifacts written)");
+            accessListService.refreshArtifacts("default");
+            log.info("access lists refreshed for tenant=default (gateway/edge artifacts written)");
         } catch (Exception e) {
             log.warn("access list bootstrap skipped: {}", e.getMessage());
         }

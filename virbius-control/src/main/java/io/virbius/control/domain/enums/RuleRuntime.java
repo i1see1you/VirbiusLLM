@@ -3,9 +3,10 @@ package io.virbius.control.domain.enums;
 public enum RuleRuntime {
     LUA_DSL("lua-dsl"),
     LUA("lua"),
-    NATIVE("native"),
     PROMPT("prompt"),
-    GROOVY("groovy");
+    GROOVY("groovy"),
+    LIST_MATCH("list_match"),
+    CUMULATIVE("cumulative");
 
     private final String value;
 

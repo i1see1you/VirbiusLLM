@@ -14,7 +14,7 @@
     "rule_revision",
     "reason_code",
     "effective_action",
-    "would_block",
+    "max_risk_score",
     "intercepted_at"
   ],
   "properties": {
@@ -50,10 +50,12 @@
     },
     "effective_action": {
       "type": "string",
-      "enum": ["allow", "block", "review", "rewrite", "safe_reply", "log"]
+      "enum": ["allow", "block", "captcha", "review"]
     },
-    "would_block": {
-      "type": "boolean"
+    "max_risk_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
     },
     "intercepted_at": {
       "type": "string",

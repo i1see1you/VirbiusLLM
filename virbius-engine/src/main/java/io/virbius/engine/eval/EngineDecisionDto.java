@@ -1,7 +1,3 @@
 package io.virbius.engine.eval;
 
-public record EngineDecisionDto(
-        String effectiveAction,
-        boolean wouldBlock,
-        String safeReplyId,
-        String enforceMode) {}
+public record EngineDecisionDto(String effectiveAction, int maxRiskScore, String enforceMode) {}

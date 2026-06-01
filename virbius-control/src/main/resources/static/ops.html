@@ -28,6 +28,7 @@
     .tag.deny { background: #fee2e2; color: #991b1b; }
     .tag.allow { background: #dcfce7; color: #166534; }
     .tag.disabled { background: #fef3c7; color: #92400e; }
+    .tag.draft { background: #e0e7ff; color: #3730a3; }
     #log { font-size: 0.8rem; background: #0f172a; color: #e2e8f0; padding: 0.75rem; border-radius: 6px; white-space: pre-wrap; min-height: 4rem; max-height: 200px; overflow: auto; }
     .panel { display: none; }
     .panel.active { display: block; }
@@ -38,7 +39,7 @@
 </head>
 <body>
   <h1>Virbius 运营台</h1>
-  <p class="sub">统一维护：名单 · 上下文映射 · 规则 · 发布（API：<code>/api/v1/admin</code>）</p>
+  <p class="sub">统一维护：名单 · 累计 · 上下文映射 · 规则 · 发布（API：<code>/api/v1/admin</code>）</p>
 
   <div class="card">
     <div class="toolbar">
@@ -46,11 +47,12 @@
       <label>Bundle <input id="bundleId" value="poc-default" size="12" /></label>
       <label>版本 <input id="bundleVer" value="0.1.0" size="6" /></label>
       <button type="button" id="btnReload">刷新全部</button>
-      <button type="button" class="secondary" id="btnSyncAll">同步名单→规则→网关产物</button>
+      <button type="button" class="secondary" id="btnSyncAll">刷新网关产物</button>
       <button type="button" class="secondary" id="btnPublish">发布 Engine</button>
     </div>
     <div class="toolbar">
       <button type="button" class="tab active" data-tab="lists">名单</button>
+      <button type="button" class="tab" data-tab="cumulatives">累计</button>
       <button type="button" class="tab" data-tab="bindings">请求映射</button>
       <button type="button" class="tab" data-tab="rules">规则</button>
       <button type="button" class="tab" data-tab="publish">发布状态</button>
@@ -58,27 +60,102 @@
   </div>
 
   <div id="panel-lists" class="panel active card">
-    <h2 style="margin:0 0 0.5rem;font-size:1rem">多维名单</h2>
-    <p class="hint">逻辑变量名单格式 <code>logical_name=value</code>（如 <code>app_id=beta</code>）；须先在「上下文映射」声明逻辑名。</p>
+    <h2 style="margin:0 0 0.5rem;font-size:1rem">命名名单</h2>
+    <p class="hint">黑/白名单由关联 <code>list_match</code> 规则的 <code>intent_action</code> 决定（<code>allow</code> 放行，<code>deny</code> 拦截）；<code>risk_score</code> 用于合并优先级。var 维度条目格式 <code>logical=value</code>。</p>
     <div class="row">
-      <select id="listDim">
+      <input id="newListName" placeholder="list_name" size="14" />
+      <select id="newListDim">
         <option value="keyword">keyword</option>
         <option value="user_id">user_id</option>
         <option value="device_id">device_id</option>
         <option value="ip_cidr">ip_cidr</option>
-        <option value="var">var（逻辑变量）</option>
+        <option value="var">var</option>
       </select>
-      <select id="listPol">
-        <option value="deny">deny</option>
-        <option value="allow">allow</option>
-      </select>
-      <input id="listVal" placeholder="app_id=beta" style="min-width:14rem" />
-      <button type="button" id="btnListAdd">添加</button>
+      <input id="newListRemark" placeholder="名单备注" style="min-width:10rem" />
+      <button type="button" id="btnListCreate">新建名单</button>
+    </div>
+    <div class="row">
+      <select id="entryListName" style="min-width:12rem"><option value="">选择名单</option></select>
+      <input id="entryVal" placeholder="值" style="min-width:10rem" />
+      <input id="entryExpires" placeholder="过期(ISO，可空)" style="min-width:14rem" />
+      <input id="entryRemark" placeholder="明细备注" style="min-width:8rem" />
+      <button type="button" id="btnListAdd">添加明细</button>
     </div>
     <table id="listsTable">
-      <thead><tr><th>维度</th><th>极性</th><th>值</th><th></th></tr></thead>
+      <thead><tr><th>名单</th><th>维度</th><th>值</th><th>创建</th><th>过期</th><th>备注</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
+  </div>
+
+  <div id="panel-cumulatives" class="panel card">
+    <h2 style="margin:0 0 0.5rem;font-size:1rem">累计定义（tb_cumulative）</h2>
+    <p class="hint">定义窗口、阈值与默认计数维度；保存后会刷新网关产物。须在「规则」中创建 <code>runtime=cumulative</code> 并引用 <code>cumulative_name</code> 才会生效。</p>
+    <div class="row">
+      <button type="button" id="btnCumNew">新建累计</button>
+      <button type="button" class="secondary" id="btnCumRefresh">刷新列表</button>
+    </div>
+    <table id="cumTable">
+      <thead><tr><th>名称</th><th>维度</th><th>窗口</th><th>阈值</th><th>超限 reason</th><th>状态</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="cumEditor" style="display:none;margin-top:1rem;border-top:1px solid #e2e8f0;padding-top:1rem">
+      <h3 style="font-size:0.95rem;margin:0 0 0.5rem"><span id="cumEditTitle">编辑</span> <code id="cumEditName"></code></h3>
+      <div class="grid2">
+        <div>
+          <div class="row" id="cumNameRow">
+            <label>cumulative_name <input id="cumName" placeholder="user_req_1h" style="min-width:12rem" /></label>
+          </div>
+          <div class="row">
+            <label>说明 <input id="cumDesc" style="min-width:14rem" /></label>
+          </div>
+          <div class="row">
+            <label>dimension
+              <select id="cumDim">
+                <option value="user_id">user_id</option>
+                <option value="keyword">keyword</option>
+                <option value="device_id">device_id</option>
+                <option value="ip">ip</option>
+                <option value="app_id">app_id</option>
+              </select>
+            </label>
+            <label>status
+              <select id="cumStatus"><option value="active">active</option><option value="disabled">disabled</option></select>
+            </label>
+            <label>priority <input id="cumPriority" type="number" value="10" style="width:4rem" /></label>
+          </div>
+        </div>
+        <div>
+          <div class="row">
+            <label>window_kind
+              <select id="cumWinKind"><option value="rolling">rolling</option><option value="calendar_day">calendar_day</option></select>
+            </label>
+            <label id="cumMinWrap">分钟 <input id="cumWinMin" type="number" min="1" value="60" style="width:5rem" /></label>
+            <label id="cumHrWrap" style="display:none">小时 <input id="cumWinHr" type="number" min="1" style="width:4rem" /></label>
+            <label id="cumTzWrap" style="display:none">时区 <input id="cumTz" placeholder="Asia/Shanghai" style="width:10rem" /></label>
+          </div>
+          <div class="row">
+            <label>threshold <input id="cumThreshold" type="number" min="1" value="120" style="width:5rem" /></label>
+            <label>compare <select id="cumCompare"><option value="gte">gte</option></select></label>
+            <label>超限 suggest
+              <select id="cumSuggest">
+                <option value="block">block</option>
+                <option value="captcha">captcha</option>
+                <option value="review">review</option>
+              </select>
+            </label>
+            <label>risk <input id="cumRisk" type="number" min="0" max="100" value="100" style="width:3rem" /></label>
+          </div>
+          <div class="row">
+            <label>on_exceed_reason <input id="cumReason" placeholder="GW_USER_RATE_1H" style="min-width:14rem" /></label>
+          </div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:0.5rem">
+        <button type="button" id="btnCumSave">保存定义</button>
+        <button type="button" class="danger" id="btnCumDelete">删除</button>
+        <button type="button" class="secondary" id="btnCumToRule">创建 gateway 规则</button>
+      </div>
+    </div>
   </div>
 
   <div id="panel-bindings" class="panel card">
@@ -99,7 +176,7 @@
 
   <div id="panel-rules" class="panel card">
     <h2 style="margin:0 0 0.5rem;font-size:1rem">规则（Registry）</h2>
-    <p class="hint">名单类规则由「名单」Tab 同步生成；此处可<strong>新建</strong>或编辑 Prompt / Groovy / 自定义 body。保存会写入新 revision。</p>
+    <p class="hint">新建规则默认为 <code>draft</code>（不进执行面）；<code>启用（上线）</code> 后变为 <code>active</code> 并参与匹配。停用后恢复为 <code>draft</code> 可再编辑。</p>
     <div class="row">
       <button type="button" class="tab layer active" data-layer="cloud">云 cloud</button>
       <button type="button" class="tab layer" data-layer="gateway">管 gateway</button>
@@ -107,7 +184,7 @@
       <button type="button" id="btnNewRule">新建规则</button>
     </div>
     <table id="rulesTable">
-      <thead><tr><th>rule_id</th><th>runtime</th><th>status</th><th>rev</th><th>risk</th><th>enforce</th><th>reason</th></tr></thead>
+      <thead><tr><th>rule_id</th><th>runtime</th><th>status</th><th>rev</th><th>risk</th><th>intent</th><th>enforce</th><th>reason</th></tr></thead>
       <tbody></tbody>
     </table>
     <div id="ruleEditor" style="display:none;margin-top:1rem">
@@ -121,18 +198,35 @@
       <div class="row">
         <label>reason <input id="fReason" /></label>
         <label>risk <input id="fRisk" type="number" min="0" max="100" style="width:4rem" /></label>
+        <label>intent
+          <select id="fIntent">
+            <option value="deny">deny</option>
+            <option value="allow">allow</option>
+            <option value="captcha">captcha</option>
+            <option value="review">review</option>
+          </select>
+        </label>
         <label id="enforceWrap">enforce
           <select id="fEnforce"><option>dry_run</option><option>canary</option><option>full</option></select>
         </label>
         <label id="canaryWrap">canary% <input id="fCanary" type="number" min="0" max="100" value="5" style="width:3rem" /></label>
       </div>
+      <div class="row" id="listMatchRow" style="display:none">
+        <label>list_name <select id="fListName"></select></label>
+      </div>
+      <p id="groovyHint" class="hint" style="display:none;margin:0 0 0.5rem">
+        Groovy L3 脚本返回 <code>[action: '…']</code>，取值 <code>allow</code> / <code>block</code> / <code>captcha</code> / <code>review</code>。
+        <code>dry_run</code> 或 canary 未进桶时命中应返回 <code>review</code>；<code>full</code> 命中返回 <code>block</code>（或 <code>captcha</code>）。
+        引擎按规则 <code>enforce_mode</code> / <code>canary_percent</code> 解析为对外 <code>effective_action</code>。
+      </p>
       <textarea id="fBody"></textarea>
       <div class="row">
         <button type="button" id="btnSaveRule">保存规则（新 revision）</button>
+        <button type="button" class="secondary" id="btnActivateRule" style="display:none">启用（上线）</button>
         <button type="button" class="secondary" id="btnSaveRuntime">仅更新 enforce</button>
         <button type="button" class="secondary" id="btnSnapshot">Engine 运行时快照</button>
         <button type="button" class="danger" id="btnDisableRule">停用规则</button>
-        <button type="button" class="secondary" id="btnEnableRule" style="display:none">启用规则</button>
+        <button type="button" class="secondary" id="btnEnableRule" style="display:none">恢复为草稿</button>
       </div>
     </div>
   </div>
@@ -151,52 +245,104 @@
     let isNewRule = false;
     let editRuleMeta = null;
     let contextVars = [];
+    let selectedCumulativeName = null;
+    let isNewCumulative = false;
+    let cumulativeRows = [];
 
     const LAYER_RUNTIMES = {
-      cloud: ['native', 'prompt', 'groovy'],
-      gateway: ['lua'],
+      cloud: ['prompt', 'groovy', 'list_match', 'cumulative'],
+      gateway: ['lua', 'list_match', 'cumulative'],
       edge: ['lua-dsl']
     };
 
+    function field(obj, ...keys) {
+      if (!obj) return undefined;
+      for (const k of keys) {
+        if (obj[k] !== undefined && obj[k] !== null) return obj[k];
+      }
+      return undefined;
+    }
+
     function defaultRuleBody(layer, runtime) {
       if (runtime === 'groovy') {
-        return "def decide(ctx) {\n  if (ctx.var('debug_flag') == '1') {\n    return [action: 'block', would_block: false]\n  }\n  return [action: 'allow', would_block: false]\n}";
+        return `def decide(ctx) {
+  if (ctx.var('debug_flag') == '1') {
+    return [action: 'block']
+  }
+  def ruleId = ctx.currentRuleId()
+  def mode = ctx.enforceMode(ruleId)
+  if (!ctx.wouldHitBlock()) {
+    return [action: 'allow']
+  }
+  if (mode == 'dry_run') {
+    return [action: 'review']
+  }
+  if (mode == 'canary' && !ctx.inCanaryBucket(ctx.sessionId(), ctx.canaryPercent(ruleId))) {
+    return [action: 'review']
+  }
+  return [action: 'block']
+}`;
       }
       if (runtime === 'prompt') {
         return 'Classify user input. Block jailbreak/DAN/injection.';
       }
-      if (runtime === 'native') {
-        return JSON.stringify({ list_type: 'deny', vars: [] }, null, 2);
+      if (runtime === 'list_match') {
+        const name = document.getElementById('fListName').value || 'deny_keyword';
+        return JSON.stringify({ list_name: name }, null, 2);
+      }
+      if (runtime === 'cumulative') {
+        const name = selectedCumulativeName || 'user_req_1h';
+        return JSON.stringify({ cumulative_name: name }, null, 2);
       }
       return JSON.stringify({ list_type: 'deny', keywords: [] }, null, 2);
     }
 
     function fillRuntimeSelect(layer, selected) {
       const sel = document.getElementById('fRuntime');
-      const runtimes = LAYER_RUNTIMES[layer] || ['native'];
+      const runtimes = LAYER_RUNTIMES[layer] || ['list_match'];
       sel.innerHTML = runtimes.map(r => `<option value="${r}">${r}</option>`).join('');
       if (selected && runtimes.includes(selected)) sel.value = selected;
     }
 
+    function ruleStatusTag(st) {
+      const s = st || 'draft';
+      const cls = s === 'disabled' ? 'disabled' : (s === 'draft' ? 'draft' : '');
+      return `<span class="tag ${cls}">${esc(s)}</span>`;
+    }
+
     function setRuleEditorReadOnly(disabled) {
       const ro = !!disabled;
-      ['fReason', 'fRisk', 'fEnforce', 'fCanary', 'fBody', 'fRuleId', 'fRuntime'].forEach(id => {
+      ['fReason', 'fRisk', 'fIntent', 'fEnforce', 'fCanary', 'fBody', 'fRuleId', 'fRuntime'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.disabled = ro;
       });
-      document.getElementById('btnSaveRule').style.display = ro ? 'none' : '';
-      document.getElementById('btnSaveRuntime').style.display = ro || isNewRule ? 'none' : (editRuleMeta && editRuleMeta.layer === 'cloud' ? '' : 'none');
-      document.getElementById('btnSnapshot').style.display = ro || isNewRule ? 'none' : (editRuleMeta && editRuleMeta.layer === 'cloud' ? '' : 'none');
-      document.getElementById('btnDisableRule').style.display = ro || isNewRule ? 'none' : '';
-      document.getElementById('btnEnableRule').style.display = ro && !isNewRule ? '' : 'none';
+    }
+
+    function setRuleEditorStatusUi(status) {
+      const st = status || 'draft';
+      const isDisabled = st === 'disabled';
+      const isDraft = st === 'draft';
+      const isActive = st === 'active';
+      setRuleEditorReadOnly(isDisabled);
+      document.getElementById('btnSaveRule').style.display = (isDisabled || isNewRule) ? 'none' : '';
+      document.getElementById('btnActivateRule').style.display = (!isNewRule && isDraft) ? '' : 'none';
+      document.getElementById('btnDisableRule').style.display = (!isNewRule && !isDisabled) ? '' : 'none';
+      document.getElementById('btnEnableRule').style.display = (!isNewRule && isDisabled) ? '' : 'none';
+      setRuleEditorEnforceUi(isActive);
+    }
+
+    function setRuleEditorEnforceUi(isActive) {
+      const showRuntime = !isNewRule && selectedRuleId && isActive;
+      document.getElementById('enforceWrap').style.display = showRuntime ? '' : 'none';
+      document.getElementById('canaryWrap').style.display = showRuntime ? '' : 'none';
+      document.getElementById('btnSaveRuntime').style.display = showRuntime ? '' : 'none';
+      document.getElementById('btnSnapshot').style.display =
+        showRuntime && editRuleMeta && editRuleMeta.layer === 'cloud' ? '' : 'none';
     }
 
     function setRuleEditorCloudOnly(layer) {
-      const cloudOnly = layer === 'cloud';
-      document.getElementById('enforceWrap').style.display = cloudOnly ? '' : 'none';
-      document.getElementById('canaryWrap').style.display = cloudOnly ? '' : 'none';
-      document.getElementById('btnSaveRuntime').style.display = cloudOnly && !isNewRule ? '' : 'none';
-      document.getElementById('btnSnapshot').style.display = cloudOnly && !isNewRule ? '' : 'none';
+      const st = editRuleMeta && editRuleMeta.rule_status;
+      setRuleEditorEnforceUi(st === 'active');
     }
 
     function openNewRuleEditor() {
@@ -211,15 +357,19 @@
       fillRuntimeSelect(currentLayer, LAYER_RUNTIMES[currentLayer][0]);
       document.getElementById('fReason').value = 'CUSTOM_RULE';
       document.getElementById('fRisk').value = 100;
+      document.getElementById('fIntent').value = 'deny';
       document.getElementById('fEnforce').value = 'dry_run';
-      document.getElementById('fCanary').value = 5;
+      document.getElementById('fCanary').value = '';
       const rt = document.getElementById('fRuntime').value;
       document.getElementById('fBody').value = defaultRuleBody(currentLayer, rt);
       setRuleEditorCloudOnly(currentLayer);
-      setRuleEditorReadOnly(false);
+      setRuleEditorStatusUi('draft');
       document.getElementById('fRuntime').onchange = () => {
-        document.getElementById('fBody').value = defaultRuleBody(currentLayer, document.getElementById('fRuntime').value);
+        const rt = document.getElementById('fRuntime').value;
+        document.getElementById('fBody').value = defaultRuleBody(currentLayer, rt);
+        syncListMatchUi(rt);
       };
+      syncListMatchUi(document.getElementById('fRuntime').value);
     }
 
     function tenant() { return document.getElementById('tenantId').value.trim() || 'default'; }
@@ -240,35 +390,214 @@
       var: '逻辑变量'
     };
 
-    function flattenLists(lists) {
-      const rows = [];
-      if (!lists) return rows;
-      for (const [key, values] of Object.entries(lists)) {
-        const [pol, dim] = key.split('.');
-        (values || []).forEach(v => rows.push({ dim, pol, value: v }));
+    let listCatalog = [];
+
+    function syncListMatchUi(runtime) {
+      const show = runtime === 'list_match';
+      document.getElementById('listMatchRow').style.display = show ? '' : 'none';
+      document.getElementById('groovyHint').style.display = runtime === 'groovy' ? '' : 'none';
+      if (show) fillListNameSelect(document.getElementById('fListName').value);
+    }
+
+    function syncIntentFromRisk() {
+      const risk = Number(document.getElementById('fRisk').value);
+      const runtime = isNewRule
+        ? document.getElementById('fRuntime').value
+        : (editRuleMeta && editRuleMeta.runtime);
+      if (runtime !== 'list_match' && runtime !== 'cumulative') return;
+      if (risk <= 0) {
+        document.getElementById('fIntent').value = 'allow';
+      } else if (runtime === 'cumulative' && risk < 100) {
+        document.getElementById('fIntent').value = 'captcha';
+      } else if (risk >= 100) {
+        const cur = document.getElementById('fIntent').value;
+        if (cur === 'allow') document.getElementById('fIntent').value = 'deny';
       }
-      return rows.sort((a, b) => (a.dim + a.pol).localeCompare(b.dim + b.pol));
+    }
+
+    function fillListNameSelect(selected) {
+      const sel = document.getElementById('fListName');
+      sel.innerHTML = listCatalog.map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`).join('');
+      if (selected && listCatalog.includes(selected)) sel.value = selected;
+      sel.onchange = () => {
+        if (document.getElementById('fRuntime').value === 'list_match') {
+          document.getElementById('fBody').value = JSON.stringify({ list_name: sel.value }, null, 2);
+        }
+      };
+    }
+
+    function entryValue(e) {
+      if (typeof e === 'string') return e;
+      return field(e, 'value') || '';
+    }
+
+    function flattenListRows(lists) {
+      const rows = [];
+      if (!Array.isArray(lists)) return rows;
+      lists.forEach(item => {
+        const name = field(item, 'list_name', 'listName') || '';
+        const dim = field(item, 'dimension') || '';
+        const entries = field(item, 'entries') || [];
+        entries.forEach(e => {
+          rows.push({
+            listName: name,
+            dim,
+            value: entryValue(e),
+            createdAt: field(e, 'created_at', 'createdAt') || '',
+            expiresAt: field(e, 'expires_at', 'expiresAt') || '',
+            remark: field(e, 'remark') || ''
+          });
+        });
+      });
+      return rows.sort((a, b) => (a.listName + a.value).localeCompare(b.listName + b.value));
+    }
+
+    function formatCumWindow(c) {
+      const kind = field(c, 'window_kind', 'windowKind') || 'rolling';
+      if (kind === 'calendar_day') {
+        const tz = field(c, 'timezone') || 'UTC';
+        return `calendar_day (${tz})`;
+      }
+      const min = field(c, 'window_minutes', 'windowMinutes');
+      const hr = field(c, 'window_hours', 'windowHours');
+      if (min) return `rolling ${min}m`;
+      if (hr) return `rolling ${hr}h`;
+      return 'rolling';
+    }
+
+    function syncCumWindowFields() {
+      const kind = document.getElementById('cumWinKind').value;
+      const rolling = kind === 'rolling';
+      document.getElementById('cumMinWrap').style.display = rolling ? '' : 'none';
+      document.getElementById('cumHrWrap').style.display = rolling ? '' : 'none';
+      document.getElementById('cumTzWrap').style.display = rolling ? 'none' : '';
+    }
+
+    function openCumulativeEditor(c, isNew) {
+      isNewCumulative = !!isNew;
+      selectedCumulativeName = isNew ? null : field(c, 'cumulative_name', 'cumulativeName');
+      document.getElementById('cumEditor').style.display = 'block';
+      document.getElementById('cumEditTitle').textContent = isNew ? '新建' : '编辑';
+      document.getElementById('cumEditName').textContent = isNew ? '' : (selectedCumulativeName || '');
+      document.getElementById('cumNameRow').style.display = isNew ? '' : 'none';
+      document.getElementById('btnCumDelete').style.display = isNew ? 'none' : '';
+      document.getElementById('cumName').value = isNew ? '' : (selectedCumulativeName || '');
+      document.getElementById('cumName').disabled = !isNew;
+      document.getElementById('cumDesc').value = field(c, 'description') || '';
+      document.getElementById('cumDim').value = field(c, 'dimension') || 'user_id';
+      document.getElementById('cumStatus').value = field(c, 'status') || 'active';
+      document.getElementById('cumPriority').value = field(c, 'priority') ?? 10;
+      document.getElementById('cumWinKind').value = field(c, 'window_kind', 'windowKind') || 'rolling';
+      document.getElementById('cumWinMin').value = field(c, 'window_minutes', 'windowMinutes') ?? 60;
+      document.getElementById('cumWinHr').value = field(c, 'window_hours', 'windowHours') ?? '';
+      document.getElementById('cumTz').value = field(c, 'timezone') || 'Asia/Shanghai';
+      document.getElementById('cumThreshold').value = field(c, 'threshold') ?? 120;
+      document.getElementById('cumCompare').value = field(c, 'compare_op', 'compareOp') || 'gte';
+      document.getElementById('cumSuggest').value = field(c, 'on_exceed_suggest', 'onExceedSuggest') || 'block';
+      document.getElementById('cumRisk').value = field(c, 'on_exceed_risk_score', 'onExceedRiskScore') ?? 100;
+      document.getElementById('cumReason').value = field(c, 'on_exceed_reason_code', 'onExceedReasonCode') || 'CUMULATIVE_EXCEEDED';
+      syncCumWindowFields();
+    }
+
+    function readCumulativePayload(name) {
+      const kind = document.getElementById('cumWinKind').value;
+      const body = {
+        description: document.getElementById('cumDesc').value.trim() || null,
+        dimension: document.getElementById('cumDim').value,
+        window_kind: kind,
+        threshold: Number(document.getElementById('cumThreshold').value),
+        compare_op: document.getElementById('cumCompare').value,
+        on_exceed_suggest: document.getElementById('cumSuggest').value,
+        on_exceed_risk_score: Number(document.getElementById('cumRisk').value),
+        on_exceed_reason_code: document.getElementById('cumReason').value.trim() || 'CUMULATIVE_EXCEEDED',
+        priority: Number(document.getElementById('cumPriority').value) || 0,
+        status: document.getElementById('cumStatus').value
+      };
+      if (kind === 'rolling') {
+        const min = Number(document.getElementById('cumWinMin').value);
+        const hrRaw = document.getElementById('cumWinHr').value.trim();
+        const hr = hrRaw ? Number(hrRaw) : null;
+        if (hr && hr > 0) {
+          body.window_hours = hr;
+          body.window_minutes = null;
+        } else {
+          body.window_minutes = min > 0 ? min : 60;
+          body.window_hours = null;
+        }
+        body.timezone = null;
+      } else {
+        body.window_minutes = null;
+        body.window_hours = null;
+        body.timezone = document.getElementById('cumTz').value.trim() || 'UTC';
+      }
+      return { name, body };
+    }
+
+    async function loadCumulatives() {
+      cumulativeRows = await admin('/cumulatives');
+      const tbody = document.querySelector('#cumTable tbody');
+      tbody.innerHTML = '';
+      cumulativeRows.forEach(c => {
+        const name = field(c, 'cumulative_name', 'cumulativeName');
+        const tr = document.createElement('tr');
+        if (name === selectedCumulativeName) tr.classList.add('sel');
+        const st = field(c, 'status') || 'active';
+        tr.innerHTML = `<td><code>${esc(name)}</code></td><td>${esc(field(c, 'dimension'))}</td>
+          <td>${esc(formatCumWindow(c))}</td><td>${field(c, 'threshold')}</td>
+          <td><code>${esc(field(c, 'on_exceed_reason_code', 'onExceedReasonCode'))}</code></td>
+          <td><span class="tag ${st === 'disabled' ? 'disabled' : ''}">${esc(st)}</span></td>
+          <td><button type="button" class="secondary" data-name="${escAttr(name)}">编辑</button></td>`;
+        tr.onclick = (e) => {
+          if (e.target.tagName === 'BUTTON') return;
+          selectCumulative(name);
+        };
+        tr.querySelector('button').onclick = (e) => { e.stopPropagation(); selectCumulative(name); };
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function selectCumulative(name) {
+      selectedCumulativeName = name;
+      const c = await admin('/cumulatives/' + encodeURIComponent(name));
+      const def = field(c, 'definition') || c;
+      openCumulativeEditor(def, false);
+      await loadCumulatives();
     }
 
     async function loadLists() {
-      const data = await admin('/access-lists');
+      const data = await admin('/lists');
+      listCatalog = (data.lists || []).map(x => field(x, 'list_name', 'listName')).filter(Boolean);
+      const sel = document.getElementById('entryListName');
+      const prev = sel.value;
+      sel.innerHTML = '<option value="">选择名单</option>' +
+        listCatalog.map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`).join('');
+      if (prev && listCatalog.includes(prev)) sel.value = prev;
+      fillListNameSelect(document.getElementById('fListName').value);
       const tbody = document.querySelector('#listsTable tbody');
       tbody.innerHTML = '';
-      flattenLists(data.lists).forEach(row => {
+      flattenListRows(data.lists).forEach(row => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${DIM_HINT[row.dim] || row.dim} <span class="tag">${row.dim}</span></td>
-          <td><span class="tag ${row.pol}">${row.pol}</span></td>
+        tr.innerHTML = `<td><code>${esc(row.listName)}</code></td>
+          <td>${DIM_HINT[row.dim] || row.dim} <span class="tag">${esc(row.dim)}</span></td>
           <td><code>${esc(row.value)}</code></td>
-          <td><button class="danger" data-dim="${row.dim}" data-pol="${row.pol}" data-val="${escAttr(row.value)}">删</button></td>`;
+          <td>${esc(fmtTime(row.createdAt))}</td>
+          <td>${esc(fmtTime(row.expiresAt))}</td>
+          <td>${esc(row.remark)}</td>
+          <td><button class="danger" data-name="${escAttr(row.listName)}" data-val="${escAttr(row.value)}">删</button></td>`;
         tbody.appendChild(tr);
       });
       tbody.querySelectorAll('button.danger').forEach(btn => {
         btn.onclick = async () => {
-          await admin(`/access-lists/${btn.dataset.dim}/${btn.dataset.pol}/entries/${encodeURIComponent(btn.dataset.val)}`, { method: 'DELETE' });
+          await admin(`/lists/${encodeURIComponent(btn.dataset.name)}/entries/${encodeURIComponent(btn.dataset.val)}`, { method: 'DELETE' });
           await loadLists();
-          log('已删除名单条目');
+          log('已删除明细');
         };
       });
+    }
+
+    function fmtTime(s) {
+      if (!s) return '—';
+      return String(s).replace('T', ' ').slice(0, 19);
     }
 
     async function loadBindings() {
@@ -303,9 +632,8 @@
         const tr = document.createElement('tr');
         if (r.rule_id === selectedRuleId) tr.classList.add('sel');
         tr.innerHTML = `<td>${esc(r.rule_id)}</td><td>${esc(r.runtime)}</td>
-          <td><span class="tag ${r.rule_status === 'disabled' ? 'disabled' : ''}">${esc(r.rule_status || 'active')}</span></td>
-          <td>${r.current_revision}</td>
-          <td>${r.risk_score}</td><td>${esc(r.enforce_mode)}</td><td>${esc(r.reason_code)}</td>`;
+          <td>${ruleStatusTag(r.rule_status)}</td><td>${r.current_revision}</td>
+          <td>${r.risk_score}</td><td>${esc(r.intent_action || 'deny')}</td><td>${esc(r.enforce_mode)}</td><td>${esc(r.reason_code)}</td>`;
         tr.onclick = () => selectRule(r.rule_id);
         tbody.appendChild(tr);
       });
@@ -322,12 +650,17 @@
       document.getElementById('newRuleRow').style.display = 'none';
       document.getElementById('fReason').value = r.reason_code || '';
       document.getElementById('fRisk').value = r.risk_score ?? 100;
+      document.getElementById('fIntent').value = r.intent_action || 'deny';
       document.getElementById('fEnforce').value = r.enforce_mode || 'dry_run';
-      document.getElementById('fCanary').value = r.canary_percent ?? 5;
+      document.getElementById('fCanary').value = r.canary_percent ?? '';
       const body = r.body;
       document.getElementById('fBody').value = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
+      syncListMatchUi(r.runtime);
+      if (r.runtime === 'list_match' && body && body.list_name) {
+        fillListNameSelect(body.list_name);
+      }
       setRuleEditorCloudOnly(r.layer);
-      setRuleEditorReadOnly(r.rule_status === 'disabled');
+      setRuleEditorStatusUi(r.rule_status);
       await loadRules();
     }
 
@@ -338,10 +671,47 @@
 
     async function reloadAll() {
       await loadLists();
+      await loadCumulatives();
       await loadBindings();
       await loadRules();
       await loadPublish();
       log({ ok: true, tenant: tenant(), bundle: bundleId(), version: bundleVer() });
+    }
+
+    function openCumulativeRuleWizard() {
+      const name = selectedCumulativeName || document.getElementById('cumName').value.trim();
+      if (!name) {
+        log('请先选择或填写 cumulative_name');
+        return;
+      }
+      const reason = document.getElementById('cumReason').value.trim() || 'CUMULATIVE_EXCEEDED';
+      document.querySelectorAll('button.tab[data-tab]').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.querySelector('button.tab[data-tab="rules"]').classList.add('active');
+      document.getElementById('panel-rules').classList.add('active');
+      document.querySelectorAll('button.tab.layer').forEach(b => b.classList.remove('active'));
+      document.querySelector('button.tab.layer[data-layer="gateway"]').classList.add('active');
+      currentLayer = 'gateway';
+      isNewRule = true;
+      selectedRuleId = null;
+      editRuleMeta = { layer: 'gateway' };
+      document.getElementById('ruleEditor').style.display = 'block';
+      document.getElementById('editTitle').textContent = '新建';
+      document.getElementById('editRuleId').textContent = '';
+      document.getElementById('newRuleRow').style.display = '';
+      document.getElementById('fRuleId').value = 'rl_' + name.replace(/[^a-zA-Z0-9_]/g, '_');
+      fillRuntimeSelect('gateway', 'cumulative');
+      document.getElementById('fReason').value = reason;
+      document.getElementById('fRisk').value = 80;
+      document.getElementById('fIntent').value = 'captcha';
+      document.getElementById('fEnforce').value = 'dry_run';
+      document.getElementById('fBody').value = JSON.stringify({ cumulative_name: name }, null, 2);
+      setRuleEditorCloudOnly('gateway');
+      setRuleEditorStatusUi('draft');
+      document.getElementById('fRuntime').onchange = () => {
+        document.getElementById('fBody').value = defaultRuleBody('gateway', document.getElementById('fRuntime').value);
+      };
+      loadRules().catch(e => log(e.message));
     }
 
     function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -374,14 +744,81 @@
       admin(`/bundles/${encodeURIComponent(bundleId())}/versions/${encodeURIComponent(bundleVer())}/publish`, { method: 'POST' })
         .then(log).then(loadPublish).catch(e => log(e.message));
 
+    document.getElementById('cumWinKind').onchange = syncCumWindowFields;
+    document.getElementById('btnCumNew').onclick = () => openCumulativeEditor({}, true);
+    document.getElementById('btnCumRefresh').onclick = () => loadCumulatives().then(() => log('累计列表已刷新')).catch(e => log(e.message));
+    document.getElementById('btnCumSave').onclick = async () => {
+      const name = isNewCumulative
+        ? document.getElementById('cumName').value.trim()
+        : selectedCumulativeName;
+      if (!name) {
+        log('请填写 cumulative_name');
+        return;
+      }
+      const { body } = readCumulativePayload(name);
+      try {
+        const data = await admin('/cumulatives/' + encodeURIComponent(name), {
+          method: 'PUT',
+          body: JSON.stringify(body)
+        });
+        log(data);
+        isNewCumulative = false;
+        selectedCumulativeName = name;
+        await selectCumulative(name);
+      } catch (e) {
+        log(e.message);
+      }
+    };
+    document.getElementById('btnCumDelete').onclick = async () => {
+      if (!selectedCumulativeName || !confirm('删除累计定义 ' + selectedCumulativeName + '？')) return;
+      try {
+        const data = await admin('/cumulatives/' + encodeURIComponent(selectedCumulativeName), { method: 'DELETE' });
+        log(data);
+        selectedCumulativeName = null;
+        isNewCumulative = false;
+        document.getElementById('cumEditor').style.display = 'none';
+        await loadCumulatives();
+      } catch (e) {
+        log(e.message);
+      }
+    };
+    document.getElementById('btnCumToRule').onclick = () => openCumulativeRuleWizard();
+
+    document.getElementById('btnListCreate').onclick = async () => {
+      const name = document.getElementById('newListName').value.trim();
+      const dim = document.getElementById('newListDim').value;
+      const remark = document.getElementById('newListRemark').value.trim() || null;
+      if (!name) { log('请填写 list_name'); return; }
+      await admin('/lists/' + encodeURIComponent(name), {
+        method: 'PUT',
+        body: JSON.stringify({ dimension: dim, remark })
+      });
+      document.getElementById('newListName').value = '';
+      document.getElementById('newListRemark').value = '';
+      await loadLists();
+      log('名单已创建');
+    };
+
     document.getElementById('btnListAdd').onclick = () => {
-      const dim = document.getElementById('listDim').value;
-      const pol = document.getElementById('listPol').value;
-      const val = document.getElementById('listVal').value.trim();
-      if (!val) return;
-      admin(`/access-lists/${dim}/${pol}/entries`, { method: 'POST', body: JSON.stringify({ value: val }) })
-        .then(() => { document.getElementById('listVal').value = ''; return loadLists(); })
-        .then(() => log('名单已添加并同步')).catch(e => log(e.message));
+      const listName = document.getElementById('entryListName').value;
+      const val = document.getElementById('entryVal').value.trim();
+      const expires = document.getElementById('entryExpires').value.trim();
+      const remark = document.getElementById('entryRemark').value.trim();
+      if (!listName || !val) { log('请选择名单并填写值'); return; }
+      const entry = { value: val };
+      if (remark) entry.remark = remark;
+      if (expires) entry.expires_at = expires;
+      admin('/lists/' + encodeURIComponent(listName) + '/entries', {
+        method: 'POST',
+        body: JSON.stringify({ entries: [entry] })
+      })
+        .then(() => {
+          document.getElementById('entryVal').value = '';
+          document.getElementById('entryExpires').value = '';
+          document.getElementById('entryRemark').value = '';
+          return loadLists();
+        })
+        .then(() => log('明细已添加')).catch(e => log(e.message));
     };
 
     document.getElementById('btnBindAdd').onclick = () => {
@@ -410,6 +847,7 @@
       }).then(log).catch(e => log(e.message));
 
     document.getElementById('btnNewRule').onclick = () => openNewRuleEditor();
+    document.getElementById('fRisk').onchange = syncIntentFromRisk;
 
     document.getElementById('btnSaveRule').onclick = async () => {
       if (editRuleMeta && editRuleMeta.rule_status === 'disabled') {
@@ -436,6 +874,7 @@
           runtime,
           reason_code: document.getElementById('fReason').value,
           risk_score: Number(document.getElementById('fRisk').value),
+          intent_action: document.getElementById('fIntent').value,
           scope: isNewRule ? {} : (editRuleMeta.scope || {}),
           body
         })
@@ -445,15 +884,16 @@
       await selectRule(ruleId);
     };
     document.getElementById('btnSaveRuntime').onclick = () => {
-      if (editRuleMeta && editRuleMeta.rule_status === 'disabled') {
-        log('规则已停用，不可修改');
+      if (!editRuleMeta || editRuleMeta.rule_status !== 'active') {
+        log('仅 active 规则可单独更新 enforce');
         return;
       }
+      const enforce = document.getElementById('fEnforce').value;
       admin('/rules/' + encodeURIComponent(selectedRuleId) + '/runtime', {
         method: 'PATCH',
         body: JSON.stringify({
-          enforce_mode: document.getElementById('fEnforce').value,
-          canary_percent: Number(document.getElementById('fCanary').value)
+          enforce_mode: enforce,
+          canary_percent: enforce === 'canary' ? Number(document.getElementById('fCanary').value) : null
         })
       }).then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message));
     };
@@ -462,10 +902,15 @@
         method: 'PATCH',
         body: JSON.stringify({ rule_status: 'disabled' })
       }).then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message));
-    document.getElementById('btnEnableRule').onclick = () =>
+    document.getElementById('btnActivateRule').onclick = () =>
       admin('/rules/' + encodeURIComponent(selectedRuleId) + '/status', {
         method: 'PATCH',
         body: JSON.stringify({ rule_status: 'active' })
+      }).then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message));
+    document.getElementById('btnEnableRule').onclick = () =>
+      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/status', {
+        method: 'PATCH',
+        body: JSON.stringify({ rule_status: 'draft' })
       }).then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message));
     document.getElementById('btnSnapshot').onclick = () =>
       admin('/rules/' + encodeURIComponent(selectedRuleId) + '/runtime/publish-snapshot', { method: 'POST' })

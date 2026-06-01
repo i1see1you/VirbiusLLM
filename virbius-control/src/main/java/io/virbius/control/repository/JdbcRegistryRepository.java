@@ -5,6 +5,7 @@ import io.virbius.control.domain.BundleVersion;
 import io.virbius.control.domain.RiskScore;
 import io.virbius.control.domain.RuleRevision;
 import io.virbius.control.domain.RuleStatusHelper;
+import io.virbius.control.domain.enums.RuleStatus;
 import io.virbius.control.domain.enums.AccessListDimension;
 import io.virbius.control.domain.enums.EnforceMode;
 import java.sql.ResultSet;
@@ -104,9 +105,9 @@ public class JdbcRegistryRepository implements RegistryRepository {
                 """
                 INSERT INTO tb_rule_history (
                   tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
-                  reason_code, risk_score, scope_json, body_json,
+                  reason_code, risk_score, intent_action, scope_json, body_json,
                   enforce_mode, canary_percent, rule_status, effective_from, modified_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 tenantId,
                 ruleId,
@@ -116,11 +117,14 @@ public class JdbcRegistryRepository implements RegistryRepository {
                 draft.runtime(),
                 draft.reasonCode(),
                 RiskScore.normalize(draft.riskScore()),
+                draft.intentAction() != null
+                        ? draft.intentAction()
+                        : io.virbius.policy.IntentAction.defaultForRisk(draft.riskScore()),
                 scopeJson,
                 bodyJson,
                 draft.enforceMode() != null ? draft.enforceMode() : "dry_run",
-                draft.canaryPercent() != null ? draft.canaryPercent() : 5,
-                draft.ruleStatus() != null ? draft.ruleStatus() : RuleStatusHelper.normalize("active"),
+                draft.canaryPercent(),
+                draft.ruleStatus() != null ? draft.ruleStatus() : RuleStatus.DRAFT.value(),
                 nowStr,
                 nowStr);
 
@@ -134,7 +138,7 @@ public class JdbcRegistryRepository implements RegistryRepository {
                 """
                 UPDATE tb_rules_current SET
                   current_revision = ?, bundle_id = ?, layer = ?, runtime = ?,
-                  reason_code = ?, enforce_mode = ?, rule_status = ?, updated_at = ?
+                  reason_code = ?, intent_action = ?, enforce_mode = ?, rule_status = ?, updated_at = ?
                 WHERE tenant_id = ? AND rule_id = ?
                 """,
                 revision,
@@ -142,8 +146,11 @@ public class JdbcRegistryRepository implements RegistryRepository {
                 draft.layer(),
                 draft.runtime(),
                 draft.reasonCode(),
+                draft.intentAction() != null
+                        ? draft.intentAction()
+                        : io.virbius.policy.IntentAction.defaultForRisk(draft.riskScore()),
                 draft.enforceMode() != null ? draft.enforceMode() : "dry_run",
-                draft.ruleStatus() != null ? draft.ruleStatus() : RuleStatusHelper.normalize("active"),
+                draft.ruleStatus() != null ? draft.ruleStatus() : RuleStatus.DRAFT.value(),
                 nowStr,
                 tenantId,
                 ruleId);
@@ -154,8 +161,8 @@ public class JdbcRegistryRepository implements RegistryRepository {
             jdbc.update(
                     """
                     INSERT INTO tb_rules_current (
-                      tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, enforce_mode, rule_status, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, intent_action, enforce_mode, rule_status, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     tenantId,
                     ruleId,
@@ -164,8 +171,11 @@ public class JdbcRegistryRepository implements RegistryRepository {
                     draft.layer(),
                     draft.runtime(),
                     draft.reasonCode(),
+                    draft.intentAction() != null
+                            ? draft.intentAction()
+                            : io.virbius.policy.IntentAction.defaultForRisk(draft.riskScore()),
                     draft.enforceMode() != null ? draft.enforceMode() : "dry_run",
-                    draft.ruleStatus() != null ? draft.ruleStatus() : RuleStatusHelper.normalize("active"),
+                    draft.ruleStatus() != null ? draft.ruleStatus() : RuleStatus.DRAFT.value(),
                     nowStr);
         } catch (DuplicateKeyException e) {
             upsertRulesCurrent(tenantId, ruleId, revision, draft, nowStr);
@@ -211,6 +221,7 @@ public class JdbcRegistryRepository implements RegistryRepository {
                 current.runtime(),
                 current.reasonCode(),
                 current.riskScore(),
+                current.intentAction(),
                 current.scope(),
                 current.body(),
                 enforceMode,
@@ -226,7 +237,7 @@ public class JdbcRegistryRepository implements RegistryRepository {
     public RuleRevision updateRuleStatus(String tenantId, String ruleId, String ruleStatus) {
         String normalized = RuleStatusHelper.normalize(ruleStatus);
         RuleRevision current = getCurrentRule(tenantId, ruleId).orElseThrow();
-        if (normalized.equals(current.ruleStatus() != null ? current.ruleStatus() : RuleStatusHelper.normalize("active"))) {
+        if (normalized.equals(RuleStatusHelper.statusOf(current))) {
             return current;
         }
         RuleRevision draft = new RuleRevision(
@@ -238,6 +249,7 @@ public class JdbcRegistryRepository implements RegistryRepository {
                 current.runtime(),
                 current.reasonCode(),
                 current.riskScore(),
+                current.intentAction(),
                 current.scope(),
                 current.body(),
                 current.enforceMode(),
@@ -341,6 +353,11 @@ public class JdbcRegistryRepository implements RegistryRepository {
     }
 
     private RuleRevision mapRule(ResultSet rs) throws SQLException {
+        int risk = rs.getInt("risk_score");
+        String intent = rs.getString("intent_action");
+        if (intent == null || intent.isBlank()) {
+            intent = io.virbius.policy.IntentAction.defaultForRisk(risk);
+        }
         return new RuleRevision(
                 rs.getString("tenant_id"),
                 rs.getString("rule_id"),
@@ -349,7 +366,8 @@ public class JdbcRegistryRepository implements RegistryRepository {
                 rs.getString("layer"),
                 rs.getString("runtime"),
                 rs.getString("reason_code"),
-                rs.getInt("risk_score"),
+                risk,
+                intent,
                 JsonHelper.mapFromJson(rs.getString("scope_json")),
                 JsonHelper.bodyFromJson(rs.getString("body_json")),
                 rs.getString("enforce_mode"),

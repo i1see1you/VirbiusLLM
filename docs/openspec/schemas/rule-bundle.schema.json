@@ -55,7 +55,7 @@
         },
         "runtime": {
           "type": "string",
-          "enum": ["lua-dsl", "lua", "native", "prompt", "groovy"]
+          "enum": ["lua-dsl", "lua", "prompt", "groovy", "list_match", "cumulative"]
         },
         "reason_code": { "type": "string" },
         "risk_score": {

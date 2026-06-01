@@ -5,6 +5,7 @@ import io.virbius.control.domain.BundleVersion;
 import io.virbius.control.domain.RuleRevision;
 import io.virbius.control.domain.RuleStatusHelper;
 import io.virbius.control.groovy.GroovyRuleValidator;
+import io.virbius.control.policy.PolicyMaterializer;
 import io.virbius.control.repository.RegistryRepository;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -26,6 +27,7 @@ public class PublishService {
 
     private final RegistryRepository store;
     private final GroovyRuleValidator groovyRuleValidator;
+    private final PolicyMaterializer policyMaterializer;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     private final ObjectMapper mapper = new ObjectMapper();
     private final String engineBaseUrl;
@@ -33,9 +35,11 @@ public class PublishService {
     public PublishService(
             RegistryRepository store,
             GroovyRuleValidator groovyRuleValidator,
+            PolicyMaterializer policyMaterializer,
             @Value("${virbius.engine.base-url:http://127.0.0.1:8082}") String engineBaseUrl) {
         this.store = store;
         this.groovyRuleValidator = groovyRuleValidator;
+        this.policyMaterializer = policyMaterializer;
         this.engineBaseUrl = engineBaseUrl.endsWith("/") ? engineBaseUrl.substring(0, engineBaseUrl.length() - 1) : engineBaseUrl;
     }
 
@@ -60,8 +64,14 @@ public class PublishService {
                 throw new IllegalStateException("groovy validation failed for " + r.ruleId() + ": " + e.getMessage());
             }
         }
+        boolean hasGroovy = rules.stream()
+                .anyMatch(r -> RuleStatusHelper.isActive(r) && "groovy".equals(r.runtime()));
+        if (!hasGroovy) {
+            throw new IllegalStateException("publish requires at least one active runtime=groovy rule");
+        }
         List<RuleRevision> activeCloud = rules.stream()
                 .filter(r -> "cloud".equals(r.layer()) && RuleStatusHelper.isActive(r))
+                .map(r -> policyMaterializer.materialize(tenantId, r))
                 .toList();
         Map<String, Object> syncAck = reloadEngineCache(tenantId, version, activeCloud);
         store.updateBundleStatus(tenantId, bundleId, version, "active", publishId, syncAck);
@@ -87,6 +97,7 @@ public class PublishService {
     public Map<String, Object> runtimeSnapshot(String tenantId) {
         List<RuleRevision> rules = store.listCurrentRules(tenantId, "cloud").stream()
                 .filter(RuleStatusHelper::isActive)
+                .map(r -> policyMaterializer.materialize(tenantId, r))
                 .toList();
         Map<String, Object> syncAck = reloadEngineCache(tenantId, "runtime-only", rules);
         return Map.of("accepted", true, "sync_ack", syncAck);
@@ -112,6 +123,7 @@ public class PublishService {
                 rule.put("runtime", r.runtime());
                 rule.put("reason_code", r.reasonCode());
                 rule.put("risk_score", r.riskScore());
+                rule.put("intent_action", r.intentAction() != null ? r.intentAction() : "deny");
                 rule.put("enforce_mode", r.enforceMode() != null ? r.enforceMode() : "dry_run");
                 rule.put("canary_percent", r.canaryPercent() != null ? r.canaryPercent() : 5);
                 if (r.body() != null) {

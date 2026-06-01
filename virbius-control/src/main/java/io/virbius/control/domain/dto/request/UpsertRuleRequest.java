@@ -10,5 +10,6 @@ public record UpsertRuleRequest(
         String runtime,
         String reasonCode,
         Integer riskScore,
+        String intentAction,
         Map<String, Object> scope,
         Object body) {}

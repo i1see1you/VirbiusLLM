@@ -92,10 +92,15 @@ components:
           type: string
         score:
           type: number
-        suggest:
+        intent_action:
           type: string
+          enum: [allow, deny, captcha, review]
         reason_code:
           type: string
+        enforce_mode:
+          type: string
+        canary_percent:
+          type: integer
 
     EvaluateHttpRequest:
       type: object
@@ -152,13 +157,15 @@ components:
 
     EvaluateHttpResponse:
       type: object
-      required: [effective_action, would_block, trace_id]
+      required: [effective_action, max_risk_score, trace_id, degraded]
       properties:
         effective_action:
           type: string
-          enum: [allow, block, review, rewrite, safe_reply]
-        would_block:
-          type: boolean
+          enum: [allow, block, captcha, review]
+        max_risk_score:
+          type: integer
+          minimum: 0
+          maximum: 100
         rule_id:
           type: string
         rule_revision:
@@ -170,7 +177,3 @@ components:
         degraded:
           type: boolean
           description: true 表示 fail-open 降级
-        signals:
-          type: array
-          items:
-            $ref: '#/components/schemas/Signal'

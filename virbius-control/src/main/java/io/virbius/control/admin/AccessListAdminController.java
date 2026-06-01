@@ -28,13 +28,13 @@ public class AccessListAdminController {
     }
 
     @GetMapping
-    public ApiResult<Map<String, Object>> getAll(@PathVariable String tenantId) {
+    public ApiResult<Map<String, Object>> getAll(@PathVariable("tenantId") String tenantId) {
         return ApiResult.ok(accessListService.getAll(tenantId));
     }
 
     @GetMapping("/{dimension}/{polarity}")
     public ApiResult<Map<String, Object>> getOne(
-            @PathVariable String tenantId, @PathVariable String dimension, @PathVariable String polarity) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("dimension") String dimension, @PathVariable("polarity") String polarity) {
         AccessListDimension dim = AccessListDimension.parse(dimension);
         AccessListPolarity pol = AccessListPolarity.parse(polarity);
         return ApiResult.ok(Map.of(
@@ -46,9 +46,9 @@ public class AccessListAdminController {
 
     @PutMapping("/{dimension}/{polarity}")
     public ApiResult<Map<String, Object>> replace(
-            @PathVariable String tenantId,
-            @PathVariable String dimension,
-            @PathVariable String polarity,
+            @PathVariable("tenantId") String tenantId,
+            @PathVariable("dimension") String dimension,
+            @PathVariable("polarity") String polarity,
             @RequestBody AccessListEntriesRequest body) {
         AccessListDimension dim = AccessListDimension.parse(dimension);
         AccessListPolarity pol = AccessListPolarity.parse(polarity);
@@ -58,9 +58,9 @@ public class AccessListAdminController {
 
     @PostMapping("/{dimension}/{polarity}/entries")
     public ApiResult<Map<String, Object>> addEntries(
-            @PathVariable String tenantId,
-            @PathVariable String dimension,
-            @PathVariable String polarity,
+            @PathVariable("tenantId") String tenantId,
+            @PathVariable("dimension") String dimension,
+            @PathVariable("polarity") String polarity,
             @RequestBody AccessListEntriesRequest body) {
         AccessListDimension dim = AccessListDimension.parse(dimension);
         AccessListPolarity pol = AccessListPolarity.parse(polarity);
@@ -73,30 +73,30 @@ public class AccessListAdminController {
 
     @DeleteMapping("/{dimension}/{polarity}/entries/{value}")
     public ApiResult<Map<String, Object>> removeEntry(
-            @PathVariable String tenantId,
-            @PathVariable String dimension,
-            @PathVariable String polarity,
-            @PathVariable String value) {
+            @PathVariable("tenantId") String tenantId,
+            @PathVariable("dimension") String dimension,
+            @PathVariable("polarity") String polarity,
+            @PathVariable("value") String value) {
         AccessListDimension dim = AccessListDimension.parse(dimension);
         AccessListPolarity pol = AccessListPolarity.parse(polarity);
         return ApiResult.ok(accessListService.removeEntryAndPush(tenantId, pol, dim, value));
     }
 
     @PostMapping("/sync-rules")
-    public ApiResult<Map<String, Object>> syncRules(@PathVariable String tenantId) {
+    public ApiResult<Map<String, Object>> syncRules(@PathVariable("tenantId") String tenantId) {
         return ApiResult.ok(accessListService.syncRules(tenantId));
     }
 
     @PostMapping("/push-engine")
-    public ApiResult<Map<String, Object>> pushEngine(@PathVariable String tenantId) {
+    public ApiResult<Map<String, Object>> pushEngine(@PathVariable("tenantId") String tenantId) {
         return ApiResult.ok(accessListService.pushToEngine(tenantId));
     }
 
     @PostMapping("/sync-and-publish")
     public ApiResult<Map<String, Object>> syncAndPublish(
-            @PathVariable String tenantId,
-            @RequestParam(defaultValue = "poc-default") String bundleId,
-            @RequestParam(defaultValue = "0.1.0") String version) {
+            @PathVariable("tenantId") String tenantId,
+            @RequestParam(value = "bundleId", defaultValue = "poc-default") String bundleId,
+            @RequestParam(value = "version", defaultValue = "0.1.0") String version) {
         return ApiResult.ok(accessListService.syncAndPublish(tenantId, bundleId, version));
     }
 

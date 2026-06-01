@@ -1,6 +1,6 @@
 package io.virbius.groovy.l3;
 
-/** PoC 默认 L3 脚本：enforce / canary / dry_run + risk_score 命中（§11.6.7）。 */
+/** PoC 默认 L3 脚本：dry_run/canary 返回 review，full 返回 block。 */
 public final class GroovyL3Defaults {
 
     public static final String DEFAULT_DECIDE_SCRIPT =
@@ -8,17 +8,16 @@ public final class GroovyL3Defaults {
             def decide(ctx) {
               def ruleId = ctx.currentRuleId()
               def mode = ctx.enforceMode(ruleId)
-              def hit = ctx.wouldHitBlock()
-              if (!hit) {
-                return [action: 'allow', would_block: false]
+              if (!ctx.wouldHitBlock()) {
+                return [action: 'allow']
               }
               if (mode == 'dry_run') {
-                return [action: 'allow', would_block: true]
+                return [action: 'review']
               }
               if (mode == 'canary' && !ctx.inCanaryBucket(ctx.sessionId(), ctx.canaryPercent(ruleId))) {
-                return [action: 'allow', would_block: true]
+                return [action: 'review']
               }
-              return [action: 'block', would_block: false]
+              return [action: 'block']
             }
             """;
 

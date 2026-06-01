@@ -1,13 +1,14 @@
 openapi: 3.0.3
 info:
   title: Virbius Control Plane API (MVP)
-  version: 1.2.0-mvp
+  version: 1.3.0-mvp
   description: |
     **virbius-control** 单 Java 进程（Registry + Admin 合并）。
 
     - **规范面**：`/api/v1/admin/tenants/{tenantId}/...`，响应 `{ code, message, data, timestamp }`（`code=0` 成功）。
     - **兼容面**：`/api/v1/tenants/{tenantId}/...`（Legacy，裸 JSON），逐步废弃。
-    - 规则真源：`rule_history`；`runtime` / `enforce_mode` 见 DESIGN §8.5.0。
+    - 规则真源：`rule_history`；`runtime` 见 DESIGN §8.5.0。
+    - **规则级 enforce / canary**（管侧真拦 + 云 PolicyMerge）：见 [rule-level-enforce.md](./rule-level-enforce.md)。
     - PoC 发布为 **同步 HTTP 200**（非 202 异步）。
     - Bundle YAML 导入（`draft/import`）**未实现**，Post-MVP。
 servers:
@@ -451,7 +452,24 @@ paths:
   /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/runtime:
     patch:
       tags: [admin-rules]
-      summary: 更新 enforce_mode（追加 rule_history revision）
+      summary: 规则级放量（更新 enforce_mode，追加 rule_history revision）
+      description: |
+        **规则级** enforce / canary（非租户 / Bundle 级）。详见 [rule-level-enforce.md](./rule-level-enforce.md)。
+
+        | enforce_mode | canary_percent | 行为（在规则所属 layer 执行点） |
+        |--------------|----------------|----------------------------------|
+        | `dry_run` | 忽略 | 命中 `effective_action=review`，不 403/428 |
+        | `canary` | **必填** 1–100 | 命中且 session 在桶内：`block`/`captcha`；桶外：`review` |
+        | `full` | 忽略 | 命中即 `block`/`captcha`（由 `intent_action` 决定） |
+
+        **合并**：同层按 `intent_action` 优先级（deny > captcha > review > allow），再应用 `enforce_mode`。详见 [rule-level-enforce.md](./rule-level-enforce.md)。
+
+        **副作用**：
+        - `layer=gateway`：刷新 gateway 名单产物（`refreshArtifacts` / `sync-rules`），enforce 写入 `{tenant}-access-lists.json`。
+        - `layer=cloud`：刷新 engine RuleCache（`runtime/publish-snapshot` 或 publish 流程）。
+        - gateway 规则 **终局 403** 时不调用 evaluate（管侧审计必写）。
+
+        新建规则默认 `dry_run`；**不应**在 `POST .../rules` 时设置 canary，仅在本接口放量。
       parameters:
         - $ref: '#/components/parameters/tenantId'
         - $ref: '#/components/parameters/ruleId'
@@ -475,7 +493,9 @@ paths:
       summary: 刷新租户 engine RuleCache（runtime_only）
       description: |
         **PoC：`ruleId` 路径参数被忽略**，始终刷新整租户 RuleCache（不编译 gateway/edge）。
-        仅改 enforce_mode 后使用；见 DESIGN §8.8.2。
+
+        适用于 **cloud 层** 规则 `enforce_mode` / `canary_percent` 变更。
+        **gateway 层** enforce 变更须刷新 gateway 产物（`POST .../access-lists/sync-rules` 或保存 gateway 规则触发的 artifact sync），见 [rule-level-enforce.md](./rule-level-enforce.md)。
       parameters:
         - $ref: '#/components/parameters/tenantId'
         - $ref: '#/components/parameters/ruleId'
@@ -702,7 +722,7 @@ paths:
     patch:
       deprecated: true
       tags: [legacy]
-      summary: "[Legacy] 更新 enforce_mode"
+      summary: "[Legacy] 规则级放量（enforce_mode / canary_percent）"
       parameters:
         - $ref: '#/components/parameters/tenantId'
         - $ref: '#/components/parameters/ruleId'
@@ -1066,15 +1086,30 @@ components:
           type: string
         runtime:
           type: string
-          enum: [lua-dsl, lua, native, prompt, groovy]
+          enum: [lua-dsl, lua, prompt, groovy, list_match, cumulative]
         reason_code:
           type: string
+        intent_action:
+          type: string
+          enum: [allow, deny, captcha, review]
+          default: deny
+          description: 规则命中后的希望动作；见 rule-level-enforce.md
         enforce_mode:
           type: string
           enum: [dry_run, canary, full]
+          description: 规则级执行模式；见 rule-level-enforce.md
+        canary_percent:
+          type: integer
+          minimum: 1
+          maximum: 100
+          nullable: true
+          description: enforce_mode=canary 时必填；full/dry_run 时应省略或 null
         rule_status:
           type: string
-          enum: [active, disabled]
+          enum: [draft, active, disabled]
+          description: |
+            draft=配置中不进执行面；active=参与匹配；disabled=停用不可编辑。
+            流转：draft→active|disabled；active→disabled；disabled→draft。
 
     UpdateRuleStatusRequest:
       type: object
@@ -1082,7 +1117,10 @@ components:
       properties:
         rule_status:
           type: string
-          enum: [active, disabled]
+          enum: [draft, active, disabled]
+          description: |
+            draft=配置中不进执行面；active=参与匹配；disabled=停用不可编辑。
+            流转：draft→active|disabled；active→disabled；disabled→draft。
 
     UpsertRuleRequest:
       type: object
@@ -1097,7 +1135,7 @@ components:
           enum: [edge, gateway, cloud]
         runtime:
           type: string
-          enum: [lua-dsl, lua, native, prompt, groovy]
+          enum: [lua-dsl, lua, prompt, groovy, list_match, cumulative]
           description: 详见 DESIGN.md §8.5.0
         reason_code:
           type: string
@@ -1106,12 +1144,20 @@ components:
           minimum: 0
           maximum: 100
           default: 100
+        intent_action:
+          type: string
+          enum: [allow, deny, captcha, review]
+          default: deny
+          description: 规则命中后的希望动作
         scope:
           type: object
         body:
           oneOf:
             - type: string
             - type: object
+      description: |
+        新建或更新规则正文。**不包含** enforce / canary（默认 dry_run）。
+        放量使用 `PATCH .../rules/{ruleId}/runtime`。
 
     UpdateRuntimeRequest:
       type: object
@@ -1120,11 +1166,13 @@ components:
         enforce_mode:
           type: string
           enum: [dry_run, canary, full]
-          description: 详见 DESIGN.md §8.5.0、§8.8.3
+          description: 规则级 enforce；见 rule-level-enforce.md
         canary_percent:
           type: integer
           minimum: 1
           maximum: 100
+          nullable: true
+          description: enforce_mode=canary 时必填；否则省略或 null
 
     RuleRevisionMeta:
       type: object
@@ -1133,9 +1181,18 @@ components:
           type: integer
         enforce_mode:
           type: string
+          enum: [dry_run, canary, full]
+        canary_percent:
+          type: integer
+          minimum: 1
+          maximum: 100
+          nullable: true
         rule_status:
           type: string
-          enum: [active, disabled]
+          enum: [draft, active, disabled]
+          description: |
+            draft=配置中不进执行面；active=参与匹配；disabled=停用不可编辑。
+            流转：draft→active|disabled；active→disabled；disabled→draft。
         modified_at:
           type: string
           format: date-time
@@ -1164,6 +1221,9 @@ components:
               type: string
             risk_score:
               type: integer
+            intent_action:
+              type: string
+              enum: [allow, deny, captcha, review]
             scope:
               type: object
             body:
@@ -1172,3 +1232,43 @@ components:
                 - type: object
             body_hash:
               type: string
+
+    GatewayArtifactRuleBlock:
+      type: object
+      description: |
+        gateway 名单/累计产物中的单条规则块（`{tenant}-access-lists.json`）。
+        enforce 字段见 [rule-level-enforce.md](./rule-level-enforce.md)。
+      required: [rule_id, rule_revision, reason_code, risk_score, intent_action, enforce_mode]
+      properties:
+        rule_id:
+          type: string
+        rule_revision:
+          type: integer
+        reason_code:
+          type: string
+        risk_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        intent_action:
+          type: string
+          enum: [allow, deny, captcha, review]
+        enforce_mode:
+          type: string
+          enum: [dry_run, canary, full]
+        canary_percent:
+          type: integer
+          minimum: 1
+          maximum: 100
+          nullable: true
+        list_name:
+          type: string
+        cumulative_name:
+          type: string
+        dimension:
+          type: string
+        entries:
+          type: array
+          items:
+            type: object
+            additionalProperties: true

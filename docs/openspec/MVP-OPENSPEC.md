@@ -321,7 +321,7 @@ virbius.signal(rule_id, rule_revision, score, suggest)
 -- suggest: "block" | "allow" | ...
 ```
 
-**disposition**：仅认 engine 返回的 **`effective_action`**；`would_block=true` 时 **不得** 403。
+**disposition**：仅认 **`effective_action`**（`allow` | `block` | `captcha` | `review`）。`review` 时 **不得** 403/428。
 
 ---
 
@@ -337,12 +337,13 @@ virbius.signal(rule_id, rule_revision, score, suggest)
 | `rule_id` | string | **租户内唯一** |
 | `rule_revision` | int | 单调递增 |
 | `layer` | enum | edge / gateway / cloud |
-| `runtime` | enum | lua-dsl / lua / native / prompt / groovy（§DESIGN 8.5.0） |
+| `runtime` | enum | lua-dsl / lua / native / prompt / groovy / **cumulative** / **list_match**（§DESIGN 8.5.0.1–2；[value-resolution.md](./value-resolution.md)，**MVP 后**） |
 | `reason_code` | string | |
-| `risk_score` | int | 0–100，默认 100；0=放行，1–99=灰区，100=应拦截 |
+| `risk_score` | int | 0–100；合并时取 top 意图组内 max |
+| `intent_action` | enum | allow / deny / captcha / review |
 | `body` | text/json | |
 | `enforce_mode` | enum | dry_run / canary / full |
-| `rule_status` | enum | active / disabled（逻辑删除，不进执行面） |
+| `rule_status` | enum | draft / active / disabled |
 | `canary_percent` | int? | |
 | `effective_from` | timestamp | |
 | `effective_to` | timestamp? | |
@@ -377,7 +378,7 @@ MVP 必填 rule：
 
 **不记录**：`bundle_id`、`bundle_version`、`skill_version`。
 
-**端 block**：写审计时 **`trace_id` 必填**；`effective_action` 固定为 `block`，`would_block` 为 `false`。  
+**端 block**：写审计时 **`trace_id` 必填**；`effective_action` 固定为 `block`，`max_risk_score` 按需填写。  
 **`user_id` / `device_id`**：若 `virbius_scan_ctx` 提供，**必须**写入 audit（F-11）。  
 **`trace_id_source`**：建议写入（F-10）。
 
@@ -419,8 +420,8 @@ draft → validating → eval_running → compiling → syncing → active
 | AC-11 | engine 安全 | 含 `Runtime.exec` 的 groovy **发布失败**；Prompt 非 JSON 输出 **不 block**（fail-open） |
 | AC-02 | gateway 静态 block | 403；jsonl layer=gateway |
 | AC-03 | engine full | 注入样本 effective_action=block |
-| AC-04 | dry_run | effective_action=allow，would_block=true，无 403 |
-| AC-05 | canary 5% | 约 5% block |
+| AC-04 | dry_run | `effective_action=review`，`max_risk_score`>0，无 403 |
+| AC-05 | canary 5% | 约 5% `block`/`captcha`，其余 `review` |
 | AC-06 | fail-open | engine 宕机仍转发；jsonl 记录 |
 | AC-07 | 发布闭环 | Registry publish → APISIX etcd 生效，无手改 |
 
@@ -439,4 +440,4 @@ draft → validating → eval_running → compiling → syncing → active
 | MVP-1.6 | 2026-05-20 | **F-10 修订**：缺 Header 管侧生成；非法仍 400；SDK 自动生成；`trace_id_source` |
 | MVP-1.8 | 2026-05-20 | **F-14** gateway-agent 由 Go 改为 **Rust**（与 `virbius-core` 统一） |
 | MVP-1.7 | 2026-05-20 | **F-13** `rule_history` 术语；**F-14** gateway-agent Go；[POC-REPO.md](../POC-REPO.md) |
-| MVP-1.9 | 2026-05-20 | **registry.openapi** Admin 规范面；agent `vars` 优先；PoC 发布 **200** 同步；移除未实现 `draft/import` |
+| MVP-1.10 | 2026-05-20 | **intent_action** + ActionMerge；对外扁平响应（`max_risk_score`）；移除 `would_block` / 全量 `signals[]` |

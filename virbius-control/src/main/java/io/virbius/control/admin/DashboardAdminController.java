@@ -30,7 +30,7 @@ public class DashboardAdminController {
     }
 
     @GetMapping("/overview")
-    public ApiResult<Map<String, Object>> overview(@PathVariable String tenantId) {
+    public ApiResult<Map<String, Object>> overview(@PathVariable("tenantId") String tenantId) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("tenant_id", tenantId);
         out.put("ui", Map.of("console", "/ui"));

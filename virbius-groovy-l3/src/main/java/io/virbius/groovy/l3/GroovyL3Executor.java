@@ -81,20 +81,11 @@ public final class GroovyL3Executor {
     private static GroovyL3Decision mapResult(Object raw, String enforceMode) {
         if (raw instanceof Map<?, ?> map) {
             Object action = map.get("action");
-            Object wouldBlock = map.get("would_block");
-            if (wouldBlock == null) {
-                wouldBlock = map.get("wouldBlock");
-            }
             String effective = action != null ? action.toString() : "allow";
-            boolean wb = wouldBlock instanceof Boolean b ? b : Boolean.parseBoolean(String.valueOf(wouldBlock));
-            Object safe = map.get("safe_reply_id");
-            if (safe == null) {
-                safe = map.get("safeReplyId");
-            }
-            return new GroovyL3Decision(effective, wb, safe != null ? safe.toString() : null, enforceMode);
+            return new GroovyL3Decision(effective, enforceMode);
         }
         if (raw instanceof String s) {
-            return new GroovyL3Decision(s, "block".equalsIgnoreCase(s), null, enforceMode);
+            return new GroovyL3Decision(s, enforceMode);
         }
         return GroovyL3Decision.allow(enforceMode);
     }

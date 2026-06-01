@@ -7,10 +7,13 @@ export JAVA_HOME="${JAVA_HOME:-$("/usr/libexec/java_home" -v 17 2>/dev/null || t
 export PATH="${JAVA_HOME:+$JAVA_HOME/bin:}${PATH:-}"
 export VIRBIUS_DATA_DIR="${VIRBIUS_DATA_DIR:-$ROOT/data}"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/virbius-gateway-agent/target}"
+export VIRBIUS_REDIS_PORT="${VIRBIUS_REDIS_PORT:-6379}"
+export VIRBIUS_REDIS_URL="${VIRBIUS_REDIS_URL:-redis://127.0.0.1:${VIRBIUS_REDIS_PORT}}"
 MVN="${MVN:-$HOME/.local/apache-maven-3.9.6/bin/mvn}"
 AGENT_BIN="$CARGO_TARGET_DIR/release/virbius-gateway-agent"
 LOG_DIR="${LOG_DIR:-/tmp/virbius/logs}"
-mkdir -p "$LOG_DIR" "$VIRBIUS_DATA_DIR"
+REDIS_PID_FILE="${REDIS_PID_FILE:-/tmp/virbius/redis.pid}"
+mkdir -p "$LOG_DIR" "$VIRBIUS_DATA_DIR" "$(dirname "$REDIS_PID_FILE")"
 
 if [[ "${VIRBIUS_REBUILD_DB:-}" == "1" ]]; then
   echo "Rebuilding SQLite databases (delete + Spring sql.init on startup)..."
@@ -44,6 +47,47 @@ wait_http() {
   return 1
 }
 
+# Start Redis only when needed (does not use brew services / login items).
+ensure_redis() {
+  if [[ "${VIRBIUS_REDIS_SKIP:-}" == "1" ]]; then
+    echo "Skipping Redis (VIRBIUS_REDIS_SKIP=1)"
+    return 0
+  fi
+  if ! command -v redis-cli >/dev/null 2>&1; then
+    echo "WARN: redis-cli not found; cumulative counters will be degraded."
+    echo "      Install: brew install redis"
+    return 0
+  fi
+  if redis-cli -p "$VIRBIUS_REDIS_PORT" ping 2>/dev/null | grep -q PONG; then
+    echo "Redis already running on port $VIRBIUS_REDIS_PORT"
+    return 0
+  fi
+  if ! command -v redis-server >/dev/null 2>&1; then
+    echo "WARN: redis-server not found; cumulative counters will be degraded."
+    return 0
+  fi
+  echo "Starting Redis on port $VIRBIUS_REDIS_PORT (daemon, not brew services)..."
+  redis-server \
+    --daemonize yes \
+    --port "$VIRBIUS_REDIS_PORT" \
+    --bind 127.0.0.1 \
+    --pidfile "$REDIS_PID_FILE" \
+    --logfile "$LOG_DIR/redis.log" \
+    --save ""
+  local i
+  for i in $(seq 1 20); do
+    if redis-cli -p "$VIRBIUS_REDIS_PORT" ping 2>/dev/null | grep -q PONG; then
+      echo "Redis ready ($VIRBIUS_REDIS_URL)"
+      return 0
+    fi
+    sleep 0.5
+  done
+  echo "ERROR: Redis did not respond on port $VIRBIUS_REDIS_PORT"
+  echo "--- redis.log (tail) ---"
+  tail -20 "$LOG_DIR/redis.log" 2>/dev/null || true
+  return 1
+}
+
 if [[ ! -x "$MVN" ]]; then
   echo "Maven not found. Install to ~/.local/apache-maven-3.9.6 or set MVN=..."
   exit 1
@@ -58,11 +102,13 @@ for p in 8080 8082 9070; do
   kill_port "$p"
 done
 
+ensure_redis
+
 echo "Starting services (logs: $LOG_DIR)"
-nohup env VIRBIUS_DATA_DIR="$VIRBIUS_DATA_DIR" \
+nohup env VIRBIUS_DATA_DIR="$VIRBIUS_DATA_DIR" VIRBIUS_REDIS_URL="$VIRBIUS_REDIS_URL" \
   java -jar "$ROOT/virbius-engine/target/virbius-engine-0.1.0-SNAPSHOT.jar" \
   >"$LOG_DIR/engine.log" 2>&1 &
-nohup env VIRBIUS_DATA_DIR="$VIRBIUS_DATA_DIR" \
+nohup env VIRBIUS_DATA_DIR="$VIRBIUS_DATA_DIR" VIRBIUS_REDIS_URL="$VIRBIUS_REDIS_URL" \
   java -jar "$ROOT/virbius-control/target/virbius-control-0.1.0-SNAPSHOT.jar" \
   >"$LOG_DIR/control.log" 2>&1 &
 
@@ -90,9 +136,11 @@ wait_http "http://127.0.0.1:9070/health" "gateway-agent" || {
 }
 
 echo ""
+echo "redis            $VIRBIUS_REDIS_URL  (log: $LOG_DIR/redis.log)"
 echo "virbius-engine   http://127.0.0.1:8082"
 echo "virbius-control  http://127.0.0.1:8080"
 echo "  运营台         http://127.0.0.1:8080/ui"
 echo "gateway-agent    http://127.0.0.1:9070"
 echo ""
+echo "Stop Redis started by this script: redis-cli -p $VIRBIUS_REDIS_PORT shutdown"
 echo "Smoke: bash $ROOT/scripts/smoke-test.sh"

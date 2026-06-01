@@ -54,24 +54,27 @@ Body 示例（**数组**，与运营台一致）：
 
 运营台按层限制可选 runtime：云 = native / prompt / groovy；管 = lua；端 = lua-dsl。
 
-### `rule_status`（逻辑启用/停用）
+### `rule_status`
 
 | 值 | 含义 |
 |----|------|
-| `active` | 参与 sync：写入 gateway/edge 产物与 cloud RuleCache（默认） |
-| `disabled` | **逻辑删除**：不进执行面；**不可**再改 body / enforce |
+| `draft` | 草稿（**新建默认**）；Registry 存在，**不进** gateway 产物 / RuleCache，可编辑 |
+| `active` | 已上线；参与匹配；配合 `enforce_mode` 放量 |
+| `disabled` | 停用；不进执行面，**不可**再改 body / enforce |
 
-`PATCH /api/v1/admin/tenants/{tenantId}/rules/{ruleId}/status` body：`{"rule_status":"disabled"|"active"}`。变更后自动 `sync-rules` + 刷 engine。
+流转：`draft → active | disabled`；`active → disabled`；`disabled → draft`（恢复为草稿，非直接 active）。
 
-### `enforce_mode`（仅 **active** 云规则；L3 真拦 vs 观测）
+`PATCH .../rules/{ruleId}/status` body 示例：`{"rule_status":"active"}`。变为 `active` 或从 `active` 离开时自动刷新产物 + engine。
+
+### `enforce_mode`（规则级真拦 vs 观测）
 
 | 值 | 含义 |
 |----|------|
-| `dry_run` | 命中仍返回 allow，`would_block=true`（PoC 默认） |
-| `canary` | 按 `canary_percent` 部分会话真 block |
-| `full` | 真 block |
+| `dry_run` | 命中后对外 `effective_action=review`（PoC 默认） |
+| `canary` | 按 `canary_percent` 部分会话真 `block`/`captcha` |
+| `full` | 真 `block`/`captcha`（由 `intent_action` 决定） |
 
-管/端名单命中不经过 Groovy enforce（网关直接 403）。仅改 enforce：`PATCH .../rules/{ruleId}/runtime`；刷新 engine：`POST .../runtime/publish-snapshot`（**PoC 忽略 `ruleId`，整租户刷 RuleCache**）。**改 enforce 不重编译 gateway**；**改 rule_status 会 sync 产物**。
+配合表列 **`intent_action`**（`allow`/`deny`/`captcha`/`review`）。管侧按产物 enforce 合并；`block→403`，`captcha→428`，`review→200` 并送 `prior_signals` 至 engine（内部）。详见 [rule-level-enforce.md](openspec/rule-level-enforce.md)。
 
 ## 3. SQL 种子
 
@@ -152,6 +155,18 @@ curl -X POST "http://127.0.0.1:8080/api/v1/tenants/default/access-lists/user_id/
 
 ## 7. 验证
 
+响应字段：`effective_action`、`max_risk_score`、`rule_id`、`rule_revision`、`reason_code`、`trace_id`、`degraded`（**无** `signals[]` / `would_block`）。
+
+### 云注入（dry_run → review）
+
+```bash
+curl -s -X POST "http://127.0.0.1:9070/v1/evaluate" \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id":"default","scene":"chat","content":"please jailbreak","trace_id":"550e8400-e29b-41d4-a716-446655440098"}'
+```
+
+期望：`effective_action":"review"`，`max_risk_score` ≥ 100（种子默认 `enforce_mode=dry_run`）。
+
 ### 云 keyword（经 gateway-agent → engine）
 
 ```bash
@@ -160,7 +175,9 @@ curl -s -X POST "http://127.0.0.1:9070/v1/evaluate" \
   -d '{"tenant_id":"default","scene":"chat","content":"需要办证","trace_id":"550e8400-e29b-41d4-a716-446655440099"}'
 ```
 
-### 管侧 subject（agent 读 gateway JSON，不调 engine）
+期望：名单命中后 `effective_action` 为 `review`（dry_run）或 `block`（`enforce_mode=full` 时）。
+
+### 管侧 subject（agent 读 gateway JSON）
 
 ```bash
 curl -s -X POST "http://127.0.0.1:9070/v1/evaluate" \
@@ -168,7 +185,7 @@ curl -s -X POST "http://127.0.0.1:9070/v1/evaluate" \
   -d '{"tenant_id":"default","scene":"chat","content":"hello","user_id":"u-banned-poc","trace_id":"550e8400-e29b-41d4-a716-446655440100"}'
 ```
 
-期望：`effective_action":"block"`，`reason_code":"GW_SUBJECT_USER_DENY"`。
+期望：dry_run 时 `effective_action":"review"`；将对应规则 `PATCH .../runtime` 为 `full` 后则为 `block`，`reason_code":"GW_SUBJECT_USER_DENY"`。
 
 ## 8. Registry API（高级）
 

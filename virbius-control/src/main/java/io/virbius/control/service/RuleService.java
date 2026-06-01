@@ -5,6 +5,7 @@ import io.virbius.control.domain.RiskScore;
 import io.virbius.control.domain.RuleStatusHelper;
 import io.virbius.control.domain.dto.request.UpsertRuleRequest;
 import io.virbius.control.domain.dto.response.RuleResponseMapper;
+import io.virbius.control.domain.enums.IntentAction;
 import io.virbius.control.domain.enums.EnforceMode;
 import io.virbius.control.domain.enums.RuleStatus;
 import io.virbius.control.groovy.GroovyRuleValidator;
@@ -46,9 +47,15 @@ public class RuleService {
         }
         Optional<RuleRevision> existing = store.getCurrentRule(tenantId, req.ruleId());
         if (existing.isPresent()) {
-            RuleStatusHelper.requireActive(existing.get());
+            RuleStatusHelper.requireEditable(existing.get());
         }
-        String ruleStatus = existing.map(RuleRevision::ruleStatus).orElse(RuleStatus.ACTIVE.value());
+        String ruleStatus =
+                existing.map(RuleRevision::ruleStatus).orElse(RuleStatus.DRAFT.value());
+        int normalizedRisk = RiskScore.normalize(req.riskScore());
+        String intentAction = req.intentAction() != null && !req.intentAction().isBlank()
+                ? IntentAction.parse(req.intentAction()).value()
+                : existing.map(RuleRevision::intentAction)
+                        .orElse(IntentAction.defaultForRisk(normalizedRisk).value());
         RuleRevision draft = new RuleRevision(
                 tenantId,
                 req.ruleId(),
@@ -57,11 +64,12 @@ public class RuleService {
                 req.layer(),
                 req.runtime(),
                 req.reasonCode(),
-                RiskScore.normalize(req.riskScore()),
+                normalizedRisk,
+                intentAction,
                 req.scope() != null ? req.scope() : Map.of(),
                 req.body(),
-                "dry_run",
-                5,
+                existing.map(RuleRevision::enforceMode).orElse("dry_run"),
+                existing.map(RuleRevision::canaryPercent).orElse(null),
                 ruleStatus,
                 null,
                 null,
@@ -71,7 +79,9 @@ public class RuleService {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(e.getMessage());
         }
-        return RuleResponseMapper.toDetail(store.upsertRule(tenantId, draft));
+        RuleRevision saved = store.upsertRule(tenantId, draft);
+        syncArtifactsForActiveRule(tenantId, saved);
+        return RuleResponseMapper.toDetail(saved);
     }
 
     public Map<String, Object> getRule(String tenantId, String ruleId) {
@@ -93,15 +103,45 @@ public class RuleService {
     }
 
     public Map<String, Object> updateRuntime(String tenantId, String ruleId, String enforceMode, Integer canaryPercent) {
-        EnforceMode.parse(enforceMode);
+        EnforceMode mode = EnforceMode.parse(enforceMode);
+        if (mode == EnforceMode.CANARY
+                && (canaryPercent == null || canaryPercent < 1 || canaryPercent > 100)) {
+            throw new IllegalArgumentException("canary_percent required (1-100) when enforce_mode=canary");
+        }
+        RuleRevision current = store.getCurrentRule(tenantId, ruleId).orElseThrow();
+        RuleStatusHelper.requireActive(current);
         RuleRevision r = store.updateRuntime(tenantId, ruleId, enforceMode, canaryPercent);
+        syncArtifactsForActiveRule(tenantId, r);
         return RuleResponseMapper.toDetail(r);
     }
 
     public Map<String, Object> updateRuleStatus(String tenantId, String ruleId, String ruleStatus) {
-        RuleRevision updated = store.updateRuleStatus(tenantId, ruleId, ruleStatus);
-        accessListService.syncRules(tenantId);
-        publishService.runtimeSnapshot(tenantId);
+        RuleRevision current = store.getCurrentRule(tenantId, ruleId).orElseThrow();
+        String normalized = RuleStatusHelper.normalize(ruleStatus);
+        RuleStatusHelper.validateTransition(RuleStatusHelper.statusOf(current), normalized);
+        boolean wasActive = RuleStatusHelper.isActive(current);
+        RuleRevision updated = store.updateRuleStatus(tenantId, ruleId, normalized);
+        if (wasActive || RuleStatusHelper.isActive(updated)) {
+            refreshExecutionPlane(tenantId);
+        }
         return RuleResponseMapper.toDetail(updated);
+    }
+
+    private void syncArtifactsForActiveRule(String tenantId, RuleRevision rule) {
+        if (!RuleStatusHelper.isActive(rule)) {
+            return;
+        }
+        if ("list_match".equals(rule.runtime()) || "cumulative".equals(rule.runtime())) {
+            accessListService.refreshArtifacts(tenantId);
+        }
+        if ("cloud".equals(rule.layer())
+                && ("list_match".equals(rule.runtime()) || "cumulative".equals(rule.runtime()))) {
+            publishService.runtimeSnapshot(tenantId);
+        }
+    }
+
+    private void refreshExecutionPlane(String tenantId) {
+        accessListService.refreshArtifacts(tenantId);
+        publishService.runtimeSnapshot(tenantId);
     }
 }

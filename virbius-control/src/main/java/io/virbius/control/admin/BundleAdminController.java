@@ -32,13 +32,13 @@ public class BundleAdminController {
     }
 
     @GetMapping
-    public ApiResult<List<Map<String, Object>>> listBundles(@PathVariable String tenantId) {
+    public ApiResult<List<Map<String, Object>>> listBundles(@PathVariable("tenantId") String tenantId) {
         return ApiResult.ok(bundleService.listBundles(tenantId));
     }
 
     @PostMapping
     public ApiResult<Map<String, Object>> createBundle(
-            @PathVariable String tenantId, @RequestBody CreateBundleRequest body) {
+            @PathVariable("tenantId") String tenantId, @RequestBody CreateBundleRequest body) {
         if (body.bundleId() == null || body.bundleId().isBlank()) {
             throw new IllegalArgumentException("bundle_id required");
         }
@@ -47,40 +47,40 @@ public class BundleAdminController {
 
     @GetMapping("/{bundleId}")
     public ApiResult<Map<String, Object>> getBundle(
-            @PathVariable String tenantId, @PathVariable String bundleId) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("bundleId") String bundleId) {
         return ApiResult.ok(bundleService.getBundle(tenantId, bundleId));
     }
 
     @GetMapping("/{bundleId}/versions/{version}")
     public ApiResult<Map<String, Object>> getBundleVersion(
-            @PathVariable String tenantId, @PathVariable String bundleId, @PathVariable String version) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("bundleId") String bundleId, @PathVariable("version") String version) {
         return ApiResult.ok(bundleService.getBundleVersion(tenantId, bundleId, version));
     }
 
     @PostMapping("/{bundleId}/versions/{version}/publish")
     public ApiResult<Map<String, Object>> publish(
-            @PathVariable String tenantId, @PathVariable String bundleId, @PathVariable String version) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("bundleId") String bundleId, @PathVariable("version") String version) {
         return ApiResult.ok(publishService.publish(tenantId, bundleId, version));
     }
 
     @GetMapping("/{bundleId}/versions/{version}/status")
     public ApiResult<Map<String, Object>> publishStatus(
-            @PathVariable String tenantId, @PathVariable String bundleId, @PathVariable String version) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("bundleId") String bundleId, @PathVariable("version") String version) {
         return ApiResult.ok(publishService.status(tenantId, bundleId, version));
     }
 
     @GetMapping("/{bundleId}/versions/{version}/metadata")
     public ApiResult<Map<String, Object>> getMetadata(
-            @PathVariable String tenantId, @PathVariable String bundleId, @PathVariable String version) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("bundleId") String bundleId, @PathVariable("version") String version) {
         return ApiResult.ok(metadataService.getMetadata(tenantId, bundleId, version));
     }
 
     @PutMapping("/{bundleId}/versions/{version}/metadata/context-bindings")
     public ApiResult<Map<String, Object>> putContextBindings(
-            @PathVariable String tenantId,
-            @PathVariable String bundleId,
-            @PathVariable String version,
-            @RequestParam(defaultValue = "true") boolean sync,
+            @PathVariable("tenantId") String tenantId,
+            @PathVariable("bundleId") String bundleId,
+            @PathVariable("version") String version,
+            @RequestParam(value = "sync", defaultValue = "true") boolean sync,
             @RequestBody ContextBindingsRequest body) {
         return ApiResult.ok(metadataService.updateContextBindings(
                 tenantId,
@@ -91,7 +91,7 @@ public class BundleAdminController {
     }
 
     @PostMapping("/{bundleId}/versions/{version}/metadata/sync-gateway")
-    public ApiResult<Map<String, Object>> syncGateway(@PathVariable String tenantId) {
+    public ApiResult<Map<String, Object>> syncGateway(@PathVariable("tenantId") String tenantId) {
         return ApiResult.ok(metadataService.syncGatewayArtifacts(tenantId));
     }
 }

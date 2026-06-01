@@ -6,7 +6,7 @@
 
 - 必须定义：`def decide(ctx) { ... }`
 - 执行入口：`return decide(ctx)`（引擎自动追加）
-- 返回值：`Map`，至少含 `action`（`allow` / `block` / `review` 等）；可选 `would_block`（boolean）
+- 返回值：`Map`，至少含 `action`：`allow` / `block` / `captcha` / `review`（`dry_run` 命中请返回 `review`，由引擎结合 `enforce_mode` 解析对外 `effective_action`）
 
 ## `ctx` API（白名单）
 
@@ -24,8 +24,12 @@
 | `ctx.inCanaryBucket(sessionId, percent)` | canary 分桶 |
 | `ctx.vars()` | 只读逻辑变量 Map（RequestContext） |
 | `ctx.var("app_id")` | 读取逻辑变量，如名单同步的 `app_id=beta` |
+| `ctx.list(name)` | （**待实现**）名单快照：`matched()`、`value()` 等；见 [list-match.md](./list-match.md) |
+| `ctx.cumulative(name)` | （**待实现**）累计快照：`count()`、`exceeded()`、`value()` 等；见 [cumulative-counter.md](./cumulative-counter.md) |
 
-`enforce_mode` 取值与含义见 [DESIGN.md §8.5.0](../DESIGN.md)。
+Evaluate 前由引擎按规则预取名单/累计并注入；Groovy **不**调用 `matchList` / `getCumulate` 或直连 Redis。`value` 解析见 [value-resolution.md](./value-resolution.md)。
+
+`enforce_mode` 取值与含义见 [DESIGN.md §8.5.0](../DESIGN.md)。**规则级 canary 合并语义**见 [rule-level-enforce.md](./rule-level-enforce.md)。
 
 ## 默认脚本
 

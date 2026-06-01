@@ -10,6 +10,7 @@ public record RuleEntry(
         String runtime,
         String reasonCode,
         @JsonProperty("risk_score") int riskScore,
+        @JsonProperty("intent_action") String intentAction,
         String enforceMode,
         int canaryPercent,
         String body) {}

@@ -6,7 +6,7 @@ option java_package = "io.virbius.engine.v1";
 option java_multiple_files = true;
 
 // virbius-engine MVP: 管层 gateway-agent → engine
-// 对齐 DESIGN v2.11 / openspec MVP-1.4
+// 对齐 intent_action + ActionMerge（2026-05）
 // ControlContext（F-11）：trace_id、user_id、device_id 与端 virbius_scan_ctx / HTTP Header 一致
 
 service EvaluateService {
@@ -18,28 +18,31 @@ message EvaluateRequest {
   string scene = 2;
   string role = 3;              // user | assistant | tool | retrieved
   string session_id = 4;
-  string content = 5;           // 待检测正文
-  bool is_stream_chunk = 6;       // MVP 输入侧一般为 false
-  repeated Signal prior_signals = 7;
-  string trace_id = 8;          // 管层解析后的最终 trace（F-10）
-  string user_id = 9;           // 可选；与 X-Virbius-User-Id / virbius_scan_ctx 一致（F-11）
-  string device_id = 10;        // 可选；与 X-Virbius-Device-Id / virbius_scan_ctx 一致（F-11）
+  string content = 5;
+  bool is_stream_chunk = 6;
+  repeated Signal prior_signals = 7;  // gateway→engine 内部；不出现在响应
+  string trace_id = 8;
+  string user_id = 9;
+  string device_id = 10;
+  map<string, string> vars = 11;
 }
 
 message Signal {
   string rule_id = 1;
   int32 rule_revision = 2;
-  string source = 3;            // edge | gateway | cloud | scan
+  string source = 3;            // edge | gateway | cloud
   double score = 4;
-  string suggest = 5;           // block | allow | review | ...
-  string reason_code = 6;
-  string layer = 7;             // edge | gateway | cloud
+  string reason_code = 5;
+  string layer = 6;             // edge | gateway | cloud
+  string intent_action = 7;     // allow | deny | captcha | review
+  string enforce_mode = 8;
+  int32 canary_percent = 9;     // optional; 0 = unset
 }
 
 message EvaluateResponse {
-  repeated Signal signals = 1;  // Prompt 等新增 signal
-  EngineDecision decision = 2;
-  string rule_id = 3;           // 终判主因规则
+  string effective_action = 1;  // allow | block | captcha | review
+  int32 max_risk_score = 2;
+  string rule_id = 3;
   int32 rule_revision = 4;
   string reason_code = 5;
   string trace_id = 6;
@@ -47,8 +50,7 @@ message EvaluateResponse {
 }
 
 message EngineDecision {
-  string effective_action = 1;  // allow | block | review | rewrite | safe_reply
-  bool would_block = 2;
-  string safe_reply_id = 3;
-  string enforce_mode = 4;      // dry_run | canary | full | disabled（本次决策上下文）
+  string effective_action = 1;
+  int32 max_risk_score = 2;
+  string enforce_mode = 3;      // dry_run | canary | full（本次决策上下文）
 }
