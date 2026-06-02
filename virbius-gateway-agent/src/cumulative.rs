@@ -371,7 +371,7 @@ mod tests {
             lists: &[],
             cumulatives: std::slice::from_ref(&def),
         };
-        let body = "function decide(ctx)\n  return getCumulative('user_req_1h').count >= 1\nend";
+        let body = "function decide(ctx)\n  return getCumulative('user_req_1h') >= 1\nend";
         assert!(run_lua_decide(body, &env).unwrap());
     }
 

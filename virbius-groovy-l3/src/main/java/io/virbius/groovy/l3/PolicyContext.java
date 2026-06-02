@@ -143,10 +143,10 @@ public final class PolicyContext {
         return scriptEnv != null && scriptEnv.listMatch(listName, value);
     }
 
-    /** Script API: read cumulative counter for current request context. */
-    public CumulativeView getCumulative(String cumulativeName) {
+    /** Script API: read cumulative counter for current request context (window count). */
+    public long getCumulative(String cumulativeName) {
         if (scriptEnv == null) {
-            return new CumulativeView(0, "");
+            return 0;
         }
         return scriptEnv.getCumulative(cumulativeName);
     }

@@ -136,7 +136,7 @@ public final class GroovyL3Executor {
             this.ctx = ctx;
         }
 
-        public CumulativeView doCall(String cumulativeName) {
+        public long doCall(String cumulativeName) {
             return ctx.getCumulative(cumulativeName);
         }
     }

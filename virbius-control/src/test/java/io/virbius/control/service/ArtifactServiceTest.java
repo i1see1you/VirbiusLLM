@@ -65,19 +65,19 @@ class ArtifactServiceTest {
         RuleRevision globalRule = scriptRule(
                 "rl_global",
                 "gateway",
-                "function decide(ctx)\n  return getCumulative('user_req_1h_global').count >= 100\nend",
+                "function decide(ctx)\n  return getCumulative('user_req_1h_global') >= 100\nend",
                 Map.of("bind_scope", "global"),
                 80);
         RuleRevision routeRule = scriptRule(
                 "rl_chat",
                 "gateway",
-                "function decide(ctx)\n  return getCumulative('chat_user_req_1h').count >= 5\nend",
+                "function decide(ctx)\n  return getCumulative('chat_user_req_1h') >= 5\nend",
                 Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/chat/completions"))),
                 120);
         RuleRevision cloudRule = scriptRule(
                 "cloud_rl",
                 "cloud",
-                "def decide(ctx) { getCumulative('user_req_1h_global').count >= 1 }",
+                "def decide(ctx) { getCumulative('user_req_1h_global') >= 1 }",
                 Map.of("bind_scope", "global"),
                 60);
 
@@ -115,13 +115,13 @@ class ArtifactServiceTest {
         RuleRevision gw = scriptRule(
                 "rl_gw",
                 "gateway",
-                "function decide(ctx)\n  return getCumulative('chat_user_req_1h').count >= 1\nend",
+                "function decide(ctx)\n  return getCumulative('chat_user_req_1h') >= 1\nend",
                 Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/chat/completions"))),
                 100);
         RuleRevision cloud = scriptRule(
                 "rl_cloud",
                 "cloud",
-                "def decide(ctx) { getCumulative('chat_user_req_1h').count >= 1 }",
+                "def decide(ctx) { getCumulative('chat_user_req_1h') >= 1 }",
                 Map.of("bind_scope", "global"),
                 80);
         when(registryRepo.listCurrentRules(eq(TENANT), eq(null))).thenReturn(List.of(gw, cloud));
@@ -150,13 +150,13 @@ class ArtifactServiceTest {
         RuleRevision gw = scriptRule(
                 "rl_gw",
                 "gateway",
-                "function decide(ctx)\n  return getCumulative('user_req_1h').count >= 1\nend",
+                "function decide(ctx)\n  return getCumulative('user_req_1h') >= 1\nend",
                 Map.of("bind_scope", "global"),
                 100);
         RuleRevision cloud = scriptRule(
                 "rl_cloud",
                 "cloud",
-                "def decide(ctx) { getCumulative('user_req_1h').count >= 1 }",
+                "def decide(ctx) { getCumulative('user_req_1h') >= 1 }",
                 Map.of("bind_scope", "global"),
                 80);
         when(registryRepo.listCurrentRules(eq(TENANT), eq(null))).thenReturn(List.of(gw, cloud));

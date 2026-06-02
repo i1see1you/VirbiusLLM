@@ -208,7 +208,7 @@ INSERT INTO tb_rule_history (
     rollout_state, canary_percent, effective_from, modified_at)
 SELECT 'default', 'rl_rate_user_1h', 1, 'poc-default', 'gateway', 'lua',
     'GW_USER_RATE_1H', 80, 'captcha', '{"bind_scope":"global"}',
-    'function decide(ctx)\n  return getCumulative(''user_req_1h'').count >= 120\nend',
+    'function decide(ctx)\n  return getCumulative(''user_req_1h'') >= 120\nend',
     'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'rl_rate_user_1h');
 
@@ -218,7 +218,7 @@ INSERT INTO tb_rule_history (
     rollout_state, canary_percent, effective_from, modified_at)
 SELECT 'default', 'rl_rate_app_1h', 1, 'poc-default', 'gateway', 'lua',
     'GW_APP_RATE_1H', 85, 'captcha', '{"bind_scope":"global"}',
-    'function decide(ctx)\n  return getCumulative(''app_req_1h'').count >= 500\nend',
+    'function decide(ctx)\n  return getCumulative(''app_req_1h'') >= 500\nend',
     'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'rl_rate_app_1h');
 
@@ -268,9 +268,9 @@ UPDATE tb_rule_history SET runtime = 'lua', body_json = 'function decide(ctx)\n 
   WHERE tenant_id = 'default' AND rule_id = 'rl_deny_keywords' AND runtime = 'list_match';
 UPDATE tb_rule_history SET runtime = 'lua', body_json = 'function decide(ctx)\n  return listMatch(''deny_user_id'', ctx.user_id)\nend'
   WHERE tenant_id = 'default' AND rule_id = 'rl_deny_users' AND runtime = 'list_match';
-UPDATE tb_rule_history SET runtime = 'lua', body_json = 'function decide(ctx)\n  return getCumulative(''user_req_1h'').count >= 120\nend'
+UPDATE tb_rule_history SET runtime = 'lua', body_json = 'function decide(ctx)\n  return getCumulative(''user_req_1h'') >= 120\nend'
   WHERE tenant_id = 'default' AND rule_id = 'rl_rate_user_1h' AND runtime = 'cumulative';
-UPDATE tb_rule_history SET runtime = 'lua', body_json = 'function decide(ctx)\n  return getCumulative(''app_req_1h'').count >= 500\nend'
+UPDATE tb_rule_history SET runtime = 'lua', body_json = 'function decide(ctx)\n  return getCumulative(''app_req_1h'') >= 500\nend'
   WHERE tenant_id = 'default' AND rule_id = 'rl_rate_app_1h' AND runtime = 'cumulative';
 UPDATE tb_rule_history SET runtime = 'groovy', body_json = 'def decide(ctx) { return ctx.listMatch(''deny_keyword'') }'
   WHERE tenant_id = 'default' AND rule_id = 'cloud_rl_deny_keywords' AND runtime = 'list_match';

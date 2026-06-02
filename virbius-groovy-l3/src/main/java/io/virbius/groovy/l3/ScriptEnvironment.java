@@ -61,27 +61,26 @@ public final class ScriptEnvironment {
         return ListMatcher.match(def.dimension(), value, content, def.entries());
     }
 
-    public CumulativeView getCumulative(String cumulativeName) {
+    public long getCumulative(String cumulativeName) {
         if (cumulativeName == null || cumulativeName.isBlank() || cumulativeReader == null) {
-            return new CumulativeView(0, "");
+            return 0;
         }
         CumulativeDefinition def = cumulatives.get(cumulativeName.trim());
         if (def == null) {
-            return new CumulativeView(0, "");
+            return 0;
         }
         Optional<String> value = ValueResolver.resolve(def.dimension(), def.valueSource(), matchCtx);
         if (value.isEmpty()) {
-            return new CumulativeView(0, "");
+            return 0;
         }
         ZoneId zone = ZoneId.of(def.timezone() != null ? def.timezone() : "UTC");
-        long count = cumulativeReader.read(
+        return cumulativeReader.read(
                 tenantId,
                 def.cumulativeName(),
                 value.get(),
                 def.windowMinutes(),
                 def.windowKind(),
                 zone);
-        return new CumulativeView(count, value.get());
     }
 
     public record ListDefinition(String listName, String dimension, List<String> entries, ValueSource valueSource) {}

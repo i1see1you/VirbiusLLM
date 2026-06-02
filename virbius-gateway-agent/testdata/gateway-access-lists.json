@@ -35,7 +35,7 @@
       "intent_action": "captcha",
       "enforce_mode": "dry_run",
       "bind_scope": "global",
-      "body": "function decide(ctx)\n  return getCumulative('user_req_1h_global').count >= 100\nend"
+      "body": "function decide(ctx)\n  return getCumulative('user_req_1h_global') >= 100\nend"
     },
     {
       "rule_id": "rl_chat",
@@ -46,7 +46,7 @@
       "enforce_mode": "dry_run",
       "bind_scope": "route",
       "bind_ref": { "uris": ["/v1/chat/completions"] },
-      "body": "function decide(ctx)\n  return getCumulative('chat_user_req_1h').count >= 5\nend"
+      "body": "function decide(ctx)\n  return getCumulative('chat_user_req_1h') >= 5\nend"
     }
   ]
 }

@@ -315,11 +315,11 @@
       </p>
       <p id="groovyHint" class="hint" style="display:none;margin:0 0 0.5rem">
         Groovy 脚本实现 <code>decide(ctx)</code>，返回 <code>true</code>（命中）/ <code>false</code>（未命中）。
-        可用 <code>ctx.listMatch(name)</code>、<code>ctx.listMatch(name, value)</code>、<code>ctx.getCumulative(name).count</code>、<code>ctx.var('logical')</code>。
+        可用 <code>ctx.listMatch(name)</code>、<code>ctx.listMatch(name, value)</code>、<code>ctx.getCumulative(name)</code>、<code>ctx.var('logical')</code>。
         命中后 intent / risk / reason / enforce 取自规则行。
       </p>
       <p id="luaHint" class="hint" style="display:none;margin:0 0 0.5rem">
-        Lua 脚本实现 <code>decide(ctx)</code>，返回 boolean。可用全局 <code>listMatch(name, value)</code>、<code>getCumulative(name).count</code>、<code>ctx.var('logical')</code>。
+        Lua 脚本实现 <code>decide(ctx)</code>，返回 boolean。可用全局 <code>listMatch(name, value)</code>、<code>getCumulative(name)</code>、<code>ctx.var('logical')</code>。
       </p>
       <textarea id="fBody"></textarea>
       <div class="row">

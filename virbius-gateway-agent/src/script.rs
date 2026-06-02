@@ -98,8 +98,8 @@ pub fn run_lua_decide(body: &str, env: &ScriptEnv<'_>) -> Result<bool, String> {
     globals
         .set(
             "getCumulative",
-            lua.create_function(move |lua, name: String| {
-                let count = read_cumulative_count(
+            lua.create_function(move |_, name: String| {
+                Ok(read_cumulative_count(
                     &tenant,
                     &cumulatives,
                     &name,
@@ -109,10 +109,7 @@ pub fn run_lua_decide(body: &str, env: &ScriptEnv<'_>) -> Result<bool, String> {
                     client_ip.as_deref(),
                     session_id.as_deref(),
                     &vars,
-                );
-                let tbl = lua.create_table()?;
-                tbl.set("count", count)?;
-                Ok(tbl)
+                ))
             })
             .map_err(|e| e.to_string())?,
         )

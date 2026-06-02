@@ -7,7 +7,7 @@
 | 已移除 | `list_match`、`cumulative`、`native` 声明式 runtime |
 | 脚本契约 | `decide(ctx)` → **`true` 命中 / `false` 未命中** |
 | 命中后 Signal | 取自规则行 **`intent_action`、`risk_score`、`reason_code`、`enforce_mode`** |
-| 组合条件 | 写在脚本内，如 `listMatch('x') && getCumulative('y').count >= 120` |
+| 组合条件 | 写在脚本内，如 `listMatch('x') && getCumulative('y') >= 120` |
 | 名单 entry | **纯值**；禁止 `logical=value`；名单 dimension 用 `var:logical` 而非 `var` |
 | 累计 | `tb_cumulative` 保留；ingest 平台 Phase A；脚本只 **read** `getCumulative(name)` |
 | bind_scope | 过滤是否执行该脚本 |
@@ -30,13 +30,13 @@
 ### Gateway (Lua)
 
 - `listMatch(name)` / `listMatch(name, value)`
-- `getCumulative(name)` → `{ count = N }`
+- `getCumulative(name)` → 当前窗口计数 `N`（number / long）
 - `ctx.content`, `ctx.user_id`, `ctx.var('logical')`
 
 ### Cloud (Groovy)
 
 - `ctx.listMatch(name)` / `ctx.listMatch(name, value)`
-- `ctx.getCumulative(name).count`
+- `ctx.getCumulative(name)` → 同上，可直接 `>= threshold`
 - `ctx.var('logical')`, `ctx.wouldHitBlock()`, `ctx.signals()`
 
 ## 示例
@@ -53,7 +53,7 @@ end
 
 ```lua
 function decide(ctx)
-  return getCumulative('user_req_1h').count >= 120
+  return getCumulative('user_req_1h') >= 120
 end
 ```
 
