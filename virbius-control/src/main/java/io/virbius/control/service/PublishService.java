@@ -5,6 +5,7 @@ import io.virbius.control.domain.BundleVersion;
 import io.virbius.control.domain.RuleRevision;
 import io.virbius.control.domain.RolloutStateHelper;
 import io.virbius.control.groovy.GroovyRuleValidator;
+import io.virbius.control.policy.PolicyDataBuilder;
 import io.virbius.control.policy.PolicyMaterializer;
 import io.virbius.control.repository.RegistryRepository;
 import java.net.URI;
@@ -28,6 +29,7 @@ public class PublishService {
     private final RegistryRepository store;
     private final GroovyRuleValidator groovyRuleValidator;
     private final PolicyMaterializer policyMaterializer;
+    private final PolicyDataBuilder policyDataBuilder;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     private final ObjectMapper mapper = new ObjectMapper();
     private final String engineBaseUrl;
@@ -36,10 +38,12 @@ public class PublishService {
             RegistryRepository store,
             GroovyRuleValidator groovyRuleValidator,
             PolicyMaterializer policyMaterializer,
+            PolicyDataBuilder policyDataBuilder,
             @Value("${virbius.engine.base-url:http://127.0.0.1:8082}") String engineBaseUrl) {
         this.store = store;
         this.groovyRuleValidator = groovyRuleValidator;
         this.policyMaterializer = policyMaterializer;
+        this.policyDataBuilder = policyDataBuilder;
         this.engineBaseUrl = engineBaseUrl.endsWith("/") ? engineBaseUrl.substring(0, engineBaseUrl.length() - 1) : engineBaseUrl;
     }
 
@@ -129,6 +133,9 @@ public class PublishService {
                 if (r.exportedCanaryPercent() != null) {
                     rule.put("canary_percent", r.exportedCanaryPercent());
                 }
+                if (r.scope() != null && !r.scope().isEmpty()) {
+                    rule.set("scope", snakeMapper.valueToTree(r.scope()));
+                }
                 if (r.body() != null) {
                     if (r.body() instanceof String s) {
                         rule.put("body", s);
@@ -137,6 +144,8 @@ public class PublishService {
                     }
                 }
             }
+            body.set("lists", snakeMapper.valueToTree(policyDataBuilder.buildEngineLists(tenantId)));
+            body.set("cumulatives", snakeMapper.valueToTree(policyDataBuilder.buildEngineCumulatives(tenantId)));
             String url = engineBaseUrl + "/admin/cache/reload?tenant_id=" + tenantId + "&bundle_version=" + bundleVersion + "&mode=full";
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(url))

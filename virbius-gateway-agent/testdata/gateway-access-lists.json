@@ -1,0 +1,52 @@
+{
+  "tenant_id": "default",
+  "lists": [],
+  "cumulatives": [
+    {
+      "cumulative_name": "user_req_1h_global",
+      "dimension": "user_id",
+      "window_kind": "rolling",
+      "window_minutes": 60,
+      "priority": 0,
+      "ingest_targets": [{ "kind": "default" }],
+      "binding_rules": [{ "bind_scope": "global" }]
+    },
+    {
+      "cumulative_name": "chat_user_req_1h",
+      "dimension": "user_id",
+      "window_kind": "rolling",
+      "window_minutes": 60,
+      "priority": 1,
+      "ingest_targets": [{ "kind": "default" }],
+      "binding_rules": [
+        {
+          "bind_scope": "route",
+          "bind_ref": { "uris": ["/v1/chat/completions"] }
+        }
+      ]
+    }
+  ],
+  "script_rules": [
+    {
+      "rule_id": "rl_global",
+      "rule_revision": 1,
+      "reason_code": "GW_USER_RATE",
+      "risk_score": 80,
+      "intent_action": "captcha",
+      "enforce_mode": "dry_run",
+      "bind_scope": "global",
+      "body": "function decide(ctx)\n  return getCumulative('user_req_1h_global').count >= 100\nend"
+    },
+    {
+      "rule_id": "rl_chat",
+      "rule_revision": 1,
+      "reason_code": "GW_CHAT_RATE",
+      "risk_score": 90,
+      "intent_action": "captcha",
+      "enforce_mode": "dry_run",
+      "bind_scope": "route",
+      "bind_ref": { "uris": ["/v1/chat/completions"] },
+      "body": "function decide(ctx)\n  return getCumulative('chat_user_req_1h').count >= 5\nend"
+    }
+  ]
+}

@@ -1,9 +1,9 @@
-use crate::enforce::RuleHit;
-use crate::policy_engine::{hit_from_cumulative_block, resolve_value, CumulativeRuleBlock};
+use crate::bind_scope::{matches_bind_rule, BindContext};
+use crate::policy_engine::{resolve_value, CumulativeDefBlock, IngestTargetDef, ValueSourceDef};
 use chrono::{DateTime, NaiveTime, TimeZone, Utc};
 use chrono_tz::Tz;
 use redis::Client;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::sync::{Mutex, OnceLock};
 
@@ -31,58 +31,116 @@ fn use_redis() -> bool {
     redis_client().is_some()
 }
 
-pub fn collect_hits(
-    tenant_id: &str,
-    rules: &[CumulativeRuleBlock],
-    content: &str,
-    user_id: Option<&str>,
-    device_id: Option<&str>,
-    client_ip: Option<&str>,
-    session_id: Option<&str>,
-    vars: &HashMap<String, String>,
-) -> Vec<RuleHit> {
-    let mut hits = Vec::new();
-    for rule in rules {
-        let value = match resolve_value(
-            &rule.dimension,
-            rule.value_source.as_ref(),
-            content,
-            user_id,
-            device_id,
-            client_ip,
-            session_id,
-            vars,
-        ) {
-            Some(v) => v,
-            None => continue,
-        };
-        let Some(w_min) = window_minutes(rule) else {
-            continue;
-        };
-        let g = granularity_minutes(w_min, &rule.window_kind);
-        let end_slot = current_slot(g);
-        let key = redis_key(tenant_id, &rule.cumulative_name, &value);
-        let ttl = ttl_seconds(w_min, &rule.window_kind);
-        ingest_key(&key, end_slot, ttl);
-        let count = read_key(&key, rule, w_min, g, end_slot);
-        if exceeded(count, rule.threshold, rule.compare_op.as_deref()) {
-            hits.push(hit_from_cumulative_block(rule));
-        }
-    }
-    hits
+pub struct RequestCtx<'a> {
+    pub content: &'a str,
+    pub user_id: Option<&'a str>,
+    pub device_id: Option<&'a str>,
+    pub client_ip: Option<&'a str>,
+    pub session_id: Option<&'a str>,
+    pub vars: &'a HashMap<String, String>,
 }
 
-/// Aligns with `CumulativeWindow.windowMinutes`.
-fn window_minutes(rule: &CumulativeRuleBlock) -> Option<i32> {
-    if is_calendar_day(&rule.window_kind) {
+/** Phase A ingest only (script rules read counts separately). */
+pub fn ingest_only(
+    tenant_id: &str,
+    defs: &[CumulativeDefBlock],
+    bind: &BindContext,
+    req: &RequestCtx<'_>,
+) {
+    ingest_all(tenant_id, defs, bind, req);
+}
+
+pub fn read_count(tenant_id: &str, def: &CumulativeDefBlock, value: &str) -> Count {
+    let Some(w_min) = window_minutes_def(def) else {
+        return 0;
+    };
+    let g = granularity_minutes(w_min, &def.window_kind);
+    let end_slot = current_slot(g);
+    let key = redis_key(tenant_id, &def.cumulative_name, value);
+    read_key_for_window(
+        &key,
+        &def.window_kind,
+        def.timezone.as_ref(),
+        w_min,
+        g,
+        end_slot,
+    )
+}
+
+fn ingest_all(
+    tenant_id: &str,
+    defs: &[CumulativeDefBlock],
+    bind: &BindContext,
+    req: &RequestCtx<'_>,
+) {
+    let mut seen_keys: HashSet<String> = HashSet::new();
+    let mut ordered: Vec<&CumulativeDefBlock> = defs.iter().collect();
+    ordered.sort_by_key(|d| d.priority);
+
+    for def in ordered {
+        if !should_ingest_def(def, bind) {
+            continue;
+        }
+        let Some(w_min) = window_minutes_def(def) else {
+            continue;
+        };
+        let g = granularity_minutes(w_min, &def.window_kind);
+        let slot = current_slot(g);
+        let ttl = ttl_seconds(w_min, &def.window_kind);
+
+        for target in &def.ingest_targets {
+            let vs = target_as_value_source(target);
+            let value = match resolve_value(
+                &def.dimension,
+                vs.as_ref(),
+                req.content,
+                req.user_id,
+                req.device_id,
+                req.client_ip,
+                req.session_id,
+                req.vars,
+            ) {
+                Some(v) => v,
+                None => continue,
+            };
+            let key = redis_key(tenant_id, &def.cumulative_name, &value);
+            if seen_keys.insert(key.clone()) {
+                ingest_key(&key, slot, ttl);
+            }
+        }
+    }
+}
+
+fn should_ingest_def(def: &CumulativeDefBlock, bind: &BindContext) -> bool {
+    if def.binding_rules.is_empty() {
+        return true;
+    }
+    def.binding_rules
+        .iter()
+        .any(|r| matches_bind_rule(r, bind))
+}
+
+fn target_as_value_source(target: &IngestTargetDef) -> Option<ValueSourceDef> {
+    if target.kind.is_empty() || target.kind == "default" {
+        return None;
+    }
+    Some(ValueSourceDef {
+        kind: target.kind.clone(),
+        r#ref: target.r#ref.clone(),
+        value: target.value.clone(),
+    })
+}
+
+fn window_minutes_def(def: &CumulativeDefBlock) -> Option<i32> {
+    if is_calendar_day(&def.window_kind) {
         return Some(1440);
     }
-    if let Some(m) = rule.window_minutes {
+    if let Some(m) = def.window_minutes {
         if m > 0 {
             return Some(m.min(MAX_WINDOW_MINUTES));
         }
     }
-    if let Some(h) = rule.window_hours {
+    if let Some(h) = def.window_hours {
         if h > 0 {
             return Some((h * 60).min(MAX_WINDOW_MINUTES));
         }
@@ -94,7 +152,6 @@ fn is_calendar_day(window_kind: &str) -> bool {
     window_kind.eq_ignore_ascii_case("calendar_day")
 }
 
-/// Aligns with `CumulativeWindow.granularityMinutes`.
 fn granularity_minutes(w_minutes: i32, window_kind: &str) -> i32 {
     if is_calendar_day(window_kind) || w_minutes >= 1440 {
         10
@@ -128,12 +185,10 @@ fn epoch_secs() -> i64 {
         .as_secs() as i64
 }
 
-/// Aligns with `CumulativeWindow.currentSlot`.
 fn current_slot(granularity_min: i32) -> Slot {
     epoch_secs() / (granularity_min as i64 * 60)
 }
 
-/// Aligns with `CumulativeWindow.startSlotCalendarDay`.
 fn start_slot_calendar_day(now: DateTime<Utc>, zone: Tz, granularity_min: i32) -> Slot {
     let local = now.with_timezone(&zone);
     let date = local.date_naive();
@@ -202,9 +257,16 @@ fn ingest_key_memory(key: &str, slot: Slot) {
     *buckets.entry(slot).or_insert(0) += 1;
 }
 
-fn read_key(key: &str, rule: &CumulativeRuleBlock, w_min: i32, g: i32, end_slot: Slot) -> Count {
-    let start_slot = if is_calendar_day(&rule.window_kind) {
-        let zone = parse_zone(rule.timezone.as_ref());
+fn read_key_for_window(
+    key: &str,
+    window_kind: &str,
+    timezone: Option<&String>,
+    w_min: i32,
+    g: i32,
+    end_slot: Slot,
+) -> Count {
+    let start_slot = if is_calendar_day(window_kind) {
+        let zone = parse_zone(timezone);
         start_slot_calendar_day(now_utc(), zone, g)
     } else {
         let buckets = bucket_count(w_min, g);
@@ -258,68 +320,200 @@ fn read_key_memory(key: &str, start_slot: Slot, end_slot: Slot) -> Count {
         .sum()
 }
 
-fn exceeded(count: Count, threshold: i32, op: Option<&str>) -> bool {
-    match op.unwrap_or("gte").to_ascii_lowercase().as_str() {
-        "gt" => count > threshold as Count,
-        "eq" => count == threshold as Count,
-        "lte" => count <= threshold as Count,
-        "lt" => count < threshold as Count,
-        _ => count >= threshold as Count,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bind_scope::BindContext;
+    use crate::policy_engine::CumulativeDefBlock;
+    use crate::script::{run_lua_decide, ScriptEnv};
 
-    fn rule(window_kind: &str, minutes: Option<i32>, hours: Option<i32>, tz: Option<&str>) -> CumulativeRuleBlock {
-        CumulativeRuleBlock {
-            window_kind: window_kind.into(),
-            window_minutes: minutes,
-            window_hours: hours,
-            timezone: tz.map(|s| s.into()),
+    #[test]
+    fn single_ingest_yields_count_for_script_read() {
+        let def = CumulativeDefBlock {
+            cumulative_name: "user_req_1h".into(),
+            dimension: "user_id".into(),
+            window_kind: "rolling".into(),
+            window_minutes: Some(60),
+            ingest_targets: vec![IngestTargetDef {
+                kind: "default".into(),
+                ..Default::default()
+            }],
+            binding_rules: vec![crate::bind_scope::BindRuleBlock {
+                bind_scope: "global".into(),
+                ..Default::default()
+            }],
             ..Default::default()
+        };
+        let bind = BindContext::default();
+        let vars = HashMap::new();
+        let req = RequestCtx {
+            content: "hi",
+            user_id: Some("u-1"),
+            device_id: None,
+            client_ip: None,
+            session_id: None,
+            vars: &vars,
+        };
+        if use_redis() {
+            return;
         }
+        ingest_only("t", std::slice::from_ref(&def), &bind, &req);
+        assert_eq!(read_count("t", &def, "u-1"), 1);
+
+        let env = ScriptEnv {
+            content: req.content,
+            user_id: req.user_id,
+            device_id: req.device_id,
+            client_ip: req.client_ip,
+            session_id: req.session_id,
+            vars: req.vars,
+            tenant_id: "t",
+            lists: &[],
+            cumulatives: std::slice::from_ref(&def),
+        };
+        let body = "function decide(ctx)\n  return getCumulative('user_req_1h').count >= 1\nend";
+        assert!(run_lua_decide(body, &env).unwrap());
     }
 
     #[test]
-    fn window_minutes_calendar_day_is_1440() {
-        assert_eq!(window_minutes(&rule("calendar_day", Some(60), None, None)), Some(1440));
+    fn gateway_fixture_chat_route_ingests_global_and_route_cumulatives() {
+        use crate::policy_engine::ScriptRuleBlock;
+
+        let raw = include_str!("../testdata/gateway-access-lists.json");
+        let v: serde_json::Value = serde_json::from_str(raw).expect("fixture");
+        let defs: Vec<CumulativeDefBlock> =
+            serde_json::from_value(v.get("cumulatives").cloned().unwrap()).unwrap();
+        let lists: Vec<crate::policy_engine::ListDefBlock> =
+            serde_json::from_value(v.get("lists").cloned().unwrap_or_default()).unwrap_or_default();
+        let script_rules: Vec<ScriptRuleBlock> =
+            serde_json::from_value(v.get("script_rules").cloned().unwrap()).unwrap();
+        let bind = BindContext {
+            route_uri: Some("/v1/chat/completions".into()),
+            ..Default::default()
+        };
+        let vars = HashMap::new();
+        let req = RequestCtx {
+            content: "hi",
+            user_id: Some("u-int"),
+            device_id: None,
+            client_ip: None,
+            session_id: None,
+            vars: &vars,
+        };
+        if use_redis() {
+            return;
+        }
+        ingest_only("default", &defs, &bind, &req);
+        let chat_key = redis_key("default", "chat_user_req_1h", "u-int");
+        let global_key = redis_key("default", "user_req_1h_global", "u-int");
+        let slot = current_slot(1);
+        assert_eq!(read_key_memory(&chat_key, slot, slot), 1);
+        assert_eq!(read_key_memory(&global_key, slot, slot), 1);
+
+        let env = ScriptEnv {
+            content: req.content,
+            user_id: req.user_id,
+            device_id: req.device_id,
+            client_ip: req.client_ip,
+            session_id: req.session_id,
+            vars: req.vars,
+            tenant_id: "default",
+            lists: &lists,
+            cumulatives: &defs,
+        };
+        let chat_rule = script_rules.iter().find(|r| r.rule_id == "rl_chat").unwrap();
+        assert!(!run_lua_decide(&chat_rule.body, &env).unwrap());
+
+        for _ in 0..4 {
+            ingest_only("default", &defs, &bind, &req);
+        }
+        assert!(run_lua_decide(&chat_rule.body, &env).unwrap());
     }
 
     #[test]
-    fn window_minutes_rolling_caps() {
-        assert_eq!(window_minutes(&rule("rolling", Some(90), None, None)), Some(90));
-        assert_eq!(window_minutes(&rule("rolling", None, Some(2), None)), Some(120));
+    fn gateway_fixture_other_route_skips_route_cumulative_ingest() {
+        let raw = include_str!("../testdata/gateway-access-lists.json");
+        let v: serde_json::Value = serde_json::from_str(raw).expect("fixture");
+        let defs: Vec<CumulativeDefBlock> =
+            serde_json::from_value(v.get("cumulatives").cloned().unwrap()).unwrap();
+        let bind = BindContext {
+            route_uri: Some("/v1/other".into()),
+            ..Default::default()
+        };
+        let vars = HashMap::new();
+        let req = RequestCtx {
+            content: "hi",
+            user_id: Some("u-other"),
+            device_id: None,
+            client_ip: None,
+            session_id: None,
+            vars: &vars,
+        };
+        if use_redis() {
+            return;
+        }
+        ingest_all("default", &defs, &bind, &req);
+        let slot = current_slot(1);
+        assert_eq!(
+            read_key_memory(&redis_key("default", "chat_user_req_1h", "u-other"), slot, slot),
+            0
+        );
+        assert_eq!(
+            read_key_memory(&redis_key("default", "user_req_1h_global", "u-other"), slot, slot),
+            1
+        );
     }
 
     #[test]
-    fn granularity_calendar_day_is_10() {
-        assert_eq!(granularity_minutes(60, "calendar_day"), 10);
-        assert_eq!(granularity_minutes(60, "rolling"), 1);
-        assert_eq!(granularity_minutes(1440, "rolling"), 10);
-    }
-
-    #[test]
-    fn start_slot_calendar_day_not_after_end() {
-        let g = 10;
-        let end = current_slot(g);
-        let start = start_slot_calendar_day(now_utc(), chrono_tz::Asia::Shanghai, g);
-        assert!(start <= end);
-    }
-
-    #[test]
-    fn ttl_seconds_matches_counter_store() {
-        assert_eq!(ttl_seconds(60, "rolling"), 10_800);
-        assert_eq!(ttl_seconds(60, "calendar_day"), 93_600);
-    }
-
-    #[test]
-    fn memory_ingest_and_read_without_redis_url() {
-        let key = "test:mem:key";
-        ingest_key_memory(key, 100);
-        ingest_key_memory(key, 100);
-        ingest_key_memory(key, 101);
-        assert_eq!(read_key_memory(key, 100, 101), 3);
+    fn ingest_var_app_id_dimension_from_context_vars() {
+        let def = CumulativeDefBlock {
+            cumulative_name: "app_req_1h".into(),
+            dimension: "var:app_id".into(),
+            window_kind: "rolling".into(),
+            window_minutes: Some(60),
+            ingest_targets: vec![IngestTargetDef {
+                kind: "default".into(),
+                ..Default::default()
+            }],
+            binding_rules: vec![crate::bind_scope::BindRuleBlock {
+                bind_scope: "global".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let bind = BindContext::default();
+        let mut vars = HashMap::new();
+        vars.insert("app_id".into(), "acme".into());
+        let req = RequestCtx {
+            content: "hi",
+            user_id: Some("u1"),
+            device_id: None,
+            client_ip: None,
+            session_id: None,
+            vars: &vars,
+        };
+        if use_redis() {
+            return;
+        }
+        ingest_all("default", std::slice::from_ref(&def), &bind, &req);
+        let slot = current_slot(1);
+        assert_eq!(
+            read_key_memory(&redis_key("default", "app_req_1h", "acme"), slot, slot),
+            1
+        );
+        let empty_vars = HashMap::new();
+        let req_skip = RequestCtx {
+            content: "hi",
+            user_id: Some("u1"),
+            device_id: None,
+            client_ip: None,
+            session_id: None,
+            vars: &empty_vars,
+        };
+        ingest_all("default", std::slice::from_ref(&def), &bind, &req_skip);
+        assert_eq!(
+            read_key_memory(&redis_key("default", "app_req_1h", "acme"), slot, slot),
+            1
+        );
     }
 }

@@ -1,9 +1,11 @@
 mod access_lists;
 mod audit;
+mod bind_scope;
 mod cumulative;
 mod engine;
 mod enforce;
 mod policy_engine;
+mod script;
 mod trace;
 
 use axum::{
@@ -47,6 +49,14 @@ struct AgentEvaluateRequest {
     headers: Option<HashMap<String, String>>,
     #[serde(default)]
     vars: Option<HashMap<String, String>>,
+    #[serde(default)]
+    route_uri: Option<String>,
+    #[serde(default)]
+    upstream_id: Option<String>,
+    #[serde(default)]
+    consumer_id: Option<String>,
+    #[serde(default)]
+    api_key_group: Option<String>,
 }
 
 fn default_role() -> String {
@@ -114,6 +124,7 @@ async fn evaluate(
     );
 
     if let Some(gw) = state.lists.check(
+        &bind_context(&req),
         &req.content,
         req.user_id.as_deref(),
         req.device_id.as_deref(),
@@ -160,11 +171,11 @@ async fn forward_engine(
 
     let eng_req = EvaluateRequest {
         tenant_id: req.tenant_id,
-        scene: req.scene,
+        scene: req.scene.clone(),
         role: if req.role.is_empty() {
             "user".into()
         } else {
-            req.role
+            req.role.clone()
         },
         session_id: req.session_id,
         content: req.content,
@@ -173,6 +184,10 @@ async fn forward_engine(
         device_id: req.device_id,
         prior_signals,
         vars: Some(vars_ctx),
+        route_uri: req.route_uri.clone(),
+        upstream_id: req.upstream_id.clone(),
+        consumer_id: req.consumer_id.clone(),
+        api_key_group: req.api_key_group.clone(),
     };
 
     match state.engine.evaluate(eng_req).await {
@@ -258,6 +273,16 @@ fn to_agent_response(resp: EvaluateResponse, degraded: bool) -> AgentEvaluateRes
         reason_code: Some(resp.reason_code),
         trace_id: resp.trace_id,
         degraded,
+    }
+}
+
+fn bind_context(req: &AgentEvaluateRequest) -> bind_scope::BindContext {
+    bind_scope::BindContext {
+        scene: req.scene.clone(),
+        route_uri: req.route_uri.clone(),
+        upstream_id: req.upstream_id.clone(),
+        consumer_id: req.consumer_id.clone(),
+        api_key_group: req.api_key_group.clone(),
     }
 }
 

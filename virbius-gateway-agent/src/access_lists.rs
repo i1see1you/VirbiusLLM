@@ -1,6 +1,8 @@
-use crate::cumulative;
+use crate::bind_scope::BindContext;
+use crate::cumulative::{self, RequestCtx};
 use crate::enforce::{self, GatewayCheckResult};
-use crate::policy_engine::{collect_named_list_hits, CumulativeRuleBlock, NamedListBlock};
+use crate::policy_engine::{hit_from_script_rule, ScriptRuleBlock, CumulativeDefBlock, ListDefBlock};
+use crate::script::{run_lua_decide, ScriptEnv};
 use serde::Deserialize;
 use std::{
     collections::HashMap,
@@ -30,9 +32,11 @@ struct ContextBindings {
 #[derive(Debug, Clone, Deserialize)]
 struct ListsFile {
     #[serde(default)]
-    lists: Vec<NamedListBlock>,
+    lists: Vec<ListDefBlock>,
     #[serde(default)]
-    cumulative_rules: Vec<CumulativeRuleBlock>,
+    cumulatives: Vec<CumulativeDefBlock>,
+    #[serde(default)]
+    script_rules: Vec<ScriptRuleBlock>,
     #[serde(default)]
     context_bindings: ContextBindings,
 }
@@ -88,6 +92,7 @@ impl AccessListChecker {
 
     pub fn check(
         &self,
+        bind: &BindContext,
         content: &str,
         user_id: Option<&str>,
         device_id: Option<&str>,
@@ -107,28 +112,43 @@ impl AccessListChecker {
             query,
             headers,
         );
-        let mut hits = collect_named_list_hits(
-            &lists.lists,
+        let req = RequestCtx {
             content,
             user_id,
             device_id,
             client_ip,
             session_id,
-            &vars,
-        );
-        if !lists.cumulative_rules.is_empty() {
-            let tenant = env::var("VIRBIUS_TENANT_ID").unwrap_or_else(|_| "default".into());
-            hits.extend(cumulative::collect_hits(
-                &tenant,
-                &lists.cumulative_rules,
+            vars: &vars,
+        };
+        let tenant = env::var("VIRBIUS_TENANT_ID").unwrap_or_else(|_| "default".into());
+
+        cumulative::ingest_only(&tenant, &lists.cumulatives, bind, &req);
+
+        let mut hits = Vec::new();
+        for rule in &lists.script_rules {
+            if !crate::bind_scope::matches_bind(&rule.bind_scope, rule.bind_ref.as_ref(), bind) {
+                continue;
+            }
+            let env = ScriptEnv {
                 content,
                 user_id,
                 device_id,
                 client_ip,
                 session_id,
-                &vars,
-            ));
+                vars: &vars,
+                tenant_id: &tenant,
+                lists: &lists.lists,
+                cumulatives: &lists.cumulatives,
+            };
+            match run_lua_decide(&rule.body, &env) {
+                Ok(true) => hits.push(hit_from_script_rule(rule)),
+                Ok(false) => {}
+                Err(e) => {
+                    eprintln!("lua script {} failed: {}", rule.rule_id, e);
+                }
+            }
         }
+
         if hits.is_empty() {
             return None;
         }

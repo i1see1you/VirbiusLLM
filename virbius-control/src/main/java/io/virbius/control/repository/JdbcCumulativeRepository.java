@@ -1,6 +1,7 @@
 package io.virbius.control.repository;
 
 import io.virbius.control.domain.CumulativeDef;
+import io.virbius.policy.CumulativeDimension;
 import io.virbius.policy.CumulativeWindow;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -114,6 +115,7 @@ public class JdbcCumulativeRepository implements CumulativeRepository {
     }
 
     private static void validate(CumulativeDef def) {
+        CumulativeDimension.validate(def.dimension());
         if ("calendar_day".equalsIgnoreCase(def.windowKind())) {
             if (def.timezone() == null || def.timezone().isBlank()) {
                 throw new IllegalArgumentException("calendar_day requires timezone");

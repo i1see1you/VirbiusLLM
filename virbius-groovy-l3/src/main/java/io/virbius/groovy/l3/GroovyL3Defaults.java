@@ -9,15 +9,15 @@ public final class GroovyL3Defaults {
               def ruleId = ctx.currentRuleId()
               def mode = ctx.enforceMode(ruleId)
               if (!ctx.wouldHitBlock()) {
-                return [action: 'allow']
+                return false
               }
               if (mode == 'dry_run') {
-                return [action: 'review']
+                return true
               }
               if (mode == 'canary' && !ctx.inCanaryBucket(ctx.sessionId(), ctx.canaryPercent(ruleId))) {
-                return [action: 'review']
+                return false
               }
-              return [action: 'block']
+              return true
             }
             """;
 

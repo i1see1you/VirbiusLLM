@@ -14,4 +14,8 @@ public record EvaluateRequestDto(
         String traceId,
         String userId,
         String deviceId,
-        Map<String, String> vars) {}
+        Map<String, String> vars,
+        String routeUri,
+        String upstreamId,
+        String consumerId,
+        String apiKeyGroup) {}

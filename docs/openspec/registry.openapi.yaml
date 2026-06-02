@@ -1308,7 +1308,7 @@ components:
           type: string
         runtime:
           type: string
-          enum: [lua-dsl, lua, prompt, groovy, list_match, cumulative]
+          enum: [lua-dsl, lua, prompt, groovy]
         reason_code:
           type: string
         intent_action:
@@ -1360,7 +1360,7 @@ components:
           enum: [edge, gateway, cloud]
         runtime:
           type: string
-          enum: [lua-dsl, lua, prompt, groovy, list_match, cumulative]
+          enum: [lua-dsl, lua, prompt, groovy]
           description: 详见 DESIGN.md §8.5.0
         reason_code:
           type: string

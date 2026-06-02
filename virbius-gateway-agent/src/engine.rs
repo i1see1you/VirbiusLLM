@@ -25,6 +25,14 @@ pub struct EvaluateRequest {
     pub prior_signals: Option<Vec<Signal>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vars: Option<HashMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub route_uri: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub consumer_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key_group: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

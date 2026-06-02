@@ -138,7 +138,7 @@ INSERT INTO tb_rule_history (
 )
 SELECT 'default', 'cloud_groovy_l3', 1, 'poc-default', 'cloud', 'groovy',
     'POLICY_FINAL', 100, 'deny', '{}',
-    'def decide(ctx) { def ruleId = ctx.currentRuleId(); def mode = ctx.enforceMode(ruleId); if (!ctx.wouldHitBlock()) return [action: ''allow'']; if (mode == ''dry_run'') return [action: ''review'']; if (mode == ''canary'' && !ctx.inCanaryBucket(ctx.sessionId(), ctx.canaryPercent(ruleId))) return [action: ''review'']; return [action: ''block''] }',
+    'def decide(ctx) { def ruleId = ctx.currentRuleId(); def mode = ctx.enforceMode(ruleId); if (!ctx.wouldHitBlock()) return false; if (mode == ''dry_run'') return true; if (mode == ''canary'' && !ctx.inCanaryBucket(ctx.sessionId(), ctx.canaryPercent(ruleId))) return false; return true }',
     'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'cloud_groovy_l3' AND rule_revision = 1);
 
@@ -167,7 +167,7 @@ INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, l
 SELECT 'default', 'cloud_groovy_l3', 1, 'poc-default', 'cloud', 'groovy', 'POLICY_FINAL', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'cloud_groovy_l3');
 
--- Named list + cumulative policy (list_match / cumulative runtimes)
+-- Script rules (lua gateway / groovy cloud); replaces list_match / cumulative
 INSERT INTO tb_cumulative (
     tenant_id, cumulative_name, description, dimension, window_kind, window_minutes, window_hours,
     timezone, priority, status)
@@ -175,12 +175,20 @@ SELECT 'default', 'user_req_1h', 'PoC user hourly limit', 'user_id', 'rolling', 
     NULL, 10, 'active' FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_cumulative WHERE tenant_id = 'default' AND cumulative_name = 'user_req_1h');
 
+INSERT INTO tb_cumulative (
+    tenant_id, cumulative_name, description, dimension, window_kind, window_minutes, window_hours,
+    timezone, priority, status)
+SELECT 'default', 'app_req_1h', 'PoC app hourly limit (var:app_id)', 'var:app_id', 'rolling', 60, NULL,
+    NULL, 11, 'active' FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_cumulative WHERE tenant_id = 'default' AND cumulative_name = 'app_req_1h');
+
 INSERT INTO tb_rule_history (
     tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
                   reason_code, risk_score, intent_action, scope_json, body_json,
     rollout_state, canary_percent, effective_from, modified_at)
-SELECT 'default', 'rl_deny_keywords', 1, 'poc-default', 'gateway', 'list_match',
-    'GW_CONTENT_KEYWORD_DENY', 100, 'deny', '{}', '{"list_name":"deny_keyword"}',
+SELECT 'default', 'rl_deny_keywords', 1, 'poc-default', 'gateway', 'lua',
+    'GW_CONTENT_KEYWORD_DENY', 100, 'deny', '{}',
+    'function decide(ctx)\n  return listMatch(''deny_keyword'', ctx.content)\nend',
     'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'rl_deny_keywords');
 
@@ -188,8 +196,9 @@ INSERT INTO tb_rule_history (
     tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
                   reason_code, risk_score, intent_action, scope_json, body_json,
     rollout_state, canary_percent, effective_from, modified_at)
-SELECT 'default', 'rl_deny_users', 1, 'poc-default', 'gateway', 'list_match',
-    'GW_SUBJECT_USER_DENY', 100, 'deny', '{}', '{"list_name":"deny_user_id"}',
+SELECT 'default', 'rl_deny_users', 1, 'poc-default', 'gateway', 'lua',
+    'GW_SUBJECT_USER_DENY', 100, 'deny', '{}',
+    'function decide(ctx)\n  return listMatch(''deny_user_id'', ctx.user_id)\nend',
     'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'rl_deny_users');
 
@@ -197,28 +206,43 @@ INSERT INTO tb_rule_history (
     tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
                   reason_code, risk_score, intent_action, scope_json, body_json,
     rollout_state, canary_percent, effective_from, modified_at)
-SELECT 'default', 'rl_rate_user_1h', 1, 'poc-default', 'gateway', 'cumulative',
-    'GW_USER_RATE_1H', 80, 'captcha', '{}', '{"cumulative_name":"user_req_1h","condition":{"compare_op":"gte","threshold":120}}',
+SELECT 'default', 'rl_rate_user_1h', 1, 'poc-default', 'gateway', 'lua',
+    'GW_USER_RATE_1H', 80, 'captcha', '{"bind_scope":"global"}',
+    'function decide(ctx)\n  return getCumulative(''user_req_1h'').count >= 120\nend',
     'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'rl_rate_user_1h');
 
-INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
-SELECT 'default', 'rl_deny_keywords', 1, 'poc-default', 'gateway', 'list_match', 'GW_CONTENT_KEYWORD_DENY', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
-WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'rl_deny_keywords');
-INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
-SELECT 'default', 'rl_deny_users', 1, 'poc-default', 'gateway', 'list_match', 'GW_SUBJECT_USER_DENY', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
-WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'rl_deny_users');
-INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
-SELECT 'default', 'rl_rate_user_1h', 1, 'poc-default', 'gateway', 'cumulative', 'GW_USER_RATE_1H', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
-WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'rl_rate_user_1h');
-
--- Cloud list_match (replaces legacy runtime=native L1 rules)
 INSERT INTO tb_rule_history (
     tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
                   reason_code, risk_score, intent_action, scope_json, body_json,
     rollout_state, canary_percent, effective_from, modified_at)
-SELECT 'default', 'cloud_rl_deny_keywords', 1, 'poc-default', 'cloud', 'list_match',
-    'CLOUD_KEYWORD_DENY', 100, 'deny', '{}', '{"list_name":"deny_keyword"}',
+SELECT 'default', 'rl_rate_app_1h', 1, 'poc-default', 'gateway', 'lua',
+    'GW_APP_RATE_1H', 85, 'captcha', '{"bind_scope":"global"}',
+    'function decide(ctx)\n  return getCumulative(''app_req_1h'').count >= 500\nend',
+    'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'rl_rate_app_1h');
+
+INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
+SELECT 'default', 'rl_deny_keywords', 1, 'poc-default', 'gateway', 'lua', 'GW_CONTENT_KEYWORD_DENY', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'rl_deny_keywords');
+INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
+SELECT 'default', 'rl_deny_users', 1, 'poc-default', 'gateway', 'lua', 'GW_SUBJECT_USER_DENY', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'rl_deny_users');
+INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
+SELECT 'default', 'rl_rate_user_1h', 1, 'poc-default', 'gateway', 'lua', 'GW_USER_RATE_1H', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'rl_rate_user_1h');
+INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
+SELECT 'default', 'rl_rate_app_1h', 1, 'poc-default', 'gateway', 'lua', 'GW_APP_RATE_1H', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'rl_rate_app_1h');
+
+-- Cloud groovy script rules (replaces list_match)
+INSERT INTO tb_rule_history (
+    tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
+                  reason_code, risk_score, intent_action, scope_json, body_json,
+    rollout_state, canary_percent, effective_from, modified_at)
+SELECT 'default', 'cloud_rl_deny_keywords', 1, 'poc-default', 'cloud', 'groovy',
+    'CLOUD_KEYWORD_DENY', 100, 'deny', '{}',
+    'def decide(ctx) { return ctx.listMatch(''deny_keyword'') }',
     'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'cloud_rl_deny_keywords' AND rule_revision = 1);
 
@@ -226,17 +250,34 @@ INSERT INTO tb_rule_history (
     tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
                   reason_code, risk_score, intent_action, scope_json, body_json,
     rollout_state, canary_percent, effective_from, modified_at)
-SELECT 'default', 'cloud_rl_deny_vars', 1, 'poc-default', 'cloud', 'list_match',
-    'CLOUD_VAR_DENY', 100, 'deny', '{}', '{"list_name":"deny_var"}',
+SELECT 'default', 'cloud_rl_deny_vars', 1, 'poc-default', 'cloud', 'groovy',
+    'CLOUD_VAR_DENY', 100, 'deny', '{}',
+    'def decide(ctx) { return ctx.listMatch(''deny_var'', ctx.var(''app_id'')) }',
     'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'cloud_rl_deny_vars' AND rule_revision = 1);
 
 INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
-SELECT 'default', 'cloud_rl_deny_keywords', 1, 'poc-default', 'cloud', 'list_match', 'CLOUD_KEYWORD_DENY', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+SELECT 'default', 'cloud_rl_deny_keywords', 1, 'poc-default', 'cloud', 'groovy', 'CLOUD_KEYWORD_DENY', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'cloud_rl_deny_keywords');
 INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
-SELECT 'default', 'cloud_rl_deny_vars', 1, 'poc-default', 'cloud', 'list_match', 'CLOUD_VAR_DENY', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+SELECT 'default', 'cloud_rl_deny_vars', 1, 'poc-default', 'cloud', 'groovy', 'CLOUD_VAR_DENY', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'cloud_rl_deny_vars');
+
+-- Migrate legacy list_match / cumulative rows on existing DBs
+UPDATE tb_rule_history SET runtime = 'lua', body_json = 'function decide(ctx)\n  return listMatch(''deny_keyword'', ctx.content)\nend'
+  WHERE tenant_id = 'default' AND rule_id = 'rl_deny_keywords' AND runtime = 'list_match';
+UPDATE tb_rule_history SET runtime = 'lua', body_json = 'function decide(ctx)\n  return listMatch(''deny_user_id'', ctx.user_id)\nend'
+  WHERE tenant_id = 'default' AND rule_id = 'rl_deny_users' AND runtime = 'list_match';
+UPDATE tb_rule_history SET runtime = 'lua', body_json = 'function decide(ctx)\n  return getCumulative(''user_req_1h'').count >= 120\nend'
+  WHERE tenant_id = 'default' AND rule_id = 'rl_rate_user_1h' AND runtime = 'cumulative';
+UPDATE tb_rule_history SET runtime = 'lua', body_json = 'function decide(ctx)\n  return getCumulative(''app_req_1h'').count >= 500\nend'
+  WHERE tenant_id = 'default' AND rule_id = 'rl_rate_app_1h' AND runtime = 'cumulative';
+UPDATE tb_rule_history SET runtime = 'groovy', body_json = 'def decide(ctx) { return ctx.listMatch(''deny_keyword'') }'
+  WHERE tenant_id = 'default' AND rule_id = 'cloud_rl_deny_keywords' AND runtime = 'list_match';
+UPDATE tb_rule_history SET runtime = 'groovy', body_json = 'def decide(ctx) { return ctx.listMatch(''deny_var'', ctx.var(''app_id'')) }'
+  WHERE tenant_id = 'default' AND rule_id = 'cloud_rl_deny_vars' AND runtime = 'list_match';
+UPDATE tb_rules_current SET runtime = 'lua' WHERE tenant_id = 'default' AND rule_id IN ('rl_deny_keywords','rl_deny_users','rl_rate_user_1h','rl_rate_app_1h') AND runtime IN ('list_match','cumulative');
+UPDATE tb_rules_current SET runtime = 'groovy' WHERE tenant_id = 'default' AND rule_id IN ('cloud_rl_deny_keywords','cloud_rl_deny_vars') AND runtime = 'list_match';
 
 INSERT INTO tb_tenant_rollout_policy (
     tenant_id, auto_mode, canary_ladder_json, min_dry_run_hours, min_review_count,

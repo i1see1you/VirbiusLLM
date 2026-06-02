@@ -6,7 +6,7 @@
 |------|------|
 | 状态 | 草案（设计冻结，待开发） |
 | 定义 | `list_name` + 元数据 + 条目 |
-| 规则 | `runtime=list_match`，body 至少 `list_name`；可选 `value_source` |
+| 规则 | `runtime=list_match`，body 至少 `list_name`；可选 `value_source`；**`bind_scope`** 见 [bind-scope.md](./bind-scope.md) |
 | 平台 API | `boolean matchList(String value, String listName)` |
 
 ---

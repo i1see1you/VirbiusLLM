@@ -1,12 +1,13 @@
 package io.virbius.control.service;
 
-import io.virbius.control.domain.AccessListEntry;
+import io.virbius.control.domain.CumulativeDef;
 import io.virbius.control.domain.AccessListMeta;
 import io.virbius.control.domain.RuleRevision;
 import io.virbius.control.domain.RolloutStateHelper;
 import io.virbius.control.domain.TenantRolloutPolicy;
+import io.virbius.control.groovy.GroovyRuleBodies;
+import io.virbius.control.policy.BindScopeExport;
 import io.virbius.control.policy.RuleBodyRefs;
-import io.virbius.policy.RuleCondition;
 import io.virbius.control.repository.CumulativeRepository;
 import io.virbius.control.repository.ListMetaRepository;
 import io.virbius.control.repository.RegistryRepository;
@@ -67,26 +68,32 @@ public class ArtifactService {
         java.nio.file.Path dir = dataDir.resolve("gateway");
         java.nio.file.Files.createDirectories(dir);
         java.nio.file.Path file = dir.resolve(tenantId + "-access-lists.json");
-        Map<String, Object> root = new LinkedHashMap<>();
-        root.put("tenant_id", tenantId);
-        root.put("lists", buildListBlocks(tenantId));
-        root.put("cumulative_rules", buildCumulativeRuleBlocks(tenantId));
-
-        Map<String, Object> bindings = ContextBindingsHelper.bindingsBlock(bundleMetadata);
-        if (!bindings.isEmpty()) {
-            root.put("context_bindings", bindings);
-        }
+        Map<String, Object> root = buildGatewaySnapshot(tenantId, bundleMetadata);
         mapper.writerWithDefaultPrettyPrinter().writeValue(file.toFile(), root);
         return file;
     }
 
-    private List<Map<String, Object>> buildListBlocks(String tenantId) {
+    /** Package-visible for unit tests. */
+    Map<String, Object> buildGatewaySnapshot(String tenantId) {
+        return buildGatewaySnapshot(tenantId, Map.of());
+    }
+
+    Map<String, Object> buildGatewaySnapshot(String tenantId, Map<String, Object> bundleMetadata) {
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("tenant_id", tenantId);
+        root.put("lists", buildListDefBlocks(tenantId));
+        root.put("cumulatives", buildCumulativeDefBlocks(tenantId));
+        root.put("script_rules", buildScriptRuleBlocks(tenantId));
+        Map<String, Object> bindings = ContextBindingsHelper.bindingsBlock(bundleMetadata);
+        if (!bindings.isEmpty()) {
+            root.put("context_bindings", bindings);
+        }
+        return root;
+    }
+
+    private List<Map<String, Object>> buildListDefBlocks(String tenantId) {
         List<Map<String, Object>> blocks = new ArrayList<>();
         for (AccessListMeta meta : listMetaRepo.listMeta(tenantId)) {
-            RuleBinding binding = findListMatchBinding(tenantId, meta.listName());
-            if (binding == null) {
-                continue;
-            }
             Map<String, Object> block = new LinkedHashMap<>();
             block.put("list_name", meta.listName());
             block.put("dimension", meta.dimension());
@@ -94,126 +101,96 @@ public class ArtifactService {
                 block.put("remark", meta.remark());
             }
             block.put("entries", AccessListService.entryMaps(listMetaRepo.listEntries(tenantId, meta.listName())));
-            block.put("rule_id", binding.ruleId());
-            block.put("rule_revision", binding.ruleRevision());
-            block.put("reason_code", binding.reasonCode());
-            block.put("risk_score", binding.riskScore());
-            block.put("intent_action", binding.intentAction() != null ? binding.intentAction() : "deny");
-            block.put("enforce_mode", binding.enforceMode() != null ? binding.enforceMode() : "dry_run");
-            if (binding.canaryPercent() != null) {
-                block.put("canary_percent", binding.canaryPercent());
-            }
-            if (binding.valueSource() != null) {
-                block.put("value_source", valueSourceMap(binding.valueSource()));
-            }
             blocks.add(block);
         }
         blocks.sort((a, b) -> String.valueOf(a.get("list_name")).compareTo(String.valueOf(b.get("list_name"))));
         return blocks;
     }
 
-    private List<Map<String, Object>> buildCumulativeRuleBlocks(String tenantId) {
+    private List<Map<String, Object>> buildCumulativeDefBlocks(String tenantId) {
+        List<Map<String, Object>> blocks = new ArrayList<>();
+        for (CumulativeDef def : cumulativeRepo.list(tenantId, "active")) {
+            List<RuleRevision> bindings = listScriptBindingRules(tenantId, def.cumulativeName());
+            List<BindScopeExport.RuleBindingSource> sources = new ArrayList<>();
+            List<Map<String, Object>> bindingRules = new ArrayList<>();
+            for (RuleRevision rule : bindings) {
+                RuleBodyRefs refs = RuleBodyRefs.parse(rule.body());
+                sources.add(new BindScopeExport.RuleBindingSource(refs.valueSource(), rule.scope()));
+                Map<String, Object> entry = BindScopeExport.bindEntry(rule.scope());
+                if (!bindingRules.contains(entry)) {
+                    bindingRules.add(entry);
+                }
+            }
+            Map<String, Object> block = new LinkedHashMap<>();
+            block.put("cumulative_name", def.cumulativeName());
+            block.put("dimension", def.dimension());
+            block.put("window_kind", def.windowKind());
+            block.put("window_minutes", def.windowMinutes());
+            block.put("window_hours", def.windowHours());
+            block.put("timezone", def.timezone());
+            block.put("priority", def.priority());
+            block.put("ingest_targets", BindScopeExport.ingestTargetsFromRules(sources));
+            if (!bindingRules.isEmpty()) {
+                block.put("binding_rules", bindingRules);
+            } else {
+                block.put("binding_rules", List.of(Map.of("bind_scope", "global")));
+            }
+            blocks.add(block);
+        }
+        blocks.sort((a, b) -> Integer.compare((int) b.get("priority"), (int) a.get("priority")));
+        return blocks;
+    }
+
+    private List<Map<String, Object>> buildScriptRuleBlocks(String tenantId) {
         List<Map<String, Object>> blocks = new ArrayList<>();
         for (RuleRevision rule : registryRepo.listCurrentRules(tenantId, "gateway")) {
-            if (!RolloutStateHelper.inExecutionPlane(rule) || !"cumulative".equals(rule.runtime())) {
+            if (!RolloutStateHelper.inExecutionPlane(rule) || !"lua".equals(rule.runtime())) {
                 continue;
             }
-            RuleBodyRefs refs = RuleBodyRefs.parse(rule.body());
-            if (refs.cumulativeName() == null) {
-                continue;
-            }
-            RuleCondition condition;
-            try {
-                condition = refs.requireCondition();
-            } catch (IllegalArgumentException e) {
-                continue;
-            }
-            cumulativeRepo.get(tenantId, refs.cumulativeName()).ifPresent(def -> {
-                Map<String, Object> block = new LinkedHashMap<>();
-                block.put("cumulative_name", def.cumulativeName());
-                block.put("dimension", def.dimension());
-                block.put("window_kind", def.windowKind());
-                block.put("window_minutes", def.windowMinutes());
-                block.put("window_hours", def.windowHours());
-                block.put("timezone", def.timezone());
-                block.put("threshold", condition.threshold());
-                block.put("compare_op", condition.compareOp());
-                block.put("rule_id", rule.ruleId());
-                block.put("rule_revision", rule.ruleRevision());
-                block.put("reason_code", rule.reasonCode());
-                block.put("risk_score", rule.riskScore());
-                block.put("intent_action", rule.intentAction() != null ? rule.intentAction() : "deny");
-                block.put("enforce_mode", rule.enforceMode());
+            Map<String, Object> block = new LinkedHashMap<>();
+            block.put("rule_id", rule.ruleId());
+            block.put("rule_revision", rule.ruleRevision());
+            block.put("reason_code", rule.reasonCode());
+            block.put("risk_score", rule.riskScore());
+            block.put("intent_action", rule.intentAction() != null ? rule.intentAction() : "deny");
+            block.put("enforce_mode", rule.enforceMode());
+            if (rule.canaryPercent() != null) {
+                block.put("canary_percent", rule.canaryPercent());
+            } else if (rule.exportedCanaryPercent() != null) {
                 block.put("canary_percent", rule.exportedCanaryPercent());
-                if (rule.canaryPercent() != null) {
-                    block.put("canary_percent", rule.canaryPercent());
-                }
-                if (refs.valueSource() != null) {
-                    block.put("value_source", valueSourceMap(refs.valueSource()));
-                }
-                blocks.add(block);
-            });
+            }
+            block.put("body", GroovyRuleBodies.asScript(rule.body()));
+            BindScopeExport.putBindFields(block, rule.scope());
+            blocks.add(block);
         }
         blocks.sort((a, b) -> Integer.compare((int) b.get("risk_score"), (int) a.get("risk_score")));
         return blocks;
     }
 
-    private record RuleBinding(
-            String ruleId,
-            int ruleRevision,
-            String reasonCode,
-            int riskScore,
-            String intentAction,
-            String enforceMode,
-            Integer canaryPercent,
-            io.virbius.policy.ValueSource valueSource) {}
-
-    private RuleBinding findListMatchBinding(String tenantId, String listName) {
-        RuleBinding best = null;
-        for (RuleRevision rule : registryRepo.listCurrentRules(tenantId, "gateway")) {
-            if (!RolloutStateHelper.inExecutionPlane(rule) || !"list_match".equals(rule.runtime())) {
+    private List<RuleRevision> listScriptBindingRules(String tenantId, String cumulativeName) {
+        List<RuleRevision> out = new ArrayList<>();
+        for (RuleRevision rule : registryRepo.listCurrentRules(tenantId, null)) {
+            if (!RolloutStateHelper.inExecutionPlane(rule)) {
                 continue;
             }
-            RuleBodyRefs refs = RuleBodyRefs.parse(rule.body());
-            if (!listName.equals(refs.listName())) {
+            if (!"lua".equals(rule.runtime()) && !"groovy".equals(rule.runtime())) {
                 continue;
             }
-            RuleBinding candidate = new RuleBinding(
-                    rule.ruleId(),
-                    rule.ruleRevision(),
-                    rule.reasonCode(),
-                    rule.riskScore(),
-                    rule.intentAction(),
-                    rule.enforceMode(),
-                    rule.canaryPercent(),
-                    refs.valueSource());
-            if (best == null || candidate.riskScore() > best.riskScore()) {
-                best = candidate;
+            String body = GroovyRuleBodies.asScript(rule.body());
+            if (!referencesCumulative(body, cumulativeName)) {
+                continue;
             }
+            out.add(rule);
         }
-        return best;
+        return out;
     }
 
-    private Map<String, Object> valueSourceMap(io.virbius.policy.ValueSource vs) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        String kind =
-                switch (vs.kind()) {
-                    case REQUEST_FIELD -> "request_field";
-                    case VAR -> "var";
-                    case HEADER -> "header";
-                    case QUERY -> "query";
-                    case CONTENT -> "content";
-                    case LITERAL -> "literal";
-                    default -> "default";
-                };
-        m.put("kind", kind);
-        if (vs.ref() != null) {
-            m.put("ref", vs.ref());
+    private static boolean referencesCumulative(String body, String cumulativeName) {
+        if (body == null || cumulativeName == null || cumulativeName.isBlank()) {
+            return false;
         }
-        if (vs.literalValue() != null) {
-            m.put("value", vs.literalValue());
-        }
-        return m;
+        return body.contains(cumulativeName)
+                && (body.contains("getCumulative") || body.contains("getCumulative("));
     }
 
     private java.nio.file.Path writeEdge(String tenantId) throws Exception {

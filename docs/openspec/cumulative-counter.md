@@ -1,6 +1,6 @@
 # 累计规则与 CounterStore（OpenSpec 草案）
 
-与 [DESIGN.md §8.5.0.1](../DESIGN.md#8501-累计规则counterstore) 对齐。PoC **尚未实现**；本文档为实施定稿。
+与 [DESIGN.md §8.5.0.1](../DESIGN.md#8501-累计规则counterstore) 对齐。
 
 | 项目 | 说明 |
 |------|------|
@@ -215,6 +215,8 @@ fields: tenant_id, cumulative_name, dimension, trace_id
 与 `CumulativeSnapshot` 只读字段一致；**不**暴露 Redis key。
 
 ### 7.4 执行顺序（建议）
+
+绑定范围（`bind_scope`）见 **[bind-scope.md](./bind-scope.md)**：ingest / 判定仅对匹配 Global / Service / Route 的请求生效。
 
 ```text
 allow 名单 → ingest(全部 active 累计) → deny 名单

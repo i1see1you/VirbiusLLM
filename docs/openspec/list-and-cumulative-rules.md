@@ -4,7 +4,7 @@
 |------|------|
 | 状态 | 设计冻结，**PoC 代码尚未实现** |
 | 版本 | v1.0（2026-05-20） |
-| 关联 | [value-resolution.md](./value-resolution.md)、[list-match.md](./list-match.md)、[cumulative-counter.md](./cumulative-counter.md)、[rule-level-enforce.md](./rule-level-enforce.md)、[DESIGN.md §8.5.0.1–2](../DESIGN.md) |
+| 关联 | [bind-scope.md](./bind-scope.md)、[value-resolution.md](./value-resolution.md)、[list-match.md](./list-match.md)、[cumulative-counter.md](./cumulative-counter.md)、[rule-level-enforce.md](./rule-level-enforce.md)、[DESIGN.md §8.5.0.1–2](../DESIGN.md) |
 
 ---
 
@@ -16,6 +16,7 @@
 | 执行统一 | 平台 **`resolveValue` → Store 调用 → 注入 ctx → 规则引擎 / Groovy** |
 | 扩展性 | 规则可选 **`value_source`**（通用）；不配则用定义上的 **`dimension`** |
 | 与现架构一致 | Registry 真源；管侧 fail-fast；云 Groovy L3；**不**在脚本内直连 Redis/扫表 |
+| 绑定范围 | 名单 / 累计规则共用 **`bind_scope`**（Global / Service / Route）；详见 [bind-scope.md](./bind-scope.md) |
 
 ---
 

@@ -8,6 +8,7 @@ info:
     **逻辑变量 `vars`**：virbius-guard 已按 `context_bindings` 解析后传入；非空时 agent **直接使用**（不再用空 query/headers 重算）。
     直连调试可传 `query`/`headers` 由 agent 解析，或只传 `vars`。
     ControlContext（F-11）：trace_id / user_id / device_id 由 Header 传入。
+    **BindContext**（bind-scope）：插件传入 `scene`（服务端映射）、`route_uri`（当前 APISIX/Kong 匹配 path，Route 绑定 **uri 优先**）；见 [bind-scope.md](./bind-scope.md)。
     实现语言：**Rust**（F-14）。
 servers:
   - url: http://127.0.0.1:9070
@@ -110,6 +111,10 @@ components:
           type: string
         scene:
           type: string
+          description: 服务端映射的场景 ID（非客户端可信）；见 bind-scope.md
+        route_uri:
+          type: string
+          description: 当前网关匹配的 URI path（无 query）；Route bind_scope 匹配时 **优先于 scene**
         role:
           type: string
           default: user

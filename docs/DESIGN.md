@@ -1096,7 +1096,7 @@ out/{tenant}/{bundle_version}/gateway/
 #### 8.10.3.2 Registry 输入（gateway 规则）
 
 - `layer: gateway`、`runtime: lua` 的 `rules[].body` → 编入 `rules.lua`。
-- `scope.tenants` / `scope.scenes` → Compiler 生成 Global/Service/Route 绑定（§11.4）。
+- `scope.tenants` / `scope.scenes` → Compiler 生成 Global/Service/Route 绑定（§11.4）；名单 / 累计 **`bind_scope`** 见 [bind-scope.md](openspec/bind-scope.md)。
 - **`bundle.gateway.routes[]`**：`scene`、`uri`、`methods`（可选 `priority`、`match.headers`）→ `apisix-routes-{scene}.json`；存 Registry `tb_bundles.metadata_json`。
 - 可选 `bundle.gateway.cloud_scan`：agent 调 engine 的 endpoint/timeout（元数据）。
 
@@ -1463,20 +1463,20 @@ virbius_get_risk_tags() -> JSON
 
 ### 11.4 管层网关安全规则绑定（Route / Service / Global）
 
-管层仅支持 **Apache APISIX** 与 **Kong**（均为 OpenResty + Lua）。二者均支持按**作用域**叠加安全策略。VirbiusLLM 采用三层绑定模型，并与 **tenant / scene** 对齐。
+管层仅支持 **Apache APISIX** 与 **Kong**（均为 OpenResty + Lua）。二者均支持按**作用域**叠加安全策略。VirbiusLLM 采用三层绑定模型；**名单 / 累计规则的 `bind_scope` 定稿**见 **[openspec/bind-scope.md](openspec/bind-scope.md)**。
 
 #### 11.4.1 三层模型
 
 | 层级 | 作用范围 | 典型规则 | VirbiusLLM 映射 |
 |------|----------|----------|-----------------|
-| **Global（全局）** | 穿过网关的全部流量 | 全局限流、IP/ASN 黑名单、基础鉴权、mTLS、全局访问日志 | 平台默认防护、全局 DLP 正则、默认 Fail 兜底 |
-| **Service（服务）** | 某一上游/租户的一组路由 | 共用 Token 配额、模型白名单、共用静态 Lua 包 | **`tenant`**（如 `acme-corp` 绑定 Skill bundle） |
-| **Route（路由）** | 单一路径/方法 | `/v1/chat/completions` 的 SSE 审计、scene 专用 Lua | **`scene`**（如 `medical_qa`、`code_copilot`） |
+| **Global（全局）** | **租户内**全部经过 gateway 的流量 | 全局限流、IP/ASN 黑名单、基础鉴权 | `bind_scope: global`；默认防护、全局累计 |
+| **Service（服务）** | 某一 **upstream / consumer / API Key 组** | 按调用方配额、按上游集群策略 | `bind_scope: service`；**不是** tenant 本身（§11.4.4） |
+| **Route（路由）** | 特定 API 路径 / 场景 | `/v1/chat/completions` 专用限流、scene 增强 | `bind_scope: route`；`bind_ref.uris` + 可选 `scenes`；**运行时 uri 优先匹配**（bind-scope §5） |
 
 ```text
-请求 → [Global] 全局限流 / IP 黑名单 / 基础鉴权
-         → [Service] tenant 级静态 Skill + Evaluate 开关
-         → [Route] scene 级：是否 SSE hold、是否调 engine、超时档位
+请求 → [Global] 租户内全局限流 / IP 黑名单 / 基础鉴权
+         → [Service] upstream / consumer / API Key 组策略
+         → [Route] uri（优先）/ scene：SSE 模式、Evaluate 细调、Route 级累计
          → proxy_pass LLM
 ```
 

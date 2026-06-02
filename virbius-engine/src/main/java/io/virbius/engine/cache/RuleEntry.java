@@ -14,7 +14,8 @@ public record RuleEntry(
         @JsonProperty("enforce_mode") String enforceMode,
         @JsonProperty("canary_percent") int canaryPercent,
         @JsonProperty("rollout_state") String rolloutState,
-        String body) {
+        String body,
+        Object scope) {
 
     public String rolloutStateOrDefault() {
         if (rolloutState != null && !rolloutState.isBlank()) {

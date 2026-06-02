@@ -83,18 +83,22 @@ rules:
         - 绕过
   - rule_id: cloud_rl_deny_keywords
     layer: cloud
-    runtime: list_match
+    runtime: groovy
     reason_code: CLOUD_KEYWORD_DENY
     risk_score: 100
-    body:
-      list_name: deny_keyword
+    body: |
+      def decide(ctx) {
+        return ctx.listMatch('deny_keyword')
+      }
   - rule_id: cloud_rl_deny_vars
     layer: cloud
-    runtime: list_match
+    runtime: groovy
     reason_code: CLOUD_VAR_DENY
     risk_score: 100
-    body:
-      list_name: deny_var
+    body: |
+      def decide(ctx) {
+        return ctx.listMatch('deny_var', ctx.var('app_id'))
+      }
   - rule_id: cloud_prompt_l1
     layer: cloud
     runtime: prompt
@@ -110,9 +114,9 @@ rules:
       def decide(ctx) {
         def ruleId = ctx.currentRuleId()
         def mode = ctx.enforceMode(ruleId)
-        if (!ctx.wouldHitBlock()) return [action: 'allow']
-        if (mode == 'dry_run') return [action: 'review']
+        if (!ctx.wouldHitBlock()) return false
+        if (mode == 'dry_run') return true
         if (mode == 'canary' && !ctx.inCanaryBucket(ctx.sessionId(), ctx.canaryPercent(ruleId)))
-          return [action: 'review']
-        return [action: 'block']
+          return false
+        return true
       }

@@ -4,9 +4,7 @@ public enum RuleRuntime {
     LUA_DSL("lua-dsl"),
     LUA("lua"),
     PROMPT("prompt"),
-    GROOVY("groovy"),
-    LIST_MATCH("list_match"),
-    CUMULATIVE("cumulative");
+    GROOVY("groovy");
 
     private final String value;
 

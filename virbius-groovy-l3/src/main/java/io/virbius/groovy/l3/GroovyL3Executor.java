@@ -42,13 +42,29 @@ public final class GroovyL3Executor {
     }
 
     public GroovyL3Decision execute(String scriptBody, PolicyContext ctx) throws Exception {
+        boolean hit = executeDecide(scriptBody, ctx);
+        String mode = ctx.enforceMode(ctx.currentRuleId());
+        if (!hit) {
+            return GroovyL3Decision.allow(mode);
+        }
+        if ("dry_run".equalsIgnoreCase(mode)) {
+            return new GroovyL3Decision("review", mode);
+        }
+        if ("canary".equalsIgnoreCase(mode)
+                && !ctx.inCanaryBucket(ctx.sessionId(), ctx.canaryPercent(ctx.currentRuleId()))) {
+            return new GroovyL3Decision("review", mode);
+        }
+        return new GroovyL3Decision("block", mode);
+    }
+
+    /** Run {@code decide(ctx)} and return {@code true} when the rule hits. */
+    public boolean executeDecide(String scriptBody, PolicyContext ctx) throws Exception {
         Objects.requireNonNull(ctx, "ctx");
         String body = normalizeBody(scriptBody);
         String cacheKey = Integer.toHexString(body.hashCode());
         Class<? extends Script> scriptClass = scriptClassCache.computeIfAbsent(cacheKey, k -> compileClass(body));
 
-        Future<GroovyL3Decision> future =
-                executor.submit(() -> runScript(scriptClass, ctx));
+        Future<Boolean> future = executor.submit(() -> runDecide(scriptClass, ctx));
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
@@ -67,27 +83,62 @@ public final class GroovyL3Executor {
         return body.strip() + "\ndecide(ctx)\n";
     }
 
-    private static GroovyL3Decision runScript(Class<? extends Script> scriptClass, PolicyContext ctx)
+    private static boolean runDecide(Class<? extends Script> scriptClass, PolicyContext ctx)
             throws ReflectiveOperationException {
         Script instance = scriptClass.getDeclaredConstructor().newInstance();
         Binding binding = new Binding();
         binding.setVariable("ctx", ctx);
+        binding.setVariable("listMatch", new ListMatchClosure(ctx));
+        binding.setVariable("getCumulative", new GetCumulativeClosure(ctx));
         instance.setBinding(binding);
         Object raw = instance.run();
-        return mapResult(raw, ctx.enforceMode(ctx.currentRuleId()));
+        return toBoolean(raw);
     }
 
-    @SuppressWarnings("unchecked")
-    private static GroovyL3Decision mapResult(Object raw, String enforceMode) {
+    private static boolean toBoolean(Object raw) {
+        if (raw instanceof Boolean b) {
+            return b;
+        }
         if (raw instanceof Map<?, ?> map) {
             Object action = map.get("action");
-            String effective = action != null ? action.toString() : "allow";
-            return new GroovyL3Decision(effective, enforceMode);
+            if (action == null) {
+                return false;
+            }
+            String s = action.toString().toLowerCase();
+            return !"allow".equals(s) && !"false".equals(s);
         }
         if (raw instanceof String s) {
-            return new GroovyL3Decision(s, enforceMode);
+            return !s.isBlank() && !"allow".equalsIgnoreCase(s) && !"false".equalsIgnoreCase(s);
         }
-        return GroovyL3Decision.allow(enforceMode);
+        return false;
+    }
+
+    private static final class ListMatchClosure {
+        private final PolicyContext ctx;
+
+        ListMatchClosure(PolicyContext ctx) {
+            this.ctx = ctx;
+        }
+
+        public boolean doCall(String listName) {
+            return ctx.listMatch(listName);
+        }
+
+        public boolean doCall(String listName, String value) {
+            return ctx.listMatch(listName, value);
+        }
+    }
+
+    private static final class GetCumulativeClosure {
+        private final PolicyContext ctx;
+
+        GetCumulativeClosure(PolicyContext ctx) {
+            this.ctx = ctx;
+        }
+
+        public CumulativeView doCall(String cumulativeName) {
+            return ctx.getCumulative(cumulativeName);
+        }
     }
 
     static String normalizeBody(String scriptBody) {

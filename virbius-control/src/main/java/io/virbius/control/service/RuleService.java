@@ -93,12 +93,9 @@ public class RuleService {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(e.getMessage());
         }
-        if ("cumulative".equals(req.runtime())) {
-            RuleBodyRefs refs = RuleBodyRefs.parse(req.body());
-            if (refs.cumulativeName() == null || refs.cumulativeName().isBlank()) {
-                throw new IllegalArgumentException("cumulative rule requires body.cumulative_name");
-            }
-            refs.requireCondition();
+        if ("cumulative".equals(req.runtime()) || "list_match".equals(req.runtime())) {
+            throw new IllegalArgumentException("runtime " + req.runtime()
+                    + " removed; use lua (gateway) or groovy (cloud) script rules");
         }
         RuleRevision before = existing.orElse(null);
         RuleRevision saved = store.upsertRule(tenantId, draft);

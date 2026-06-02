@@ -1,7 +1,9 @@
 package io.virbius.engine.admin;
 
+import io.virbius.engine.cache.PolicyDataCache;
 import io.virbius.engine.cache.RuleCache;
 import io.virbius.engine.cache.RuleEntry;
+import io.virbius.engine.eval.ScriptRuleRunner;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -17,9 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class EngineAdminController {
 
     private final RuleCache cache;
+    private final PolicyDataCache policyData;
 
-    public EngineAdminController(RuleCache cache) {
+    public EngineAdminController(RuleCache cache, PolicyDataCache policyData) {
         this.cache = cache;
+        this.policyData = policyData;
     }
 
     @GetMapping("/health")
@@ -48,6 +52,13 @@ public class EngineAdminController {
         List<RuleEntry> rules = body != null && body.rules() != null ? body.rules() : List.of();
         if (!rules.isEmpty()) {
             cache.replaceAll(version, rules);
+        }
+        if (body != null && (body.lists() != null || body.cumulatives() != null)) {
+            policyData.replace(
+                    tenant_id,
+                    ScriptRuleRunner.fromBlocks(
+                            body.lists() != null ? body.lists() : List.of(),
+                            body.cumulatives() != null ? body.cumulatives() : List.of()));
         }
         return Map.of(
                 "ok", true,

@@ -1,3 +1,4 @@
+use crate::bind_scope::BindRefBlock;
 use crate::enforce::RuleHit;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
@@ -14,49 +15,17 @@ pub struct ValueSourceDef {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-#[allow(dead_code)]
-pub struct ListEntryDef {
+pub struct IngestTargetDef {
     #[serde(default)]
-    pub value: String,
+    pub kind: String,
     #[serde(default)]
-    pub remark: Option<String>,
+    pub r#ref: Option<String>,
     #[serde(default)]
-    pub created_at: Option<String>,
-    #[serde(default)]
-    pub expires_at: Option<String>,
+    pub value: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-#[allow(dead_code)]
-pub struct NamedListBlock {
-    #[serde(default)]
-    pub list_name: String,
-    #[serde(default)]
-    pub dimension: String,
-    #[serde(default)]
-    pub remark: Option<String>,
-    #[serde(default)]
-    pub rule_id: String,
-    #[serde(default)]
-    pub rule_revision: i32,
-    #[serde(default)]
-    pub reason_code: String,
-    #[serde(default)]
-    pub risk_score: i32,
-    #[serde(default)]
-    pub intent_action: String,
-    #[serde(default)]
-    pub enforce_mode: String,
-    #[serde(default)]
-    pub canary_percent: Option<i32>,
-    #[serde(default)]
-    pub entries: Vec<ListEntryDef>,
-    #[serde(default)]
-    pub value_source: Option<ValueSourceDef>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct CumulativeRuleBlock {
+pub struct CumulativeDefBlock {
     #[serde(default)]
     pub cumulative_name: String,
     #[serde(default)]
@@ -70,9 +39,41 @@ pub struct CumulativeRuleBlock {
     #[serde(default)]
     pub timezone: Option<String>,
     #[serde(default)]
-    pub threshold: i32,
+    pub priority: i32,
     #[serde(default)]
-    pub compare_op: Option<String>,
+    pub ingest_targets: Vec<IngestTargetDef>,
+    #[serde(default)]
+    pub binding_rules: Vec<crate::bind_scope::BindRuleBlock>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[allow(dead_code)]
+pub struct ListEntryDef {
+    #[serde(default)]
+    pub value: String,
+    #[serde(default)]
+    pub remark: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub expires_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ListDefBlock {
+    #[serde(default)]
+    pub list_name: String,
+    #[serde(default)]
+    pub dimension: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub remark: Option<String>,
+    #[serde(default)]
+    pub entries: Vec<ListEntryDef>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ScriptRuleBlock {
     #[serde(default)]
     pub rule_id: String,
     #[serde(default)]
@@ -88,7 +89,15 @@ pub struct CumulativeRuleBlock {
     #[serde(default)]
     pub canary_percent: Option<i32>,
     #[serde(default)]
-    pub value_source: Option<ValueSourceDef>,
+    pub body: String,
+    #[serde(default = "default_bind_scope")]
+    pub bind_scope: String,
+    #[serde(default)]
+    pub bind_ref: Option<BindRefBlock>,
+}
+
+fn default_bind_scope() -> String {
+    "global".into()
 }
 
 pub fn resolve_value(
@@ -185,7 +194,7 @@ fn entry_active(entry: &ListEntryDef) -> bool {
     true
 }
 
-fn active_values(block: &NamedListBlock) -> Vec<&str> {
+fn active_values_list(block: &ListDefBlock) -> Vec<&str> {
     block
         .entries
         .iter()
@@ -194,15 +203,15 @@ fn active_values(block: &NamedListBlock) -> Vec<&str> {
         .collect()
 }
 
-pub fn match_list(block: &NamedListBlock, value: &str, content: &str) -> bool {
-    let values = active_values(block);
+pub fn match_list_def(block: &ListDefBlock, value: &str, content: &str) -> bool {
+    let values = active_values_list(block);
     if values.is_empty() {
         return false;
     }
-    if value.is_empty() && block.dimension != "keyword" {
+    if value.is_empty() && block.dimension != "keyword" && block.dimension != "content" {
         return false;
     }
-    if block.dimension == "keyword" {
+    if block.dimension == "keyword" || block.dimension == "content" {
         let lower = content.to_ascii_lowercase();
         return values.iter().any(|kw| {
             if kw.chars().any(|c| c > '\u{007f}') {
@@ -212,64 +221,78 @@ pub fn match_list(block: &NamedListBlock, value: &str, content: &str) -> bool {
             }
         });
     }
-    values
-        .iter()
-        .any(|e| *e == value || (block.dimension == "var" && var_hit(value, e)))
+    values.iter().any(|e| *e == value)
 }
 
-fn var_hit(actual: &str, entry: &str) -> bool {
-    let Some(eq) = entry.find('=') else {
-        return entry == actual;
-    };
-    if eq == 0 || eq >= entry.len() - 1 {
-        return false;
-    }
-    actual == &entry[eq + 1..]
-}
-
-pub fn collect_named_list_hits(
-    lists: &[NamedListBlock],
+pub fn match_list_by_name(
+    lists: &[ListDefBlock],
+    list_name: &str,
+    explicit_value: Option<&str>,
     content: &str,
     user_id: Option<&str>,
     device_id: Option<&str>,
     client_ip: Option<&str>,
     session_id: Option<&str>,
     vars: &HashMap<String, String>,
-) -> Vec<RuleHit> {
-    let mut hits = Vec::new();
-    for block in lists {
-        let value = resolve_value(
+) -> bool {
+    let Some(block) = lists.iter().find(|b| b.list_name == list_name) else {
+        return false;
+    };
+    let value = if let Some(v) = explicit_value {
+        Some(v.to_string())
+    } else {
+        resolve_value(
             &block.dimension,
-            block.value_source.as_ref(),
+            None,
             content,
             user_id,
             device_id,
             client_ip,
             session_id,
             vars,
-        );
-        let Some(v) = value else { continue };
-        if !match_list(block, &v, content) {
-            continue;
-        }
-        if block.risk_score <= 0 || block.intent_action.eq_ignore_ascii_case("allow") {
-            return Vec::new();
-        }
-        hits.push(hit_from_list_block(block));
-    }
-    hits
+        )
+    };
+    let Some(v) = value else {
+        return false;
+    };
+    match_list_def(block, &v, content)
 }
 
-pub fn hit_from_list_block(block: &NamedListBlock) -> RuleHit {
+pub fn read_cumulative_count(
+    tenant_id: &str,
+    defs: &[CumulativeDefBlock],
+    cumulative_name: &str,
+    content: &str,
+    user_id: Option<&str>,
+    device_id: Option<&str>,
+    client_ip: Option<&str>,
+    session_id: Option<&str>,
+    vars: &HashMap<String, String>,
+) -> i64 {
+    let Some(def) = defs.iter().find(|d| d.cumulative_name == cumulative_name) else {
+        return 0;
+    };
+    let Some(value) = resolve_value(
+        &def.dimension,
+        None,
+        content,
+        user_id,
+        device_id,
+        client_ip,
+        session_id,
+        vars,
+    ) else {
+        return 0;
+    };
+    crate::cumulative::read_count(tenant_id, def, &value)
+}
+
+pub fn hit_from_script_rule(block: &ScriptRuleBlock) -> RuleHit {
     RuleHit {
-        rule_id: if block.rule_id.is_empty() {
-            block.list_name.clone()
-        } else {
-            block.rule_id.clone()
-        },
+        rule_id: block.rule_id.clone(),
         rule_revision: block.rule_revision.max(1),
         reason_code: if block.reason_code.is_empty() {
-            "LIST_MATCH".into()
+            "SCRIPT_HIT".into()
         } else {
             block.reason_code.clone()
         },
@@ -279,38 +302,6 @@ pub fn hit_from_list_block(block: &NamedListBlock) -> RuleHit {
                 "deny".into()
             } else if block.risk_score <= 0 {
                 "allow".into()
-            } else {
-                "review".into()
-            }
-        } else {
-            block.intent_action.clone()
-        },
-        enforce_mode: if block.enforce_mode.is_empty() {
-            "dry_run".into()
-        } else {
-            block.enforce_mode.clone()
-        },
-        canary_percent: block.canary_percent,
-    }
-}
-
-pub fn hit_from_cumulative_block(block: &CumulativeRuleBlock) -> RuleHit {
-    RuleHit {
-        rule_id: if block.rule_id.is_empty() {
-            block.cumulative_name.clone()
-        } else {
-            block.rule_id.clone()
-        },
-        rule_revision: block.rule_revision.max(1),
-        reason_code: if block.reason_code.is_empty() {
-            "CUMULATIVE_EXCEEDED".into()
-        } else {
-            block.reason_code.clone()
-        },
-        risk_score: if block.risk_score > 0 { block.risk_score } else { 100 },
-        intent_action: if block.intent_action.is_empty() {
-            if block.risk_score >= 100 {
-                "deny".into()
             } else {
                 "review".into()
             }

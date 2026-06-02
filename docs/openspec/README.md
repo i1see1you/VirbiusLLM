@@ -13,11 +13,13 @@
 | [schemas/audit-event.schema.json](./schemas/audit-event.schema.json) | 审计 jsonl 单行事件 |
 | [schemas/control-context.schema.json](./schemas/control-context.schema.json) | 端/管/云公用防控请求上下文 |
 | [schemas/edge-manifest.schema.json](./schemas/edge-manifest.schema.json) | 端侧 CDN 清单 |
-| [groovy-l3-contract.md](./groovy-l3-contract.md) | 云侧 Groovy L3 脚本与 `ctx` API |
-| [cumulative-counter.md](./cumulative-counter.md) | 累计规则 `tb_cumulative`、CounterStore、Redis 桶与 Lua（**待实现**） |
-| [list-match.md](./list-match.md) | 名单规则 `list_name`、ListStore、名单快照（**待实现**） |
+| [groovy-l3-contract.md](./groovy-l3-contract.md) | 云侧 Groovy 脚本与 `ctx` API（boolean `decide`） |
+| [script-rules.md](./script-rules.md) | **统一脚本方案**：lua/groovy `decide(ctx)` → boolean；`listMatch` / `getCumulative` |
+| [cumulative-counter.md](./cumulative-counter.md) | 累计定义 `tb_cumulative`、CounterStore、Redis 桶 |
+| [list-match.md](./list-match.md) | 名单定义与快照（规则侧见 [script-rules.md](./script-rules.md)） |
 | [value-resolution.md](./value-resolution.md) | 规则可选 `value_source`；`matchList` / `getCumulate` 的 value 解析 |
 | [list-and-cumulative-rules.md](./list-and-cumulative-rules.md) | **名单 + 累计最新合并设计（推荐阅读）** |
+| [bind-scope.md](./bind-scope.md) | **`bind_scope`**：Global / Service / Route 绑定、uri 优先匹配（**定稿**） |
 | [rule-level-enforce.md](./rule-level-enforce.md) | **执行面** enforce / ActionMerge（管侧真拦 + 云 PolicyMerge） |
 | [rule-rollout.md](./rule-rollout.md) | **运营面** rollout_state、放量 SOP、看板、门禁、canary 阶梯（**定稿**） |
 

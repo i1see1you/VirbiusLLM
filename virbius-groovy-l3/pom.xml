@@ -19,6 +19,11 @@
 
   <dependencies>
     <dependency>
+      <groupId>io.virbius</groupId>
+      <artifactId>virbius-policy</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
       <groupId>org.apache.groovy</groupId>
       <artifactId>groovy</artifactId>
       <version>${groovy.version}</version>
