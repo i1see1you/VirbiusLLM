@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS tb_access_list_entry (
 CREATE INDEX IF NOT EXISTS idx_tb_access_list_entry_tenant
     ON tb_access_list_entry (tenant_id, list_name);
 
--- Cumulative counter definitions
+-- Cumulative counter definitions (window + dimension only; conditions on rules)
 CREATE TABLE IF NOT EXISTS tb_cumulative (
     tenant_id              VARCHAR(64) NOT NULL,
     cumulative_name        VARCHAR(128) NOT NULL,
@@ -120,19 +120,13 @@ CREATE TABLE IF NOT EXISTS tb_cumulative (
     window_minutes         INTEGER,
     window_hours           INTEGER,
     timezone               VARCHAR(64),
-    threshold              INTEGER NOT NULL,
-    compare_op             VARCHAR(16) NOT NULL DEFAULT 'gte',
-    on_exceed_suggest      VARCHAR(16) NOT NULL DEFAULT 'block',
-    on_exceed_risk_score   INTEGER NOT NULL DEFAULT 100,
-    on_exceed_reason_code  VARCHAR(64) NOT NULL,
     priority               INTEGER NOT NULL DEFAULT 0,
     status                 VARCHAR(16) NOT NULL DEFAULT 'active',
     created_at             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tenant_id, cumulative_name),
     CHECK (window_kind IN ('rolling', 'calendar_day')),
-    CHECK (status IN ('active', 'disabled')),
-    CHECK (threshold >= 1)
+    CHECK (status IN ('active', 'disabled'))
 );
 
 CREATE TABLE IF NOT EXISTS tb_tenant_rollout_policy (

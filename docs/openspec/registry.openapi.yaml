@@ -188,7 +188,10 @@ paths:
   /api/v1/admin/tenants/{tenantId}/bundles/{bundleId}/versions/{version}/status:
     get:
       tags: [admin-publish]
-      summary: 查询发布状态与 sync_ack
+      summary: "[Legacy] 查询整包 Bundle 发布状态与 sync_ack"
+      description: |
+        整包发布状态机（draft→active）；**日常运营**使用 per-rule `rollout_state` 与「策略上线」API。
+        运营台 **不提供** 此页；仅供脚本/集成调试。见 rule-rollout.md §8.3、§10（MVP-OPENSPEC）。
       parameters:
         - $ref: '#/components/parameters/tenantId'
         - $ref: '#/components/parameters/bundleId'

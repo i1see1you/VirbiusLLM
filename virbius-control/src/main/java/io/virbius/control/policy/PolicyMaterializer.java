@@ -7,6 +7,8 @@ import io.virbius.control.domain.RuleRevision;
 import io.virbius.control.repository.CumulativeRepository;
 import io.virbius.control.repository.ListMetaRepository;
 import io.virbius.policy.CumulativeWindow;
+import io.virbius.policy.CumulativeWindow;
+import io.virbius.policy.RuleCondition;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -71,6 +73,7 @@ public class PolicyMaterializer {
         if (refs.cumulativeName() == null || refs.cumulativeName().isBlank()) {
             throw new IllegalArgumentException("cumulative rule requires body.cumulative_name");
         }
+        RuleCondition condition = refs.requireCondition();
         CumulativeDef def = cumulativeRepo
                 .get(tenantId, refs.cumulativeName())
                 .orElseThrow(() -> new IllegalArgumentException("cumulative not found: " + refs.cumulativeName()));
@@ -82,8 +85,11 @@ public class PolicyMaterializer {
         body.put("window_minutes", def.windowMinutes());
         body.put("window_hours", def.windowHours());
         body.put("timezone", def.timezone());
-        body.put("threshold", def.threshold());
-        body.put("compare_op", def.compareOp());
+        body.put("threshold", condition.threshold());
+        body.put("compare_op", condition.compareOp());
+        body.put(
+                "condition",
+                Map.of("compare_op", condition.compareOp(), "threshold", condition.threshold()));
         body.put("W_minutes", wMin);
         putValueSource(body, refs);
         return copyWithBody(rule, body);

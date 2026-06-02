@@ -2,9 +2,10 @@ use crate::enforce::RuleHit;
 use crate::policy_engine::{hit_from_cumulative_block, resolve_value, CumulativeRuleBlock};
 use chrono::{DateTime, NaiveTime, TimeZone, Utc};
 use chrono_tz::Tz;
+use redis::Client;
 use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::env;
+use std::sync::{Mutex, OnceLock};
 
 type Slot = i64;
 type Count = i64;
@@ -12,7 +13,23 @@ type Key = String;
 
 const MAX_WINDOW_MINUTES: i32 = 10080;
 
+static REDIS_CLIENT: OnceLock<Option<Client>> = OnceLock::new();
 static MEMORY: Mutex<Option<HashMap<Key, HashMap<Slot, Count>>>> = Mutex::new(None);
+
+fn redis_client() -> Option<&'static Client> {
+    REDIS_CLIENT
+        .get_or_init(|| {
+            env::var("VIRBIUS_REDIS_URL")
+                .ok()
+                .filter(|s| !s.is_empty())
+                .and_then(|url| Client::open(url).ok())
+        })
+        .as_ref()
+}
+
+fn use_redis() -> bool {
+    redis_client().is_some()
+}
 
 pub fn collect_hits(
     tenant_id: &str,
@@ -45,7 +62,8 @@ pub fn collect_hits(
         let g = granularity_minutes(w_min, &rule.window_kind);
         let end_slot = current_slot(g);
         let key = redis_key(tenant_id, &rule.cumulative_name, &value);
-        ingest_key(&key, end_slot);
+        let ttl = ttl_seconds(w_min, &rule.window_kind);
+        ingest_key(&key, end_slot, ttl);
         let count = read_key(&key, rule, w_min, g, end_slot);
         if exceeded(count, rule.threshold, rule.compare_op.as_deref()) {
             hits.push(hit_from_cumulative_block(rule));
@@ -89,11 +107,21 @@ fn bucket_count(w_minutes: i32, granularity_min: i32) -> i64 {
     ((w_minutes + granularity_min - 1) / granularity_min) as i64
 }
 
+fn ttl_seconds(w_minutes: i32, window_kind: &str) -> i64 {
+    let w_eff = if is_calendar_day(window_kind) {
+        1440
+    } else {
+        w_minutes
+    };
+    (w_eff + 120) as i64 * 60
+}
+
 fn now_utc() -> DateTime<Utc> {
     Utc::now()
 }
 
 fn epoch_secs() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -135,14 +163,45 @@ fn encode_redis_key_segment(value: &str) -> String {
     value.replace(':', "%3A").replace(' ', "%20")
 }
 
-fn ingest_key(key: &str, slot: Slot) {
+fn ingest_key(key: &str, slot: Slot, ttl_sec: i64) {
+    if use_redis() {
+        if ingest_key_redis(key, slot, ttl_sec) {
+            return;
+        }
+    }
+    ingest_key_memory(key, slot);
+}
+
+fn ingest_key_redis(key: &str, slot: Slot, ttl_sec: i64) -> bool {
+    let Some(client) = redis_client() else {
+        return false;
+    };
+    let Ok(mut conn) = client.get_connection() else {
+        return false;
+    };
+    let field = slot.to_string();
+    let incr: Result<i64, _> = redis::cmd("HINCRBY")
+        .arg(key)
+        .arg(&field)
+        .arg(1)
+        .query(&mut conn);
+    if incr.is_err() {
+        return false;
+    }
+    let _: Result<i64, _> = redis::cmd("EXPIRE")
+        .arg(key)
+        .arg(ttl_sec)
+        .query(&mut conn);
+    true
+}
+
+fn ingest_key_memory(key: &str, slot: Slot) {
     let mut guard = MEMORY.lock().unwrap();
     let store = guard.get_or_insert_with(HashMap::new);
     let buckets = store.entry(key.to_string()).or_default();
     *buckets.entry(slot).or_insert(0) += 1;
 }
 
-/// Aligns with `CounterStore.read` slot range.
 fn read_key(key: &str, rule: &CumulativeRuleBlock, w_min: i32, g: i32, end_slot: Slot) -> Count {
     let start_slot = if is_calendar_day(&rule.window_kind) {
         let zone = parse_zone(rule.timezone.as_ref());
@@ -151,6 +210,42 @@ fn read_key(key: &str, rule: &CumulativeRuleBlock, w_min: i32, g: i32, end_slot:
         let buckets = bucket_count(w_min, g);
         end_slot - buckets + 1
     };
+    if start_slot > end_slot {
+        return 0;
+    }
+    if use_redis() {
+        if let Some(count) = read_key_redis(key, start_slot, end_slot) {
+            return count;
+        }
+    }
+    read_key_memory(key, start_slot, end_slot)
+}
+
+fn read_key_redis(key: &str, start_slot: Slot, end_slot: Slot) -> Option<Count> {
+    let client = redis_client()?;
+    let mut conn = client.get_connection().ok()?;
+    if start_slot == end_slot {
+        let v: Option<String> = redis::cmd("HGET")
+            .arg(key)
+            .arg(start_slot.to_string())
+            .query(&mut conn)
+            .ok()?;
+        return Some(parse_count(v));
+    }
+    let mut cmd = redis::cmd("HMGET");
+    cmd.arg(key);
+    for slot in start_slot..=end_slot {
+        cmd.arg(slot.to_string());
+    }
+    let vals: Vec<Option<String>> = cmd.query(&mut conn).ok()?;
+    Some(vals.iter().map(|v| parse_count(v.clone())).sum())
+}
+
+fn parse_count(v: Option<String>) -> Count {
+    v.and_then(|s| s.parse().ok()).unwrap_or(0)
+}
+
+fn read_key_memory(key: &str, start_slot: Slot, end_slot: Slot) -> Count {
     let guard = MEMORY.lock().unwrap();
     let Some(store) = guard.as_ref() else {
         return 0;
@@ -158,9 +253,6 @@ fn read_key(key: &str, rule: &CumulativeRuleBlock, w_min: i32, g: i32, end_slot:
     let Some(buckets) = store.get(key) else {
         return 0;
     };
-    if start_slot > end_slot {
-        return 0;
-    }
     (start_slot..=end_slot)
         .map(|s| buckets.get(&s).copied().unwrap_or(0))
         .sum()
@@ -214,5 +306,20 @@ mod tests {
         let end = current_slot(g);
         let start = start_slot_calendar_day(now_utc(), chrono_tz::Asia::Shanghai, g);
         assert!(start <= end);
+    }
+
+    #[test]
+    fn ttl_seconds_matches_counter_store() {
+        assert_eq!(ttl_seconds(60, "rolling"), 10_800);
+        assert_eq!(ttl_seconds(60, "calendar_day"), 93_600);
+    }
+
+    #[test]
+    fn memory_ingest_and_read_without_redis_url() {
+        let key = "test:mem:key";
+        ingest_key_memory(key, 100);
+        ingest_key_memory(key, 100);
+        ingest_key_memory(key, 101);
+        assert_eq!(read_key_memory(key, 100, 101), 3);
     }
 }

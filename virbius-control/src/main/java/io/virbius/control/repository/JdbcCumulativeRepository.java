@@ -34,24 +34,20 @@ public class JdbcCumulativeRepository implements CumulativeRepository {
                 windowMinutes,
                 windowHours,
                 rs.getString("timezone"),
-                rs.getInt("threshold"),
-                rs.getString("compare_op"),
-                rs.getString("on_exceed_suggest"),
-                rs.getInt("on_exceed_risk_score"),
-                rs.getString("on_exceed_reason_code"),
                 rs.getInt("priority"),
                 rs.getString("status"));
     }
 
+    private static final String SELECT_COLS =
+            """
+            SELECT tenant_id, cumulative_name, description, dimension, window_kind, window_minutes,
+                   window_hours, timezone, priority, status
+            FROM tb_cumulative
+            """;
+
     @Override
     public List<CumulativeDef> list(String tenantId, String status) {
-        String sql =
-                """
-                SELECT tenant_id, cumulative_name, description, dimension, window_kind, window_minutes,
-                       window_hours, timezone, threshold, compare_op, on_exceed_suggest, on_exceed_risk_score,
-                       on_exceed_reason_code, priority, status
-                FROM tb_cumulative WHERE tenant_id = ?
-                """;
+        String sql = SELECT_COLS + " WHERE tenant_id = ?";
         List<Object> args = new ArrayList<>();
         args.add(tenantId);
         if (status != null && !status.isBlank()) {
@@ -65,12 +61,7 @@ public class JdbcCumulativeRepository implements CumulativeRepository {
     @Override
     public Optional<CumulativeDef> get(String tenantId, String cumulativeName) {
         List<CumulativeDef> rows = jdbc.query(
-                """
-                SELECT tenant_id, cumulative_name, description, dimension, window_kind, window_minutes,
-                       window_hours, timezone, threshold, compare_op, on_exceed_suggest, on_exceed_risk_score,
-                       on_exceed_reason_code, priority, status
-                FROM tb_cumulative WHERE tenant_id = ? AND cumulative_name = ?
-                """,
+                SELECT_COLS + " WHERE tenant_id = ? AND cumulative_name = ?",
                 MAPPER,
                 tenantId,
                 cumulativeName);
@@ -83,8 +74,7 @@ public class JdbcCumulativeRepository implements CumulativeRepository {
         int updated = jdbc.update(
                 """
                 UPDATE tb_cumulative SET description=?, dimension=?, window_kind=?, window_minutes=?, window_hours=?,
-                    timezone=?, threshold=?, compare_op=?, on_exceed_suggest=?, on_exceed_risk_score=?,
-                    on_exceed_reason_code=?, priority=?, status=?, updated_at=CURRENT_TIMESTAMP
+                    timezone=?, priority=?, status=?, updated_at=CURRENT_TIMESTAMP
                 WHERE tenant_id=? AND cumulative_name=?
                 """,
                 def.description(),
@@ -93,11 +83,6 @@ public class JdbcCumulativeRepository implements CumulativeRepository {
                 def.windowMinutes(),
                 def.windowHours(),
                 def.timezone(),
-                def.threshold(),
-                def.compareOp(),
-                def.onExceedSuggest(),
-                def.onExceedRiskScore(),
-                def.onExceedReasonCode(),
                 def.priority(),
                 def.status(),
                 def.tenantId(),
@@ -107,9 +92,8 @@ public class JdbcCumulativeRepository implements CumulativeRepository {
                     """
                     INSERT INTO tb_cumulative (
                       tenant_id, cumulative_name, description, dimension, window_kind, window_minutes,
-                      window_hours, timezone, threshold, compare_op, on_exceed_suggest, on_exceed_risk_score,
-                      on_exceed_reason_code, priority, status)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                      window_hours, timezone, priority, status)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)
                     """,
                     def.tenantId(),
                     def.cumulativeName(),
@@ -119,11 +103,6 @@ public class JdbcCumulativeRepository implements CumulativeRepository {
                     def.windowMinutes(),
                     def.windowHours(),
                     def.timezone(),
-                    def.threshold(),
-                    def.compareOp(),
-                    def.onExceedSuggest(),
-                    def.onExceedRiskScore(),
-                    def.onExceedReasonCode(),
                     def.priority(),
                     def.status());
         }

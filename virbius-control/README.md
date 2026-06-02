@@ -13,7 +13,7 @@
 
 | 用途 | URL |
 |------|-----|
-| **运营台**（名单 · 请求映射 · 规则 · 发布） | http://127.0.0.1:8080/ui |
+| **运营台**（名单 · 累计 · 请求映射 · 规则 · **策略上线**） | http://127.0.0.1:8080/ui |
 
 旧路径（`/ui/access-lists`、`/ui/policies`、`access-lists.html` 等）均重定向到上述页面。
 
@@ -32,5 +32,6 @@ Admin API 前缀：`/api/v1/admin/tenants/{tenantId}/...`（响应包装为 `{ "
 
 ```bash
 mvn -q -pl virbius-control spring-boot:run
-# 启动 engine 后在运营台「发布」或 POST .../bundles/.../publish
+# 日常：运营台「策略上线」对单条规则 publish / evaluate / apply
+# Legacy 整包：POST .../bundles/.../publish（OpenAPI [Legacy]；运营台无 Bundle 状态页）
 ```

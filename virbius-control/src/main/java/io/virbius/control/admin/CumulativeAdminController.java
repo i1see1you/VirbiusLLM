@@ -50,11 +50,6 @@ public class CumulativeAdminController {
                 body.windowMinutes(),
                 body.windowHours(),
                 body.timezone(),
-                body.threshold(),
-                body.compareOp() != null ? body.compareOp() : "gte",
-                body.onExceedSuggest() != null ? body.onExceedSuggest() : "block",
-                body.onExceedRiskScore() > 0 ? body.onExceedRiskScore() : 100,
-                body.onExceedReasonCode() != null ? body.onExceedReasonCode() : "CUMULATIVE_EXCEEDED",
                 body.priority(),
                 body.status() != null ? body.status() : "active");
         CumulativeDef saved = cumulativeService.upsert(def);

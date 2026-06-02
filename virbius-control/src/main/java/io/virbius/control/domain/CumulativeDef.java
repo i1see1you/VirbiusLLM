@@ -1,5 +1,9 @@
 package io.virbius.control.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+/** Counter definition only (window + dimension). Conditions live on cumulative rules. */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record CumulativeDef(
         String tenantId,
         String cumulativeName,
@@ -9,10 +13,5 @@ public record CumulativeDef(
         Integer windowMinutes,
         Integer windowHours,
         String timezone,
-        int threshold,
-        String compareOp,
-        String onExceedSuggest,
-        int onExceedRiskScore,
-        String onExceedReasonCode,
         int priority,
         String status) {}

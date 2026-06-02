@@ -170,9 +170,9 @@ WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND
 -- Named list + cumulative policy (list_match / cumulative runtimes)
 INSERT INTO tb_cumulative (
     tenant_id, cumulative_name, description, dimension, window_kind, window_minutes, window_hours,
-    timezone, threshold, compare_op, on_exceed_suggest, on_exceed_risk_score, on_exceed_reason_code, priority, status)
+    timezone, priority, status)
 SELECT 'default', 'user_req_1h', 'PoC user hourly limit', 'user_id', 'rolling', 60, NULL,
-    NULL, 120, 'gte', 'block', 100, 'GW_USER_RATE_1H', 10, 'active' FROM (SELECT 1) AS _one
+    NULL, 10, 'active' FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_cumulative WHERE tenant_id = 'default' AND cumulative_name = 'user_req_1h');
 
 INSERT INTO tb_rule_history (
@@ -198,7 +198,7 @@ INSERT INTO tb_rule_history (
                   reason_code, risk_score, intent_action, scope_json, body_json,
     rollout_state, canary_percent, effective_from, modified_at)
 SELECT 'default', 'rl_rate_user_1h', 1, 'poc-default', 'gateway', 'cumulative',
-    'GW_USER_RATE_1H', 80, 'captcha', '{}', '{"cumulative_name":"user_req_1h"}',
+    'GW_USER_RATE_1H', 80, 'captcha', '{}', '{"cumulative_name":"user_req_1h","condition":{"compare_op":"gte","threshold":120}}',
     'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'rl_rate_user_1h');
 

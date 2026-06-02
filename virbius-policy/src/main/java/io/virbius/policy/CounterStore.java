@@ -85,14 +85,11 @@ public class CounterStore {
     }
 
     public boolean exceeded(long count, int threshold, String compareOp) {
-        String op = compareOp == null || compareOp.isBlank() ? "gte" : compareOp.toLowerCase();
-        return switch (op) {
-            case "gt" -> count > threshold;
-            case "eq" -> count == threshold;
-            case "lte" -> count <= threshold;
-            case "lt" -> count < threshold;
-            default -> count >= threshold;
-        };
+        return RuleConditionEvaluator.evaluateCompare(count, compareOp, threshold);
+    }
+
+    public boolean evaluate(RuleCondition condition, long count) {
+        return RuleConditionEvaluator.evaluate(count, condition);
     }
 
     public static Optional<JedisPool> createPool(String redisUrl) {

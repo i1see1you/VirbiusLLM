@@ -6,19 +6,68 @@
   <title>Virbius 运营台</title>
   <style>
     :root { font-family: system-ui, sans-serif; color: #0f172a; background: #f1f5f9; }
-    body { margin: 0; padding: 1rem 1.25rem 2rem; max-width: 1280px; margin-left: auto; margin-right: auto; }
-    h1 { font-size: 1.35rem; margin: 0 0 0.25rem; }
-    .sub { color: #64748b; font-size: 0.85rem; margin-bottom: 1rem; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; }
+    .app-layout { display: flex; min-height: 100vh; }
+    .sidebar {
+      width: 220px; flex-shrink: 0; background: #0f172a; color: #e2e8f0;
+      display: flex; flex-direction: column; transition: width 0.2s ease;
+      position: sticky; top: 0; height: 100vh; overflow: hidden;
+    }
+    .sidebar.collapsed { width: 56px; }
+    .sidebar-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.85rem 0.75rem; border-bottom: 1px solid #1e293b; gap: 0.35rem;
+    }
+    .sidebar-title { font-size: 0.95rem; font-weight: 600; white-space: nowrap; overflow: hidden; }
+    .sidebar.collapsed .sidebar-title { opacity: 0; width: 0; }
+    .sidebar-toggle {
+      background: #1e293b; color: #cbd5e1; border: none; border-radius: 4px;
+      width: 28px; height: 28px; cursor: pointer; flex-shrink: 0; font-size: 0.75rem; padding: 0;
+    }
+    .sidebar-toggle:hover { background: #334155; }
+    .sidebar-nav { flex: 1; overflow-y: auto; padding: 0.5rem 0; }
+    .nav-item, .nav-sub {
+      display: flex; align-items: center; gap: 0.5rem; width: 100%;
+      border: none; background: transparent; color: #94a3b8; text-align: left;
+      padding: 0.55rem 0.85rem; cursor: pointer; font-size: 0.88rem;
+    }
+    .nav-item:hover, .nav-sub:hover { background: #1e293b; color: #f1f5f9; }
+    .nav-item.active, .nav-sub.active { background: #1d4ed8; color: #fff; }
+    .nav-icon { width: 1.25rem; text-align: center; flex-shrink: 0; font-size: 0.9rem; }
+    .nav-label { white-space: nowrap; overflow: hidden; }
+    .sidebar.collapsed .nav-label { display: none; }
+    .nav-group { margin-top: 0.15rem; }
+    .nav-group-head {
+      display: flex; align-items: center; justify-content: space-between; width: 100%;
+    }
+    .nav-chevron { font-size: 0.65rem; opacity: 0.7; transition: transform 0.15s; }
+    .nav-group.expanded .nav-chevron { transform: rotate(180deg); }
+    .sidebar.collapsed .nav-chevron { display: none; }
+    .nav-sublist { display: none; padding-left: 0.35rem; }
+    .nav-group.expanded .nav-sublist { display: block; }
+    .sidebar.collapsed .nav-sublist { display: none !important; }
+    .nav-sub { padding-left: 2.1rem; font-size: 0.82rem; }
+    .sidebar.collapsed .nav-sub { padding-left: 0.85rem; justify-content: center; }
+    .sidebar.collapsed .nav-sub .nav-label { display: inline; font-size: 0.65rem; }
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; max-height: 100vh; overflow: hidden; }
+    .main-topbar {
+      display: flex; align-items: center; justify-content: flex-end; flex-shrink: 0;
+      padding: 0.6rem 1.25rem; background: #fff; border-bottom: 1px solid #e2e8f0;
+    }
+    .tenant-field { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: #475569; margin: 0; }
+    .tenant-field input { width: 8.5rem; }
+    .main-scroll { flex: 1; overflow-y: auto; padding: 0.75rem 1.25rem 0; }
     .toolbar, .row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; }
     .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
     label { font-size: 0.8rem; color: #475569; }
     input, select, textarea { padding: 0.35rem 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.9rem; }
-    textarea { width: 100%; min-height: 120px; font-family: ui-monospace, monospace; font-size: 0.82rem; box-sizing: border-box; }
+    textarea { width: 100%; min-height: 120px; font-family: ui-monospace, monospace; font-size: 0.82rem; }
     button { padding: 0.4rem 0.85rem; border: none; border-radius: 4px; background: #2563eb; color: #fff; cursor: pointer; font-size: 0.85rem; }
     button.secondary { background: #64748b; }
     button.danger { background: #dc2626; }
-    button.tab { background: #e2e8f0; color: #334155; }
-    button.tab.active { background: #2563eb; color: #fff; }
+    button.seg { background: #e2e8f0; color: #334155; padding: 0.35rem 0.65rem; font-size: 0.82rem; }
+    button.seg.active { background: #2563eb; color: #fff; }
     table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
     th, td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
     th { background: #f8fafc; color: #475569; font-weight: 600; }
@@ -29,7 +78,7 @@
     .tag.allow { background: #dcfce7; color: #166534; }
     .tag.disabled { background: #fef3c7; color: #92400e; }
     .tag.draft { background: #e0e7ff; color: #3730a3; }
-    #log { font-size: 0.8rem; background: #0f172a; color: #e2e8f0; padding: 0.75rem; border-radius: 6px; white-space: pre-wrap; min-height: 4rem; max-height: 200px; overflow: auto; }
+    #log { font-size: 0.8rem; background: #0f172a; color: #e2e8f0; padding: 0.75rem; border-radius: 6px; white-space: pre-wrap; min-height: 4rem; max-height: 160px; overflow: auto; margin: 0 1.25rem 1rem; flex-shrink: 0; }
     .panel { display: none; }
     .panel.active { display: block; }
     .hint { font-size: 0.8rem; color: #64748b; margin: 0.25rem 0 0.75rem; }
@@ -54,27 +103,37 @@
   </style>
 </head>
 <body>
-  <h1>Virbius 运营台</h1>
-  <p class="sub">统一维护：名单 · 累计 · 上下文映射 · 规则 · 发布（API：<code>/api/v1/admin</code>）</p>
+  <div class="app-layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-head">
+        <span class="sidebar-title">Virbius 运营台</span>
+        <button type="button" class="sidebar-toggle" id="btnSidebarToggle" title="折叠菜单">◀</button>
+      </div>
+      <nav class="sidebar-nav">
+        <button type="button" class="nav-item active" data-tab="lists"><span class="nav-icon">📋</span><span class="nav-label">名单</span></button>
+        <button type="button" class="nav-item" data-tab="cumulatives"><span class="nav-icon">📊</span><span class="nav-label">累计</span></button>
+        <button type="button" class="nav-item" data-tab="bindings"><span class="nav-icon">🔗</span><span class="nav-label">请求映射</span></button>
+        <div class="nav-group expanded" id="navGroupRules">
+          <button type="button" class="nav-item nav-group-head" data-tab="rules" id="navRulesHead">
+            <span class="nav-icon">📜</span><span class="nav-label">规则</span><span class="nav-chevron">▼</span>
+          </button>
+          <div class="nav-sublist">
+            <button type="button" class="nav-sub active" data-layer="cloud"><span class="nav-label">云 cloud</span></button>
+            <button type="button" class="nav-sub" data-layer="gateway"><span class="nav-label">管 gateway</span></button>
+            <button type="button" class="nav-sub" data-layer="edge"><span class="nav-label">端 edge</span></button>
+          </div>
+        </div>
+        <button type="button" class="nav-item" data-tab="rollout"><span class="nav-icon">🚀</span><span class="nav-label">策略上线</span></button>
+      </nav>
+    </aside>
 
-  <div class="card">
-    <div class="toolbar">
-      <label>租户 <input id="tenantId" value="default" size="10" /></label>
-      <label>Bundle <input id="bundleId" value="poc-default" size="12" /></label>
-      <label>版本 <input id="bundleVer" value="0.1.0" size="6" /></label>
-      <button type="button" id="btnReload">刷新全部</button>
-      <button type="button" class="secondary" id="btnSyncAll">刷新网关产物</button>
-      <button type="button" class="secondary" id="btnPublish">发布 Engine</button>
-    </div>
-    <div class="toolbar">
-      <button type="button" class="tab active" data-tab="lists">名单</button>
-      <button type="button" class="tab" data-tab="cumulatives">累计</button>
-      <button type="button" class="tab" data-tab="bindings">请求映射</button>
-      <button type="button" class="tab" data-tab="rules">规则</button>
-      <button type="button" class="tab" data-tab="rollout">策略上线</button>
-      <button type="button" class="tab" data-tab="publish">发布状态</button>
-    </div>
-  </div>
+    <div class="main">
+      <header class="main-topbar">
+        <label class="tenant-field">租户 <input id="tenantId" value="default" autocomplete="off" /></label>
+      </header>
+      <input type="hidden" id="bundleId" value="poc-default" />
+      <input type="hidden" id="bundleVer" value="0.1.0" />
+      <div class="main-scroll">
 
   <div id="panel-lists" class="panel active card">
     <h2 style="margin:0 0 0.5rem;font-size:1rem">命名名单</h2>
@@ -106,13 +165,13 @@
 
   <div id="panel-cumulatives" class="panel card">
     <h2 style="margin:0 0 0.5rem;font-size:1rem">累计定义（tb_cumulative）</h2>
-    <p class="hint">定义窗口、阈值与默认计数维度；保存后会刷新网关产物。须在「规则」中创建 <code>runtime=cumulative</code> 并引用 <code>cumulative_name</code> 才会生效。</p>
+    <p class="hint">定义滑动窗口与默认计数维度（CounterStore）；保存后刷新网关产物。须在「规则」中创建 <code>runtime=cumulative</code>，引用 <code>cumulative_name</code> 并配置 <code>condition</code>（阈值/compare）及 reason/risk/intent。</p>
     <div class="row">
       <button type="button" id="btnCumNew">新建累计</button>
       <button type="button" class="secondary" id="btnCumRefresh">刷新列表</button>
     </div>
     <table id="cumTable">
-      <thead><tr><th>名称</th><th>维度</th><th>窗口</th><th>阈值</th><th>超限 reason</th><th>状态</th><th></th></tr></thead>
+      <thead><tr><th>名称</th><th>维度</th><th>窗口</th><th>状态</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
     <div id="cumEditor" style="display:none;margin-top:1rem;border-top:1px solid #e2e8f0;padding-top:1rem">
@@ -142,35 +201,22 @@
           </div>
         </div>
         <div>
-          <div class="row">
+          <div class="row" id="cumRollingWrap">
             <label>window_kind
               <select id="cumWinKind"><option value="rolling">rolling</option><option value="calendar_day">calendar_day</option></select>
             </label>
-            <label id="cumMinWrap">分钟 <input id="cumWinMin" type="number" min="1" value="60" style="width:5rem" /></label>
-            <label id="cumHrWrap" style="display:none">小时 <input id="cumWinHr" type="number" min="1" style="width:4rem" /></label>
+            <span id="cumWinUnitWrap" style="display:inline-flex;align-items:center;gap:0.5rem;font-size:0.85rem">
+              <label style="flex-direction:row;align-items:center;gap:0.2rem;margin:0"><input type="radio" name="cumWinUnit" id="cumWinUnitMin" value="minutes" checked /> 按分钟</label>
+              <label style="flex-direction:row;align-items:center;gap:0.2rem;margin:0"><input type="radio" name="cumWinUnit" id="cumWinUnitHr" value="hours" /> 按小时</label>
+            </span>
+            <label id="cumWinLenWrap">时长 <input id="cumWinLen" type="number" min="1" value="60" style="width:5rem" /><span id="cumWinLenHint" class="hint" style="margin:0">分钟</span></label>
             <label id="cumTzWrap" style="display:none">时区 <input id="cumTz" placeholder="Asia/Shanghai" style="width:10rem" /></label>
-          </div>
-          <div class="row">
-            <label>threshold <input id="cumThreshold" type="number" min="1" value="120" style="width:5rem" /></label>
-            <label>compare <select id="cumCompare"><option value="gte">gte</option></select></label>
-            <label>超限 suggest
-              <select id="cumSuggest">
-                <option value="block">block</option>
-                <option value="captcha">captcha</option>
-                <option value="review">review</option>
-              </select>
-            </label>
-            <label>risk <input id="cumRisk" type="number" min="0" max="100" value="100" style="width:3rem" /></label>
-          </div>
-          <div class="row">
-            <label>on_exceed_reason <input id="cumReason" placeholder="GW_USER_RATE_1H" style="min-width:14rem" /></label>
           </div>
         </div>
       </div>
       <div class="row" style="margin-top:0.5rem">
         <button type="button" id="btnCumSave">保存定义</button>
         <button type="button" class="danger" id="btnCumDelete">删除</button>
-        <button type="button" class="secondary" id="btnCumToRule">创建 gateway 规则</button>
       </div>
     </div>
   </div>
@@ -193,11 +239,9 @@
 
   <div id="panel-rules" class="panel card">
     <h2 style="margin:0 0 0.5rem;font-size:1rem">规则（Registry）</h2>
-    <p class="hint">新建规则默认为 <code>draft</code>（不进执行面）；保存后请到「<strong>策略上线</strong>」Tab 点 <code>上线</code> 进入 <code>dry_run</code> 观测。停用后可 <code>恢复草稿</code> 再编辑。</p>
+    <p class="hint">新建规则默认为 <code>draft</code>（不进执行面）；保存后请到左侧「<strong>策略上线</strong>」点 <code>上线</code> 进入 <code>dry_run</code> 观测。停用后可 <code>恢复草稿</code> 再编辑。</p>
     <div class="row">
-      <button type="button" class="tab layer active" data-layer="cloud">云 cloud</button>
-      <button type="button" class="tab layer" data-layer="gateway">管 gateway</button>
-      <button type="button" class="tab layer" data-layer="edge">端 edge</button>
+      <span class="hint" style="margin:0">当前层：<strong id="rulesLayerLabel">cloud</strong>（在左侧菜单「规则」下切换）</span>
       <button type="button" id="btnNewRule">新建规则</button>
     </div>
     <table id="rulesTable">
@@ -230,6 +274,19 @@
       </div>
       <div class="row" id="listMatchRow" style="display:none">
         <label>list_name <select id="fListName"></select></label>
+      </div>
+      <div class="row" id="cumulativeRuleRow" style="display:none">
+        <label>cumulative_name <select id="fCumName"></select></label>
+        <label>compare
+          <select id="fCumCompare">
+            <option value="gte">gte</option>
+            <option value="gt">gt</option>
+            <option value="lte">lte</option>
+            <option value="lt">lt</option>
+            <option value="eq">eq</option>
+          </select>
+        </label>
+        <label>threshold <input id="fCumThreshold" type="number" min="1" value="120" style="width:5rem" /></label>
       </div>
       <p id="groovyHint" class="hint" style="display:none;margin:0 0 0.5rem">
         Groovy L3 脚本返回 <code>[action: '…']</code>，取值 <code>allow</code> / <code>block</code> / <code>captcha</code> / <code>review</code>。
@@ -328,12 +385,10 @@
     </div>
   </div>
 
-  <div id="panel-publish" class="panel card">
-    <h2 style="margin:0 0 0.5rem;font-size:1rem">Bundle 发布状态</h2>
-    <pre id="publishInfo" style="background:#f8fafc;padding:0.75rem;border-radius:4px;font-size:0.85rem">—</pre>
+      </div>
+      <pre id="log"></pre>
+    </div>
   </div>
-
-  <pre id="log"></pre>
 
   <script>
     const logEl = document.getElementById('log');
@@ -394,8 +449,13 @@
         return JSON.stringify({ list_name: name }, null, 2);
       }
       if (runtime === 'cumulative') {
-        const name = selectedCumulativeName || 'user_req_1h';
-        return JSON.stringify({ cumulative_name: name }, null, 2);
+        const name = document.getElementById('fCumName').value
+          || selectedCumulativeName
+          || (cumulativeRows[0] && field(cumulativeRows[0], 'cumulative_name', 'cumulativeName'))
+          || 'user_req_1h';
+        const compare = document.getElementById('fCumCompare').value || 'gte';
+        const threshold = Number(document.getElementById('fCumThreshold').value) || 120;
+        return JSON.stringify({ cumulative_name: name, condition: { compare_op: compare, threshold } }, null, 2);
       }
       return JSON.stringify({ list_type: 'deny', keywords: [] }, null, 2);
     }
@@ -501,11 +561,46 @@
 
     let listCatalog = [];
 
+    function cumulativeRuleBody(name, compare, threshold) {
+      return {
+        cumulative_name: name,
+        condition: { compare_op: compare || 'gte', threshold: Number(threshold) || 120 }
+      };
+    }
+
+    function syncCumulativeRuleBody() {
+      if (document.getElementById('fRuntime').value !== 'cumulative') return;
+      const name = document.getElementById('fCumName').value;
+      if (!name) return;
+      document.getElementById('fBody').value = JSON.stringify(
+        cumulativeRuleBody(
+          name,
+          document.getElementById('fCumCompare').value,
+          document.getElementById('fCumThreshold').value),
+        null, 2);
+    }
+
+    function fillCumNameSelect(selected) {
+      const sel = document.getElementById('fCumName');
+      const names = cumulativeRows.map(c => field(c, 'cumulative_name', 'cumulativeName')).filter(Boolean);
+      sel.innerHTML = names.length
+        ? names.map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`).join('')
+        : '<option value="">— 无累计定义 —</option>';
+      if (selected && names.includes(selected)) sel.value = selected;
+      else if (names.length) sel.value = names[0];
+    }
+
     function syncListMatchUi(runtime) {
-      const show = runtime === 'list_match';
-      document.getElementById('listMatchRow').style.display = show ? '' : 'none';
+      const list = runtime === 'list_match';
+      const cum = runtime === 'cumulative';
+      document.getElementById('listMatchRow').style.display = list ? '' : 'none';
+      document.getElementById('cumulativeRuleRow').style.display = cum ? '' : 'none';
       document.getElementById('groovyHint').style.display = runtime === 'groovy' ? '' : 'none';
-      if (show) fillListNameSelect(document.getElementById('fListName').value);
+      if (list) fillListNameSelect(document.getElementById('fListName').value);
+      if (cum) {
+        fillCumNameSelect(document.getElementById('fCumName').value);
+        syncCumulativeRuleBody();
+      }
     }
 
     function syncIntentFromRisk() {
@@ -574,11 +669,23 @@
       return 'rolling';
     }
 
+    function syncCumWinLenHint() {
+      const hours = document.getElementById('cumWinUnitHr').checked;
+      document.getElementById('cumWinLenHint').textContent = hours ? '小时' : '分钟';
+    }
+
+    function setCumWinUnit(unit) {
+      const hours = unit === 'hours';
+      document.getElementById('cumWinUnitMin').checked = !hours;
+      document.getElementById('cumWinUnitHr').checked = hours;
+      syncCumWinLenHint();
+    }
+
     function syncCumWindowFields() {
       const kind = document.getElementById('cumWinKind').value;
       const rolling = kind === 'rolling';
-      document.getElementById('cumMinWrap').style.display = rolling ? '' : 'none';
-      document.getElementById('cumHrWrap').style.display = rolling ? '' : 'none';
+      document.getElementById('cumWinUnitWrap').style.display = rolling ? '' : 'none';
+      document.getElementById('cumWinLenWrap').style.display = rolling ? '' : 'none';
       document.getElementById('cumTzWrap').style.display = rolling ? 'none' : '';
     }
 
@@ -597,14 +704,16 @@
       document.getElementById('cumStatus').value = field(c, 'status') || 'active';
       document.getElementById('cumPriority').value = field(c, 'priority') ?? 10;
       document.getElementById('cumWinKind').value = field(c, 'window_kind', 'windowKind') || 'rolling';
-      document.getElementById('cumWinMin').value = field(c, 'window_minutes', 'windowMinutes') ?? 60;
-      document.getElementById('cumWinHr').value = field(c, 'window_hours', 'windowHours') ?? '';
+      const winHr = field(c, 'window_hours', 'windowHours');
+      const winMin = field(c, 'window_minutes', 'windowMinutes');
+      if (winHr != null && winHr !== '' && Number(winHr) > 0) {
+        setCumWinUnit('hours');
+        document.getElementById('cumWinLen').value = winHr;
+      } else {
+        setCumWinUnit('minutes');
+        document.getElementById('cumWinLen').value = winMin != null && winMin !== '' ? winMin : 60;
+      }
       document.getElementById('cumTz').value = field(c, 'timezone') || 'Asia/Shanghai';
-      document.getElementById('cumThreshold').value = field(c, 'threshold') ?? 120;
-      document.getElementById('cumCompare').value = field(c, 'compare_op', 'compareOp') || 'gte';
-      document.getElementById('cumSuggest').value = field(c, 'on_exceed_suggest', 'onExceedSuggest') || 'block';
-      document.getElementById('cumRisk').value = field(c, 'on_exceed_risk_score', 'onExceedRiskScore') ?? 100;
-      document.getElementById('cumReason').value = field(c, 'on_exceed_reason_code', 'onExceedReasonCode') || 'CUMULATIVE_EXCEEDED';
       syncCumWindowFields();
     }
 
@@ -614,23 +723,16 @@
         description: document.getElementById('cumDesc').value.trim() || null,
         dimension: document.getElementById('cumDim').value,
         window_kind: kind,
-        threshold: Number(document.getElementById('cumThreshold').value),
-        compare_op: document.getElementById('cumCompare').value,
-        on_exceed_suggest: document.getElementById('cumSuggest').value,
-        on_exceed_risk_score: Number(document.getElementById('cumRisk').value),
-        on_exceed_reason_code: document.getElementById('cumReason').value.trim() || 'CUMULATIVE_EXCEEDED',
         priority: Number(document.getElementById('cumPriority').value) || 0,
         status: document.getElementById('cumStatus').value
       };
       if (kind === 'rolling') {
-        const min = Number(document.getElementById('cumWinMin').value);
-        const hrRaw = document.getElementById('cumWinHr').value.trim();
-        const hr = hrRaw ? Number(hrRaw) : null;
-        if (hr && hr > 0) {
-          body.window_hours = hr;
+        const len = Number(document.getElementById('cumWinLen').value);
+        if (document.getElementById('cumWinUnitHr').checked) {
+          body.window_hours = len > 0 ? len : 1;
           body.window_minutes = null;
         } else {
-          body.window_minutes = min > 0 ? min : 60;
+          body.window_minutes = len > 0 ? len : 60;
           body.window_hours = null;
         }
         body.timezone = null;
@@ -652,8 +754,7 @@
         if (name === selectedCumulativeName) tr.classList.add('sel');
         const st = field(c, 'status') || 'active';
         tr.innerHTML = `<td><code>${esc(name)}</code></td><td>${esc(field(c, 'dimension'))}</td>
-          <td>${esc(formatCumWindow(c))}</td><td>${field(c, 'threshold')}</td>
-          <td><code>${esc(field(c, 'on_exceed_reason_code', 'onExceedReasonCode'))}</code></td>
+          <td>${esc(formatCumWindow(c))}</td>
           <td><span class="tag ${st === 'disabled' ? 'disabled' : ''}">${esc(st)}</span></td>
           <td><button type="button" class="secondary" data-name="${escAttr(name)}">编辑</button></td>`;
         tr.onclick = (e) => {
@@ -769,16 +870,18 @@
       if (r.runtime === 'list_match' && body && body.list_name) {
         fillListNameSelect(body.list_name);
       }
+      if (r.runtime === 'cumulative' && body) {
+        const cond = body.condition || {};
+        fillCumNameSelect(body.cumulative_name);
+        document.getElementById('fCumCompare').value = cond.compare_op || body.compare_op || 'gte';
+        document.getElementById('fCumThreshold').value = cond.threshold ?? body.threshold ?? 120;
+        syncCumulativeRuleBody();
+      }
       setRuleEditorCloudOnly(r.layer);
       setRuleEditorStatusUi(r.rollout_state);
       await loadRules();
       const roSel = document.getElementById('roRuleSelect');
       if (roSel && [...roSel.options].some(o => o.value === ruleId)) roSel.value = ruleId;
-    }
-
-    async function loadPublish() {
-      const st = await admin(`/bundles/${encodeURIComponent(bundleId())}/versions/${encodeURIComponent(bundleVer())}/status`);
-      document.getElementById('publishInfo').textContent = JSON.stringify(st, null, 2);
     }
 
     function rolloutRuleId() {
@@ -1104,68 +1207,75 @@
       await loadCumulatives();
       await loadBindings();
       await loadRules();
-      await loadPublish();
       if (document.getElementById('panel-rollout').classList.contains('active')) {
         await refreshRolloutDashboard();
       }
       log({ ok: true, tenant: tenant(), bundle: bundleId(), version: bundleVer() });
     }
 
-    function openCumulativeRuleWizard() {
-      const name = selectedCumulativeName || document.getElementById('cumName').value.trim();
-      if (!name) {
-        log('请先选择或填写 cumulative_name');
-        return;
-      }
-      const reason = document.getElementById('cumReason').value.trim() || 'CUMULATIVE_EXCEEDED';
-      document.querySelectorAll('button.tab[data-tab]').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-      document.querySelector('button.tab[data-tab="rules"]').classList.add('active');
-      document.getElementById('panel-rules').classList.add('active');
-      document.querySelectorAll('button.tab.layer').forEach(b => b.classList.remove('active'));
-      document.querySelector('button.tab.layer[data-layer="gateway"]').classList.add('active');
-      currentLayer = 'gateway';
-      isNewRule = true;
-      selectedRuleId = null;
-      editRuleMeta = { layer: 'gateway' };
-      document.getElementById('ruleEditor').style.display = 'block';
-      document.getElementById('editTitle').textContent = '新建';
-      document.getElementById('editRuleId').textContent = '';
-      document.getElementById('newRuleRow').style.display = '';
-      document.getElementById('fRuleId').value = 'rl_' + name.replace(/[^a-zA-Z0-9_]/g, '_');
-      fillRuntimeSelect('gateway', 'cumulative');
-      document.getElementById('fReason').value = reason;
-      document.getElementById('fRisk').value = 80;
-      document.getElementById('fIntent').value = 'captcha';
-      document.getElementById('fEnforce').value = 'dry_run';
-      document.getElementById('fBody').value = JSON.stringify({ cumulative_name: name }, null, 2);
-      setRuleEditorCloudOnly('gateway');
-      setRuleEditorStatusUi('draft');
-      document.getElementById('fRuntime').onchange = () => {
-        document.getElementById('fBody').value = defaultRuleBody('gateway', document.getElementById('fRuntime').value);
-      };
-      loadRules().catch(e => log(e.message));
-    }
-
     function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
     function escAttr(s) { return String(s).replace(/"/g, '&quot;'); }
 
-    document.querySelectorAll('button.tab[data-tab]').forEach(btn => {
-      btn.onclick = () => {
-        document.querySelectorAll('button.tab[data-tab]').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-        btn.classList.add('active');
-        document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
-        if (btn.dataset.tab === 'rollout') {
-          refreshRolloutDashboard().catch(e => log(e.message));
-        }
-      };
+    function setActiveNav(tab) {
+      document.querySelectorAll('.nav-item[data-tab]').forEach(b => {
+        b.classList.toggle('active', b.dataset.tab === tab);
+      });
+      if (tab === 'rules') {
+        document.getElementById('navGroupRules').classList.add('expanded');
+      }
+    }
+
+    function setActiveLayer(layer) {
+      currentLayer = layer;
+      document.querySelectorAll('.nav-sub[data-layer]').forEach(b => {
+        b.classList.toggle('active', b.dataset.layer === layer);
+      });
+      const label = document.getElementById('rulesLayerLabel');
+      if (label) label.textContent = layer;
+    }
+
+    function showPanel(tab) {
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      const panel = document.getElementById('panel-' + tab);
+      if (panel) panel.classList.add('active');
+      setActiveNav(tab);
+      if (tab === 'rollout') {
+        refreshRolloutDashboard().catch(e => log(e.message));
+      }
+    }
+
+    document.getElementById('btnSidebarToggle').onclick = () => {
+      const sb = document.getElementById('sidebar');
+      const collapsed = sb.classList.toggle('collapsed');
+      document.getElementById('btnSidebarToggle').textContent = collapsed ? '▶' : '◀';
+      document.getElementById('btnSidebarToggle').title = collapsed ? '展开菜单' : '折叠菜单';
+      try { localStorage.setItem('virbius.ops.sidebarCollapsed', collapsed ? '1' : '0'); } catch (_) {}
+    };
+    try {
+      if (localStorage.getItem('virbius.ops.sidebarCollapsed') === '1') {
+        document.getElementById('sidebar').classList.add('collapsed');
+        document.getElementById('btnSidebarToggle').textContent = '▶';
+      }
+    } catch (_) {}
+
+    document.querySelectorAll('.nav-item[data-tab]:not(#navRulesHead)').forEach(btn => {
+      btn.onclick = () => showPanel(btn.dataset.tab);
     });
-    document.querySelectorAll('button.tab.layer').forEach(btn => {
+
+    document.getElementById('navRulesHead').onclick = (e) => {
+      showPanel('rules');
+      const group = document.getElementById('navGroupRules');
+      if (e.target.classList.contains('nav-chevron')) {
+        group.classList.toggle('expanded');
+      } else {
+        group.classList.add('expanded');
+      }
+    };
+
+    document.querySelectorAll('.nav-sub[data-layer]').forEach(btn => {
       btn.onclick = () => {
-        document.querySelectorAll('button.tab.layer').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        currentLayer = btn.dataset.layer;
+        showPanel('rules');
+        setActiveLayer(btn.dataset.layer);
         selectedRuleId = null;
         isNewRule = false;
         document.getElementById('ruleEditor').style.display = 'none';
@@ -1173,14 +1283,12 @@
       };
     });
 
-    document.getElementById('btnReload').onclick = () => reloadAll().catch(e => log(e.message));
-    document.getElementById('btnSyncAll').onclick = () =>
-      admin('/access-lists/sync-rules', { method: 'POST' }).then(log).then(reloadAll).catch(e => log(e.message));
-    document.getElementById('btnPublish').onclick = () =>
-      admin(`/bundles/${encodeURIComponent(bundleId())}/versions/${encodeURIComponent(bundleVer())}/publish`, { method: 'POST' })
-        .then(log).then(loadPublish).catch(e => log(e.message));
+    document.getElementById('tenantId').addEventListener('change', () =>
+      reloadAll().catch(e => log(e.message)));
 
     document.getElementById('cumWinKind').onchange = syncCumWindowFields;
+    document.getElementById('cumWinUnitMin').onchange = syncCumWinLenHint;
+    document.getElementById('cumWinUnitHr').onchange = syncCumWinLenHint;
     document.getElementById('btnCumNew').onclick = () => openCumulativeEditor({}, true);
     document.getElementById('btnCumRefresh').onclick = () => loadCumulatives().then(() => log('累计列表已刷新')).catch(e => log(e.message));
     document.getElementById('btnCumSave').onclick = async () => {
@@ -1218,7 +1326,6 @@
         log(e.message);
       }
     };
-    document.getElementById('btnCumToRule').onclick = () => openCumulativeRuleWizard();
 
     document.getElementById('btnListCreate').onclick = async () => {
       const name = document.getElementById('newListName').value.trim();
@@ -1284,6 +1391,9 @@
 
     document.getElementById('btnNewRule').onclick = () => openNewRuleEditor();
     document.getElementById('fRisk').onchange = syncIntentFromRisk;
+    document.getElementById('fCumName').onchange = syncCumulativeRuleBody;
+    document.getElementById('fCumCompare').onchange = syncCumulativeRuleBody;
+    document.getElementById('fCumThreshold').onchange = syncCumulativeRuleBody;
 
     document.getElementById('btnSaveRule').onclick = async () => {
       if (editRuleMeta && editRuleMeta.rollout_state === 'disabled') {
@@ -1299,6 +1409,7 @@
       }
       const layer = isNewRule ? currentLayer : editRuleMeta.layer;
       const runtime = isNewRule ? document.getElementById('fRuntime').value : editRuleMeta.runtime;
+      if (runtime === 'cumulative') syncCumulativeRuleBody();
       let body;
       try { body = JSON.parse(document.getElementById('fBody').value); } catch { body = document.getElementById('fBody').value; }
       await admin('/rules', {

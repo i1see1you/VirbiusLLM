@@ -215,7 +215,7 @@ Groovy L3：脚本返回 `[action: 'allow'|'block'|'captcha'|'review']`；`dry_r
 ## 9. 运营 UI
 
 - 规则表展示 `rollout_state`（或 PoC：`rule_status` / `enforce_mode`）/ `intent_action` / `risk_score`
-- Tab「策略上线」：放量流程条、看板、门禁 evaluate（R2+）；见 [rule-rollout.md §8](./rule-rollout.md)
+- 「**策略上线**」侧栏：放量流程条、看板、门禁 evaluate（R2+）；见 [rule-rollout.md §8.3](./rule-rollout.md)
 - Groovy 模板默认 `dry_run → review`
 
 ---

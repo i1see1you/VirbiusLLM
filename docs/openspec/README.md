@@ -1,6 +1,6 @@
 # VirbiusLLM MVP OpenSpec
 
-本目录为 **MVP（Phase 1）** 可实施接口与数据契约，与 [DESIGN.md v2.20](../DESIGN.md) 对齐，**§11.6.0 冻结清单** 为准。代码骨架见 [POC-REPO.md](../POC-REPO.md)。
+本目录为 **MVP（Phase 1）** 可实施接口与数据契约，与 [DESIGN.md v2.22](../DESIGN.md) 对齐，**§11.6.0 冻结清单** 为准。代码骨架见 [POC-REPO.md](../POC-REPO.md)。
 
 | 文件 | 说明 |
 |------|------|
@@ -25,7 +25,7 @@
 
 | 服务 | 基址 |
 |------|------|
-| **virbius-control** | `http://virbius-control:8080`（`/api/v1/*` + `/ui/*`） |
+| **virbius-control** | `http://virbius-control:8080`（`/api/v1/*` + `/ui` → `ops.html`） |
 | gateway-agent | `http://127.0.0.1:9070` 或 `unix:///var/run/virbius/agent.sock` |
 | virbius-engine gRPC | `virbius-engine:50051` |
 | virbius-engine admin | `http://virbius-engine:8082` |

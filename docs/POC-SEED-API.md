@@ -115,7 +115,7 @@ curl -s -X POST "http://127.0.0.1:8080/api/v1/admin/tenants/default/bundles/poc-
 
 | 功能 | URL |
 |------|-----|
-| **运营台**（名单 · 上下文映射 · 规则 · 发布） | http://127.0.0.1:8080/ui |
+| **运营台**（名单 · 累计 · 请求映射 · 规则 · **策略上线**） | http://127.0.0.1:8080/ui |
 
 单页表格维护；旧 URL（`/ui/access-lists`、`/ui/policies`、`access-lists.html` 等）自动重定向到 `/ui`。
 
@@ -125,7 +125,7 @@ Admin API：`/api/v1/admin/tenants/{tenantId}/...`（`{ "code": 0, "data": ... }
 
 ### Web
 
-- http://127.0.0.1:8080/ui → 运营台「名单」Tab
+- http://127.0.0.1:8080/ui → 运营台左侧导航「名单」（详见 [rule-rollout.md §8.3](./openspec/rule-rollout.md)）
 
 若打开报 **404 / 无法连接**：多为 **8080 上仍是旧版 control**（`run-local.sh` 曾提示 `Port 8080 was already in use`）。处理：
 

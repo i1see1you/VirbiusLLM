@@ -4,9 +4,9 @@
 
 | 项目 | 说明 |
 |------|------|
-| 状态 | 草案（设计冻结，待开发） |
+| 状态 | **PoC 已实现**（gateway ingest + engine read 共用 Redis；未配置 `VIRBIUS_REDIS_URL` 时 gateway 回退进程内内存） |
 | 存储 | 定义 → `tb_cumulative`；数值 → **Redis** |
-| 规则 | `runtime=cumulative`；body 必填 `cumulative_name`；可选 `value_source` |
+| 规则 | `runtime=cumulative`；body 必填 `cumulative_name` + **`condition`**；可选 `value_source` |
 | 对称能力 | 名单 → [list-match.md](./list-match.md)；value 解析 → [value-resolution.md](./value-resolution.md) |
 
 ---
@@ -45,13 +45,10 @@ value = resolveValue(rule, cumDef, request)
 | `window_minutes` | △ | rolling 与 `window_hours` **互斥二选一** |
 | `window_hours` | △ | rolling；`1 ≤ W ≤ 168`（`W` 最大 10080 分钟） |
 | `timezone` | △ | `calendar_day` **必填**（如 `Asia/Shanghai`） |
-| `threshold` | ✅ | 与 `count` 比较 |
-| `compare_op` | | 默认 `gte`；PoC 可仅实现 `gte` |
-| `on_exceed_suggest` | | 默认 `block` |
-| `on_exceed_risk_score` | | 默认 `100` |
-| `on_exceed_reason_code` | ✅ | 审计与响应 |
 | `priority` | | 多累计并存时的顺序 |
 | `status` | ✅ | `active` \| `disabled` |
+
+**判定**（`condition.threshold` / `compare_op`）与 **处置**（`reason_code`、`risk_score`、`intent_action`）在 **累计规则** 上配置，见 §3。
 
 **「自然周」**：不单独建模；用 **7×`calendar_day`** 或一条 **`rolling` + `window_hours: 168`**。
 
@@ -62,18 +59,29 @@ value = resolveValue(rule, cumDef, request)
 ### 3.1 最简
 
 ```yaml
-rule_id: rl_user_req_1h          # 审计用，用户自定
+rule_id: rl_user_req_1h
 runtime: cumulative
-layer: gateway                   # 或 cloud：仅表示在本层判定/产 Signal
+layer: gateway
+reason_code: GW_USER_RATE_1H
+risk_score: 80
+intent_action: captcha
 body:
   cumulative_name: user_req_1h   # 必填
+  condition:                     # 必填
+    compare_op: gte
+    threshold: 120
 ```
+
+平台：`count = getCumulate(value, cumulativeName)` → `RuleConditionEvaluator.evaluate(count, condition)` → Signal（reason/risk/intent 来自规则行）。
 
 ### 3.2 指定 value 来源（可选）
 
 ```yaml
 body:
   cumulative_name: req_per_app_1h
+  condition:
+    compare_op: gte
+    threshold: 120
   value_source:
     kind: var
     ref: app_id
@@ -81,7 +89,7 @@ body:
 
 未写 `value_source` 时：`value = resolve(cumDef.dimension, request)`，再 `getCumulate(value, cumulativeName)`。详见 [value-resolution.md](./value-resolution.md)。
 
-策略参数（窗口、阈值、reason）**全部在 `tb_cumulative`**，不在规则 body 重复。
+窗口与 dimension **在 `tb_cumulative`**；**condition 与处置在规则**。
 
 同一 `cumulative_name` 可绑多条规则（如 gateway 拦截 + cloud 审计）。若规则间 **`value_source` 不同**，Redis 按不同 `value` 分流计数（见 §6.1 Key）。
 
@@ -173,6 +181,8 @@ event: cumulative_skipped
 reason: empty | null | too_long
 fields: tenant_id, cumulative_name, dimension, trace_id
 ```
+
+**PoC 实现（gateway-agent `cumulative.rs`）**：读取 `VIRBIUS_REDIS_URL` 连接 Redis；每条命中累计规则时 `HINCRBY` + `EXPIRE`（ingest）再 `HGET`/`HMGET`（read），键格式与 §6.1 一致，与 Java `CounterStore` 对齐。未配置 Redis 时回退进程内 `HashMap`（仅本地/单测）。
 
 ---
 

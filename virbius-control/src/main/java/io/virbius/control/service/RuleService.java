@@ -8,6 +8,7 @@ import io.virbius.control.domain.dto.response.RuleResponseMapper;
 import io.virbius.control.domain.enums.IntentAction;
 import io.virbius.control.domain.enums.RolloutState;
 import io.virbius.control.groovy.GroovyRuleValidator;
+import io.virbius.control.policy.RuleBodyRefs;
 import io.virbius.control.repository.RegistryRepository;
 import io.virbius.control.repository.RolloutEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -91,6 +92,13 @@ public class RuleService {
             groovyRuleValidator.validateRevision(draft);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(e.getMessage());
+        }
+        if ("cumulative".equals(req.runtime())) {
+            RuleBodyRefs refs = RuleBodyRefs.parse(req.body());
+            if (refs.cumulativeName() == null || refs.cumulativeName().isBlank()) {
+                throw new IllegalArgumentException("cumulative rule requires body.cumulative_name");
+            }
+            refs.requireCondition();
         }
         RuleRevision before = existing.orElse(null);
         RuleRevision saved = store.upsertRule(tenantId, draft);

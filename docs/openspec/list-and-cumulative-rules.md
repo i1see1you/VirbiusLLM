@@ -179,9 +179,9 @@ body:
 | `window_minutes` | rolling，与 `window_hours` **互斥二选一** |
 | `window_hours` | rolling；`1 ≤ W ≤ 168`（最多 10080 分钟） |
 | `timezone` | `calendar_day` **必填** |
-| `threshold` / `compare_op` | 默认 `gte` |
-| `on_exceed_suggest` / `on_exceed_risk_score` / `on_exceed_reason_code` | 超限时 Signal |
 | `priority` / `status` | |
+
+**判定与处置**（`threshold`、`compare_op`、`reason_code`、`risk_score`、`intent_action`）在 **`runtime=cumulative` 规则** 上配置，见 §5.2。
 
 **自然周**：用 `rolling` + `window_hours: 168`，或多个 `calendar_day` 规则/Groovy 组合；**不**单独建 `calendar_week`。
 
@@ -193,12 +193,19 @@ body:
 rule_id: rl_user_req_1h
 runtime: cumulative
 layer: gateway
+reason_code: GW_USER_RATE_1H
+risk_score: 80
+intent_action: captcha
 body:
   cumulative_name: user_req_1h   # 必填
+  condition:                     # 必填：平台 evaluate(count, condition)
+    compare_op: gte              # gte | gt | lte | lt | eq
+    threshold: 120
   # value_source:               # 可选，见 §3
 ```
 
-窗口、阈值、reason **仅在 `tb_cumulative`**，不在规则 body 重复。
+窗口与 dimension **仅在 `tb_cumulative`**；**不在**规则 body 重复。  
+同一 `cumulative_name` 可绑多条规则（不同 `condition` / reason / intent，如 80→review、120→captcha）。
 
 ### 5.3 Redis
 
@@ -270,23 +277,30 @@ cumulative_name: user_req_1h
 dimension: user_id
 window_kind: rolling
 window_minutes: 60
-threshold: 120
-on_exceed_reason_code: GW_USER_RATE_1H
-on_exceed_risk_score: 100
 
 # 规则
 rule_id: rl_rate_1h
 runtime: cumulative
 layer: gateway
+reason_code: GW_USER_RATE_1H
+risk_score: 80
+intent_action: captcha
 body:
   cumulative_name: user_req_1h
+  condition:
+    compare_op: gte
+    threshold: 120
 
 # ---------- 扩展：同一定义、不同 value ----------
 rule_id: rl_rate_by_app
 runtime: cumulative
 layer: gateway
+reason_code: GW_APP_RATE_1H
 body:
-  cumulative_name: user_req_1h      # 共用窗口/阈值定义时需产品确认；更稳妥是单独 cumulative_name
+  cumulative_name: user_req_1h
+  condition:
+    compare_op: gte
+    threshold: 120
   value_source:
     kind: var
     ref: app_id
@@ -301,7 +315,7 @@ body:
 | # | 名单 | 累计 |
 |---|------|------|
 | 1 | `list_name` 唯一、active | `cumulative_name` 唯一、active |
-| 2 | `body.list_name` 必填 | `body.cumulative_name` 必填 |
+| 2 | `body.list_name` 必填 | `body.cumulative_name` + **`body.condition`** 必填 |
 | 3 | `value_source` 合法（共有） | 同左 |
 | 4 | — | rolling：`window_minutes` XOR `window_hours`；`W≤10080` |
 | 5 | — | `calendar_day` 必 `timezone` |
@@ -349,4 +363,5 @@ body:
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| v1.1 | 2026-05-20 | 累计 **condition 迁至规则**；定义仅 window+dimension |
 | v1.0 | 2026-05-20 | 合并对话定稿：ListStore/CounterStore、value_source、1/10 分钟桶、无 calendar_week |

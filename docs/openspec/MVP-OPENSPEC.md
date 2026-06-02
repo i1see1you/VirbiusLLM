@@ -60,7 +60,7 @@
 |------|------|----------|
 | **virbius-control** | HTTP/JSON | [registry.openapi.yaml](./registry.openapi.yaml) |
 
-**部署**：一个 Spring Boot 进程；`/api/v1/*` 为规则与发布 API；`/ui/*` 为 React 运营台。逻辑模块 `registry-core`（写 DB）与 `admin-ui`（只读调 API）**不得**拆成两套规则真源。详见 DESIGN §7.1.1。
+**部署**：一个 Spring Boot 进程；`/api/v1/*` 为规则与 Admin API；`/ui` → 静态 **`ops.html`** 运营台（左侧导航 + 策略上线）。逻辑模块 `registry-core`（写 DB）与 `admin-ui`（静态资源 + 鉴权）**不得**拆成两套规则真源。详见 DESIGN §7.1.1、[rule-rollout.md §8.3](./rule-rollout.md)。
 
 | 逻辑模块（进程内） | 说明 |
 |--------------------|------|
@@ -395,6 +395,8 @@ MVP 必填 rule：
 ---
 
 ## 10. 发布状态机
+
+> **Legacy（整包 Bundle）**：下列状态机用于 `POST .../bundles/{bundleId}/versions/{version}/publish` 与 `GET .../status`；OpenAPI 标注 `[Legacy]`。**日常运营**按单条规则的 **`rollout_state`** 在运营台「策略上线」完成，见 [rule-rollout.md](./rule-rollout.md)。
 
 ```text
 draft → validating → eval_running → compiling → syncing → active

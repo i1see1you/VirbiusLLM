@@ -8,6 +8,8 @@ import io.virbius.policy.CounterStore;
 import io.virbius.policy.CumulativeWindow;
 import io.virbius.policy.MatchContext;
 import io.virbius.policy.ValueResolver;
+import io.virbius.policy.RuleCondition;
+import io.virbius.policy.RuleConditionEvaluator;
 import io.virbius.policy.ValueSource;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -62,12 +64,14 @@ public class CumulativeRunner {
             }
             String timezone = text(body, "timezone");
             ZoneId zone = ZoneId.of(timezone != null ? timezone : "UTC");
-            int threshold = body.has("threshold") ? body.get("threshold").asInt() : 100;
-            String compareOp = text(body, "compare_op");
+            RuleCondition condition = RuleCondition.parseFromRuleBody(body);
+            if (condition == null) {
+                continue;
+            }
             long count = counterStore
                     .get()
                     .read(tenantId, cumulativeName, value.get(), wMin, windowKind, zone);
-            if (counterStore.get().exceeded(count, threshold, compareOp)) {
+            if (RuleConditionEvaluator.evaluate(count, condition)) {
                 signals.add(new SignalDto(
                         rule.ruleId(),
                         rule.ruleRevision(),

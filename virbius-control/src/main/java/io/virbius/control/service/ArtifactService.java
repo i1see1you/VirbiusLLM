@@ -6,6 +6,7 @@ import io.virbius.control.domain.RuleRevision;
 import io.virbius.control.domain.RolloutStateHelper;
 import io.virbius.control.domain.TenantRolloutPolicy;
 import io.virbius.control.policy.RuleBodyRefs;
+import io.virbius.policy.RuleCondition;
 import io.virbius.control.repository.CumulativeRepository;
 import io.virbius.control.repository.ListMetaRepository;
 import io.virbius.control.repository.RegistryRepository;
@@ -121,6 +122,12 @@ public class ArtifactService {
             if (refs.cumulativeName() == null) {
                 continue;
             }
+            RuleCondition condition;
+            try {
+                condition = refs.requireCondition();
+            } catch (IllegalArgumentException e) {
+                continue;
+            }
             cumulativeRepo.get(tenantId, refs.cumulativeName()).ifPresent(def -> {
                 Map<String, Object> block = new LinkedHashMap<>();
                 block.put("cumulative_name", def.cumulativeName());
@@ -129,8 +136,8 @@ public class ArtifactService {
                 block.put("window_minutes", def.windowMinutes());
                 block.put("window_hours", def.windowHours());
                 block.put("timezone", def.timezone());
-                block.put("threshold", def.threshold());
-                block.put("compare_op", def.compareOp());
+                block.put("threshold", condition.threshold());
+                block.put("compare_op", condition.compareOp());
                 block.put("rule_id", rule.ruleId());
                 block.put("rule_revision", rule.ruleRevision());
                 block.put("reason_code", rule.reasonCode());

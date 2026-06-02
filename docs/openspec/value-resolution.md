@@ -19,6 +19,7 @@ int     CounterStore.getCumulate(String value, String cumulativeName)  // 含 in
 value = resolveValue(rule, definition, request)
 if value 无效 → skip + 审计
 result = match / getCumulate
+RuleConditionEvaluator.evaluate(count, rule.condition)   # 累计规则
 注入 ExecutionContext（ctx.list / ctx.cumulative）
 规则引擎 / Groovy 使用 ctx 继续计算
 ```

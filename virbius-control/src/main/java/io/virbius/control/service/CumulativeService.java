@@ -67,8 +67,7 @@ public class CumulativeService {
         ZoneId zone = ZoneId.of(def.timezone() != null ? def.timezone() : "UTC");
         long count = counterStore.get().read(tenantId, cumulativeName, value.get(), wMin, def.windowKind(), zone);
         out.put("count", count);
-        out.put("threshold", def.threshold());
-        out.put("exceeded", counterStore.get().exceeded(count, def.threshold(), def.compareOp()));
+        out.put("W_minutes", wMin);
         return out;
     }
 }
