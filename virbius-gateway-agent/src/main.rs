@@ -124,7 +124,7 @@ async fn evaluate(
     );
 
     if let Some(gw) = state.lists.check(
-        &bind_context(&req),
+        &bind_context(&req, &vars_ctx),
         &req.content,
         req.user_id.as_deref(),
         req.device_id.as_deref(),
@@ -276,13 +276,11 @@ fn to_agent_response(resp: EvaluateResponse, degraded: bool) -> AgentEvaluateRes
     }
 }
 
-fn bind_context(req: &AgentEvaluateRequest) -> bind_scope::BindContext {
+fn bind_context(req: &AgentEvaluateRequest, vars: &HashMap<String, String>) -> bind_scope::BindContext {
     bind_scope::BindContext {
         scene: req.scene.clone(),
         route_uri: req.route_uri.clone(),
-        upstream_id: req.upstream_id.clone(),
-        consumer_id: req.consumer_id.clone(),
-        api_key_group: req.api_key_group.clone(),
+        app_id: vars.get("app_id").cloned(),
     }
 }
 

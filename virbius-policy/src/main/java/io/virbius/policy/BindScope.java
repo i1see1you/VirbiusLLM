@@ -80,22 +80,20 @@ public final class BindScope {
         if (ref == null || ref.isEmpty()) {
             return false;
         }
-        boolean any = false;
-        any |= fieldMatches(ref, "upstream_id", ctx.upstreamId());
-        any |= fieldMatches(ref, "consumer_id", ctx.consumerId());
-        any |= fieldMatches(ref, "api_key_group", ctx.apiKeyGroup());
-        return any;
-    }
-
-    private static boolean fieldMatches(JsonNode ref, String field, String actual) {
-        if (actual == null || actual.isBlank()) {
+        List<String> appIds = stringList(ref.get("app_ids"));
+        if (appIds.isEmpty()) {
             return false;
         }
-        JsonNode expected = ref.get(field);
-        if (expected == null || expected.isNull()) {
+        String appId = ctx.vars() != null ? ctx.vars().get("app_id") : null;
+        if (appId == null || appId.isBlank()) {
             return false;
         }
-        return actual.equals(expected.asText());
+        for (String id : appIds) {
+            if (appId.equals(id)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean matchesRoute(JsonNode ref, MatchContext ctx) {
@@ -129,6 +127,82 @@ public final class BindScope {
             }
         }
         return false;
+    }
+
+    /** Validates URI pattern grammar shared by gateway.routes, scene_registry.uris, bind_ref.uris. */
+    public static void validateUriPattern(String pattern) {
+        if (pattern == null || pattern.isBlank()) {
+            throw new IllegalArgumentException("uri pattern required");
+        }
+        String pat = pattern.trim();
+        if (!pat.startsWith("/")) {
+            throw new IllegalArgumentException("uri pattern must start with /: " + pattern);
+        }
+        int star = pat.indexOf('*');
+        if (star >= 0 && star != pat.length() - 1) {
+            throw new IllegalArgumentException("uri wildcard * allowed only as suffix: " + pattern);
+        }
+        if (pat.contains("**")) {
+            throw new IllegalArgumentException("uri pattern must not contain **: " + pattern);
+        }
+    }
+
+    /**
+     * True when every request path matching {@code rulePattern} would also match {@code gatewayPattern}
+     * (gateway entry covers the rule/scene URI constraint).
+     */
+    public static boolean patternCovers(String gatewayPattern, String rulePattern) {
+        validateUriPattern(gatewayPattern);
+        validateUriPattern(rulePattern);
+        String g = normalizeUri(gatewayPattern);
+        String r = normalizeUri(rulePattern);
+        if (g == null || r == null) {
+            return false;
+        }
+        boolean gWildcard = g.endsWith("*");
+        boolean rWildcard = r.endsWith("*");
+        if (!rWildcard) {
+            return uriMatches(r, g);
+        }
+        if (!gWildcard) {
+            return false;
+        }
+        String gPrefix = g.substring(0, g.length() - 1);
+        String rPrefix = r.substring(0, r.length() - 1);
+        return rPrefix.startsWith(gPrefix);
+    }
+
+    public static boolean coveredByAny(String rulePattern, List<String> gatewayPatterns) {
+        if (gatewayPatterns == null || gatewayPatterns.isEmpty()) {
+            return false;
+        }
+        for (String gatewayPattern : gatewayPatterns) {
+            if (gatewayPattern != null && patternCovers(gatewayPattern, rulePattern)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @SuppressWarnings("unchecked")
+    public static List<String> urisFromBindRef(Map<String, Object> bindRef) {
+        if (bindRef == null) {
+            return List.of();
+        }
+        Object uris = bindRef.get("uris");
+        if (!(uris instanceof List<?> list)) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (Object item : list) {
+            if (item != null) {
+                String s = String.valueOf(item).trim();
+                if (!s.isEmpty()) {
+                    out.add(s);
+                }
+            }
+        }
+        return out;
     }
 
     public static boolean uriMatches(String routeUri, String pattern) {

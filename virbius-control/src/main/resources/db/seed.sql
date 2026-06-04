@@ -7,14 +7,14 @@ WHERE NOT EXISTS (SELECT 1 FROM tb_tenants WHERE tenant_id = 'default');
 
 INSERT INTO tb_bundles (tenant_id, bundle_id, version, status, metadata_json)
 SELECT 'default', 'poc-default', '0.1.0', 'draft',
-    '{"scope":{"tenants":["default"],"scenes":["general_chat","medical_qa"]},"gateway":{"evaluate":true,"fail_mode":"open","cloud_scan":{"agent_url":"http://127.0.0.1:9070","timeout_ms":3000},"routes":[{"scene":"general_chat","uri":"/v1/chat/completions","methods":["POST"],"priority":0},{"scene":"medical_qa","uri":"/v1/chat/completions","methods":["POST"],"priority":10,"match":{"headers":{"X-Virbius-Scene":"medical_qa"}}}]}},"context_bindings":{"version":1,"vars":{"app_id":{"from":"header","name":"X-App-Id"},"debug_flag":{"from":"query","name":"debug"},"model_name":{"from":"query","name":"model"}}}}'
+    '{"scope":{"tenants":["default"],"scenes":["beta_chat","medical-prod_chat","medical-prod_clinical"],"apps":["beta","medical-prod"]},"scene_registry":{"version":1,"fail_on_unknown_app":false,"fail_on_unresolved_scene":false,"scenes":{"beta_chat":{"app_id":"beta","default":true,"uris":["/v1/chat/completions"],"priority":0},"medical-prod_chat":{"app_id":"medical-prod","default":true,"uris":["/v1/chat/completions"],"priority":0},"medical-prod_clinical":{"app_id":"medical-prod","uris":["/v1/chat/completions"],"priority":10,"match":{"query":{"mode":"clinical"}}}}},"gateway":{"evaluate":true,"fail_mode":"open","cloud_scan":{"agent_url":"http://127.0.0.1:9070","timeout_ms":3000},"routes":[{"uri":"/v1/chat/completions","methods":["POST"]}]},"context_bindings":{"version":1,"vars":{"app_id":{"from":"header","name":"X-App-Id"},"debug_flag":{"from":"query","name":"debug"},"model_name":{"from":"query","name":"model"}}}}'
 FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (
     SELECT 1 FROM tb_bundles WHERE tenant_id = 'default' AND bundle_id = 'poc-default' AND version = '0.1.0'
 );
 
 UPDATE tb_bundles
-SET metadata_json = '{"scope":{"tenants":["default"],"scenes":["general_chat","medical_qa"]},"gateway":{"evaluate":true,"fail_mode":"open","cloud_scan":{"agent_url":"http://127.0.0.1:9070","timeout_ms":3000},"routes":[{"scene":"general_chat","uri":"/v1/chat/completions","methods":["POST"],"priority":0},{"scene":"medical_qa","uri":"/v1/chat/completions","methods":["POST"],"priority":10,"match":{"headers":{"X-Virbius-Scene":"medical_qa"}}}]}},"context_bindings":{"version":1,"vars":{"app_id":{"from":"header","name":"X-App-Id"},"debug_flag":{"from":"query","name":"debug"},"model_name":{"from":"query","name":"model"}}}}'
+SET metadata_json = '{"scope":{"tenants":["default"],"scenes":["beta_chat","medical-prod_chat","medical-prod_clinical"],"apps":["beta","medical-prod"]},"scene_registry":{"version":1,"fail_on_unknown_app":false,"fail_on_unresolved_scene":false,"scenes":{"beta_chat":{"app_id":"beta","default":true,"uris":["/v1/chat/completions"],"priority":0},"medical-prod_chat":{"app_id":"medical-prod","default":true,"uris":["/v1/chat/completions"],"priority":0},"medical-prod_clinical":{"app_id":"medical-prod","uris":["/v1/chat/completions"],"priority":10,"match":{"query":{"mode":"clinical"}}}}},"gateway":{"evaluate":true,"fail_mode":"open","cloud_scan":{"agent_url":"http://127.0.0.1:9070","timeout_ms":3000},"routes":[{"uri":"/v1/chat/completions","methods":["POST"]}]},"context_bindings":{"version":1,"vars":{"app_id":{"from":"header","name":"X-App-Id"},"debug_flag":{"from":"query","name":"debug"},"model_name":{"from":"query","name":"model"}}}}'
 WHERE tenant_id = 'default' AND bundle_id = 'poc-default' AND version = '0.1.0';
 
 INSERT INTO tb_access_list (tenant_id, polarity, dimension, value)
@@ -217,7 +217,7 @@ INSERT INTO tb_rule_history (
                   reason_code, risk_score, intent_action, scope_json, body_json,
     rollout_state, canary_percent, effective_from, modified_at)
 SELECT 'default', 'rl_rate_app_1h', 1, 'poc-default', 'gateway', 'lua',
-    'GW_APP_RATE_1H', 85, 'captcha', '{"bind_scope":"global"}',
+    'GW_APP_RATE_1H', 85, 'captcha', '{"bind_scope":"service","bind_ref":{"app_ids":["beta","medical-prod"]}}',
     'function decide(ctx)\n  return getCumulative(''app_req_1h'') >= 500\nend',
     'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'rl_rate_app_1h');

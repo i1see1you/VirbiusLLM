@@ -4,7 +4,7 @@
 |------|------|
 | 状态 | 设计冻结，**PoC 代码尚未实现** |
 | 版本 | v1.0（2026-05-20） |
-| 关联 | [bind-scope.md](./bind-scope.md)、[value-resolution.md](./value-resolution.md)、[list-match.md](./list-match.md)、[cumulative-counter.md](./cumulative-counter.md)、[rule-level-enforce.md](./rule-level-enforce.md)、[DESIGN.md §8.5.0.1–2](../DESIGN.md) |
+| 关联 | [bind-scope.md](./bind-scope.md)、[scene-registry.md](./scene-registry.md)、[value-resolution.md](./value-resolution.md)、[list-match.md](./list-match.md)、[cumulative-counter.md](./cumulative-counter.md)、[rule-level-enforce.md](./rule-level-enforce.md)、[DESIGN.md §8.5.0.1–2](../DESIGN.md) |
 
 ---
 

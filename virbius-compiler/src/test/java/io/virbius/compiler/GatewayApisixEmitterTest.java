@@ -20,7 +20,7 @@ class GatewayApisixEmitterTest {
     Path tempDir;
 
     @Test
-    void emitsRoutesFromBundleGatewayMetadata() throws Exception {
+    void emitsSingleEntryRoute() throws Exception {
         Path bundle =
                 Path.of("examples/poc-default-bundle.yaml").toAbsolutePath().normalize();
         if (!Files.exists(bundle)) {
@@ -29,15 +29,11 @@ class GatewayApisixEmitterTest {
         JsonNode root = yaml.readTree(Files.readString(bundle));
         Path gw = tempDir.resolve("gateway");
         int count = GatewayApisixEmitter.emitRoutes(root, gw, json);
-        assertEquals(2, count);
-        JsonNode general =
-                json.readTree(Files.readString(gw.resolve("apisix-routes-general_chat.json")));
-        assertEquals("/v1/chat/completions", general.path("uri").asText());
-        assertEquals("POST", general.path("methods").get(0).asText());
-        assertEquals("general_chat", general.path("plugins").path("virbius-guard").path("scene").asText());
-        JsonNode medical =
-                json.readTree(Files.readString(gw.resolve("apisix-routes-medical_qa.json")));
-        assertEquals(10, medical.path("priority").asInt());
-        assertTrue(medical.path("vars").isArray());
+        assertEquals(1, count);
+        JsonNode route = json.readTree(Files.readString(gw.resolve("apisix-routes-v1-chat-completions.json")));
+        assertEquals("/v1/chat/completions", route.path("uri").asText());
+        assertTrue(route.path("plugins").path("virbius-guard").path("scene_registry_file").isTextual());
+        assertTrue(route.path("plugins").path("virbius-guard").path("dynamic_scene").isMissingNode());
+        assertTrue(route.path("vars").isMissingNode());
     }
 }

@@ -4,11 +4,14 @@ import io.virbius.control.domain.RuleRevision;
 import io.virbius.control.domain.RiskScore;
 import io.virbius.control.domain.RolloutStateHelper;
 import io.virbius.control.domain.dto.request.UpsertRuleRequest;
+import io.virbius.control.domain.dto.request.ValidateScriptRequest;
 import io.virbius.control.domain.dto.response.RuleResponseMapper;
 import io.virbius.control.domain.enums.IntentAction;
 import io.virbius.control.domain.enums.RolloutState;
-import io.virbius.control.groovy.GroovyRuleValidator;
-import io.virbius.control.policy.RuleBodyRefs;
+import io.virbius.control.script.ScriptRuleValidator;
+import io.virbius.control.gateway.RuleBindScopeValidator;
+import io.virbius.control.groovy.GroovyRuleBodies;
+import io.virbius.control.ruleauthoring.ConditionCompiler;
 import io.virbius.control.repository.RegistryRepository;
 import io.virbius.control.repository.RolloutEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,19 +27,23 @@ public class RuleService {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final RegistryRepository store;
-    private final GroovyRuleValidator groovyRuleValidator;
+    private final ScriptRuleValidator scriptRuleValidator;
     private final RolloutEventRepository eventRepository;
     private final RuleExecutionSync ruleExecutionSync;
 
     public RuleService(
             RegistryRepository store,
-            GroovyRuleValidator groovyRuleValidator,
+            ScriptRuleValidator scriptRuleValidator,
             RolloutEventRepository eventRepository,
             RuleExecutionSync ruleExecutionSync) {
         this.store = store;
-        this.groovyRuleValidator = groovyRuleValidator;
+        this.scriptRuleValidator = scriptRuleValidator;
         this.eventRepository = eventRepository;
         this.ruleExecutionSync = ruleExecutionSync;
+    }
+
+    public Map<String, Object> validateScript(String tenantId, ValidateScriptRequest req) {
+        return scriptRuleValidator.validate(tenantId, req.runtime(), req.body());
     }
 
     public List<Map<String, Object>> listRules(String tenantId, String layer) {
@@ -82,21 +89,25 @@ public class RuleService {
                 normalizedRisk,
                 intentAction,
                 req.scope() != null ? req.scope() : Map.of(),
-                req.body(),
+                resolveBody(req),
                 rolloutState,
                 canaryPercent,
                 null,
                 null,
                 null);
-        try {
-            groovyRuleValidator.validateRevision(draft);
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException(e.getMessage());
+        if ("groovy".equals(req.runtime()) || "lua".equals(req.runtime())) {
+            scriptRuleValidator.validateOrThrow(tenantId, req.runtime(), resolveBody(req));
         }
         if ("cumulative".equals(req.runtime()) || "list_match".equals(req.runtime())) {
             throw new IllegalArgumentException("runtime " + req.runtime()
                     + " removed; use lua (gateway) or groovy (cloud) script rules");
         }
+        String bundleId = req.bundleId() != null && !req.bundleId().isBlank() ? req.bundleId() : "poc-default";
+        Map<String, Object> bundleMetadata = store.getBundle(
+                        tenantId, bundleId, RuleBindScopeValidator.defaultBundleVersion())
+                .map(b -> b.metadata() != null ? b.metadata() : Map.<String, Object>of())
+                .orElse(Map.of());
+        RuleBindScopeValidator.validateRouteUris(req, bundleMetadata);
         RuleRevision before = existing.orElse(null);
         RuleRevision saved = store.upsertRule(tenantId, draft);
         if (before != null
@@ -162,8 +173,18 @@ public class RuleService {
             return true;
         }
         String oldBody = toJson(existing.body());
-        String newBody = toJson(req.body());
+        String newBody = toJson(resolveBody(req));
         return !Objects.equals(oldBody, newBody);
+    }
+
+    private static String resolveBody(UpsertRuleRequest req) {
+        if ("simple".equalsIgnoreCase(req.editorMode())
+                && req.condition() != null
+                && !req.condition().isEmpty()) {
+            Object script = ConditionCompiler.compile(req.layer(), req.runtime(), req.condition()).get("script");
+            return String.valueOf(script);
+        }
+        return GroovyRuleBodies.asScript(req.body());
     }
 
     private static String toJson(Object value) {

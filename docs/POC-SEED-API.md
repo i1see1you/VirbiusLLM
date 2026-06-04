@@ -14,6 +14,8 @@
 
 Bundle 元数据 `context_bindings`（`tb_bundles.metadata_json`）声明 **逻辑变量 → HTTP 来源**（如 `app_id` ← Header `X-App-Id`）；网关解析后透传 Evaluate 的 `vars`（如 `{"app_id":"beta"}`）。名单与 Groovy 只引用逻辑名。
 
+**场景注册**（`scene_registry`，OpenSpec [scene-registry.md](openspec/scene-registry.md)）：每个 `scene_id` 归属唯一 `app_id`；同一 `app_id` 可有多个 scene。运行时由 `(app_id, uri, match) → scene_id` 解析；Service 规则绑 `bind_ref.app_ids`（见 [bind-scope.md](openspec/bind-scope.md)）。
+
 检测顺序（管侧）：Subject/Network 白 → 黑 → Content 白 → 黑 → Evaluate（云）。
 
 ### 上下文映射 API（Admin）

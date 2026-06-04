@@ -4,9 +4,7 @@ use serde::Deserialize;
 pub struct BindContext {
     pub scene: String,
     pub route_uri: Option<String>,
-    pub upstream_id: Option<String>,
-    pub consumer_id: Option<String>,
-    pub api_key_group: Option<String>,
+    pub app_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -16,11 +14,7 @@ pub struct BindRefBlock {
     #[serde(default)]
     pub uris: Vec<String>,
     #[serde(default)]
-    pub upstream_id: Option<String>,
-    #[serde(default)]
-    pub consumer_id: Option<String>,
-    #[serde(default)]
-    pub api_key_group: Option<String>,
+    pub app_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -51,17 +45,13 @@ fn matches_service(bind_ref: Option<&BindRefBlock>, ctx: &BindContext) -> bool {
     let Some(r) = bind_ref else {
         return false;
     };
-    let mut any = false;
-    if let Some(expected) = r.upstream_id.as_deref() {
-        any |= ctx.upstream_id.as_deref() == Some(expected);
+    let Some(app_id) = ctx.app_id.as_deref() else {
+        return false;
+    };
+    if app_id.is_empty() {
+        return false;
     }
-    if let Some(expected) = r.consumer_id.as_deref() {
-        any |= ctx.consumer_id.as_deref() == Some(expected);
-    }
-    if let Some(expected) = r.api_key_group.as_deref() {
-        any |= ctx.api_key_group.as_deref() == Some(expected);
-    }
-    any
+    r.app_ids.iter().any(|id| id == app_id)
 }
 
 fn matches_route(bind_ref: Option<&BindRefBlock>, ctx: &BindContext) -> bool {
@@ -124,13 +114,13 @@ mod tests {
     #[test]
     fn route_uri_priority() {
         let ctx = BindContext {
-            scene: "general_chat".into(),
+            scene: "beta_chat".into(),
             route_uri: Some("/v1/other".into()),
             ..Default::default()
         };
         let bind_ref = BindRefBlock {
             uris: vec!["/v1/chat/completions".into()],
-            scenes: vec!["general_chat".into()],
+            scenes: vec!["beta_chat".into()],
             ..Default::default()
         };
         assert!(!matches_route(Some(&bind_ref), &ctx));
@@ -147,5 +137,23 @@ mod tests {
             ..Default::default()
         };
         assert!(matches_route(Some(&bind_ref), &ctx));
+    }
+
+    #[test]
+    fn service_app_ids() {
+        let ctx = BindContext {
+            app_id: Some("medical-prod".into()),
+            ..Default::default()
+        };
+        let bind_ref = BindRefBlock {
+            app_ids: vec!["beta".into(), "medical-prod".into()],
+            ..Default::default()
+        };
+        assert!(matches_service(Some(&bind_ref), &ctx));
+        let ctx2 = BindContext {
+            app_id: Some("unknown".into()),
+            ..Default::default()
+        };
+        assert!(!matches_service(Some(&bind_ref), &ctx2));
     }
 }

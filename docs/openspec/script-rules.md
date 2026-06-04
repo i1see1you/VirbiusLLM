@@ -70,6 +70,7 @@ def decide(ctx) {
 ## 关联文档
 
 - [bind-scope.md](./bind-scope.md)
+- [scene-registry.md](./scene-registry.md)
 - [cumulative-counter.md](./cumulative-counter.md)
 - [list-match.md](./list-match.md)
 - [rule-level-enforce.md](./rule-level-enforce.md)

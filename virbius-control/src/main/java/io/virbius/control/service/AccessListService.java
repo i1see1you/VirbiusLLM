@@ -117,7 +117,7 @@ public class AccessListService {
                     continue;
                 }
                 String v = AccessListEntryValidator.normalizeAndValidate(
-                        AccessListDimension.parse(meta.dimension()), in.value().trim(), bundleMetadata(tenantId));
+                        meta.dimension(), in.value().trim(), bundleMetadata(tenantId));
                 entries.add(new AccessListEntry(v, in.remark(), null, in.expiresAt()));
             }
         }

@@ -2,9 +2,9 @@ package io.virbius.control.admin;
 
 import io.virbius.control.common.response.ApiResult;
 import io.virbius.control.domain.AccessListMeta;
+import io.virbius.control.domain.AccessListMetaDimension;
 import io.virbius.control.domain.dto.request.AccessListEntriesRequest;
 import io.virbius.control.domain.dto.request.AccessListEntryInput;
-import io.virbius.control.domain.enums.AccessListDimension;
 import io.virbius.control.repository.ListMetaRepository;
 import io.virbius.control.service.AccessListService;
 import java.util.ArrayList;
@@ -52,8 +52,8 @@ public class ListMetaAdminController {
         if (body.dimension() == null || body.dimension().isBlank()) {
             throw new IllegalArgumentException("dimension required");
         }
-        AccessListDimension.parse(body.dimension());
-        AccessListMeta meta = new AccessListMeta(tenantId, listName, body.dimension(), body.remark());
+        String dimension = AccessListMetaDimension.validate(body.dimension());
+        AccessListMeta meta = new AccessListMeta(tenantId, listName, dimension, body.remark());
         listMetaRepo.upsertMeta(meta);
         accessListService.refreshArtifacts(tenantId);
         return ApiResult.ok(meta);

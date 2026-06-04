@@ -7,8 +7,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /** Emits APISIX route JSON from Bundle metadata {@code gateway.routes}. */
 final class GatewayApisixEmitter {
@@ -31,21 +31,21 @@ final class GatewayApisixEmitter {
         String serviceId = "virbius-svc-" + tenantId;
 
         int count = 0;
+        Set<String> emittedUris = new LinkedHashSet<>();
         for (JsonNode route : routes) {
-            String scene = route.path("scene").asText("");
-            if (scene.isBlank()) {
+            String uri = route.path("uri").asText("/v1/chat/completions");
+            if (!emittedUris.add(uri)) {
                 continue;
             }
-            ObjectNode doc = json.createObjectNode();
-            doc.put("id", "virbius-route-" + scene.replace('_', '-'));
-            doc.put("name", scene + "-completions");
-            doc.put(
-                    "desc",
-                    "generated from bundle gateway.routes scene=" + scene);
-            doc.put("uri", route.path("uri").asText("/v1/chat/completions"));
-            if (route.has("priority")) {
-                doc.put("priority", route.path("priority").asInt());
+            String routeKey = uri.replace('/', '-').replaceAll("^-", "");
+            if (routeKey.isBlank()) {
+                routeKey = "root";
             }
+            ObjectNode doc = json.createObjectNode();
+            doc.put("id", "virbius-route-" + routeKey);
+            doc.put("name", routeKey + "-entry");
+            doc.put("desc", "generated from bundle gateway.routes uri=" + uri);
+            doc.put("uri", uri);
             doc.put("service_id", serviceId);
             ArrayNode methods = doc.putArray("methods");
             JsonNode methodsNode = route.get("methods");
@@ -54,50 +54,23 @@ final class GatewayApisixEmitter {
             } else {
                 methods.add("POST");
             }
-            appendMatchVars(route, doc);
             ObjectNode plugins = doc.putObject("plugins");
-            plugins.set("serverless-pre-function", sceneHeaderInjector(json, scene));
             ObjectNode guard = plugins.putObject("virbius-guard");
-            guard.put("scene", scene);
             guard.put("evaluate", route.has("evaluate") ? route.path("evaluate").asBoolean() : evaluateDefault);
             guard.put("bundle_version", bundleVersion);
             guard.put("tenant_id", tenantId);
+            guard.put(
+                    "lists_file",
+                    "/usr/local/apisix/conf/virbius/data/gateway/" + tenantId + "-access-lists.json");
+            guard.put(
+                    "scene_registry_file",
+                    "/usr/local/apisix/conf/virbius/data/gateway/" + tenantId + "-scene-registry.json");
 
-            Path out = gatewayDir.resolve("apisix-routes-" + scene + ".json");
+            Path out = gatewayDir.resolve("apisix-routes-" + routeKey + ".json");
             json.writerWithDefaultPrettyPrinter().writeValue(out.toFile(), doc);
             count++;
         }
         return count;
-    }
-
-    private static void appendMatchVars(JsonNode route, ObjectNode doc) {
-        JsonNode headers = route.path("match").path("headers");
-        if (!headers.isObject()) {
-            return;
-        }
-        Iterator<Map.Entry<String, JsonNode>> fields = headers.fields();
-        if (!fields.hasNext()) {
-            return;
-        }
-        Map.Entry<String, JsonNode> first = fields.next();
-        String headerName = "http_" + first.getKey().toLowerCase().replace('-', '_');
-        String value = first.getValue().isTextual() ? first.getValue().asText() : first.getValue().asText("");
-        ArrayNode vars = doc.putArray("vars");
-        ArrayNode clause = vars.addArray();
-        clause.add(headerName);
-        clause.add("==");
-        clause.add(value);
-    }
-
-    private static ObjectNode sceneHeaderInjector(ObjectMapper json, String scene) {
-        ObjectNode plugin = json.createObjectNode();
-        plugin.put("phase", "rewrite");
-        ArrayNode functions = plugin.putArray("functions");
-        functions.add(
-                "return function(conf, ctx)\n  ngx.req.set_header('X-Virbius-Scene', '"
-                        + scene
-                        + "')\nend");
-        return plugin;
     }
 
     static void emitService(JsonNode root, Path gatewayDir, ObjectMapper json) throws IOException {
@@ -138,13 +111,28 @@ final class GatewayApisixEmitter {
         guard.put(
                 "lists_file",
                 "/usr/local/apisix/conf/virbius/data/gateway/" + tenantId + "-access-lists.json");
-
-        JsonNode routesNode = gateway.path("routes");
-        if (routesNode.isArray() && !routesNode.isEmpty()) {
-            guard.put("scene", routesNode.get(0).path("scene").asText("general_chat"));
-        }
+        guard.put(
+                "scene_registry_file",
+                "/usr/local/apisix/conf/virbius/data/gateway/" + tenantId + "-scene-registry.json");
 
         Path out = gatewayDir.resolve("apisix-service-" + tenantId + ".json");
+        json.writerWithDefaultPrettyPrinter().writeValue(out.toFile(), doc);
+    }
+
+    static void emitSceneRegistry(JsonNode root, Path gatewayDir, ObjectMapper json) throws IOException {
+        JsonNode reg = root.path("scene_registry");
+        if (reg.isMissingNode() || reg.isEmpty()) {
+            reg = root.path("bundle").path("scene_registry");
+        }
+        if (reg.isMissingNode() || reg.isEmpty()) {
+            return;
+        }
+        Files.createDirectories(gatewayDir);
+        String tenantId = root.path("tenant_id").asText("default");
+        ObjectNode doc = json.createObjectNode();
+        doc.put("tenant_id", tenantId);
+        doc.set("scene_registry", reg);
+        Path out = gatewayDir.resolve("scene-registry-" + tenantId + ".json");
         json.writerWithDefaultPrettyPrinter().writeValue(out.toFile(), doc);
     }
 }

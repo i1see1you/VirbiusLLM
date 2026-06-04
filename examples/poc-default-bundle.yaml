@@ -2,10 +2,33 @@ bundle_id: poc-default
 version: "0.1.0"
 tenant_id: default
 
-# Bundle 元数据：scope + gateway.routes（uri/methods → Compiler 生成 apisix-routes-{scene}.json）
 scope:
   tenants: [default]
-  scenes: [general_chat, medical_qa]
+  scenes: [beta_chat, medical-prod_chat, medical-prod_clinical]
+  apps: [beta, medical-prod]
+
+scene_registry:
+  version: 1
+  fail_on_unknown_app: false
+  fail_on_unresolved_scene: false
+  scenes:
+    beta_chat:
+      app_id: beta
+      default: true
+      uris: [/v1/chat/completions]
+      priority: 0
+    medical-prod_chat:
+      app_id: medical-prod
+      default: true
+      uris: [/v1/chat/completions]
+      priority: 0
+    medical-prod_clinical:
+      app_id: medical-prod
+      uris: [/v1/chat/completions]
+      priority: 10
+      match:
+        query:
+          mode: clinical
 
 gateway:
   evaluate: true
@@ -14,17 +37,8 @@ gateway:
     agent_url: http://127.0.0.1:9070
     timeout_ms: 3000
   routes:
-    - scene: general_chat
-      uri: /v1/chat/completions
+    - uri: /v1/chat/completions
       methods: [POST]
-      priority: 0
-    - scene: medical_qa
-      uri: /v1/chat/completions
-      methods: [POST]
-      priority: 10
-      match:
-        headers:
-          X-Virbius-Scene: medical_qa
 
 context_bindings:
   version: 1

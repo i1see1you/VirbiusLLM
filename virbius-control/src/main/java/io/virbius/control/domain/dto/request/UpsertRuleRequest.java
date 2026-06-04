@@ -12,4 +12,6 @@ public record UpsertRuleRequest(
         Integer riskScore,
         String intentAction,
         Map<String, Object> scope,
-        Object body) {}
+        Object body,
+        String editorMode,
+        Map<String, Object> condition) {}

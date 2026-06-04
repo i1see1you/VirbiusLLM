@@ -18,10 +18,14 @@ local schema = {
         agent_url = { type = "string", default = "http://127.0.0.1:9070" },
         fail_mode = { type = "string", enum = { "open", "close" }, default = "open" },
         tenant_id = { type = "string", default = "default" },
-        scene = { type = "string", default = "chat" },
+        scene = { type = "string" },
         lists_file = {
             type = "string",
             default = "./data/gateway/default-access-lists.json",
+        },
+        scene_registry_file = {
+            type = "string",
+            default = "./data/gateway/default-scene-registry.json",
         },
     },
     required = { "bundle_version" },
@@ -197,6 +201,170 @@ local function resolve_context_vars(ctx, bindings, user_id, device_id, client_ip
         end
     end
     return out
+end
+
+local registry_cache = {}
+
+local function load_registry(conf)
+    local path = conf.scene_registry_file
+    if not path or path == "" then
+        local lists = load_lists(conf.lists_file or "./data/gateway/default-access-lists.json")
+        if lists and lists.scene_registry then
+            return lists.scene_registry
+        end
+        return nil
+    end
+    local attr = io.popen("stat -f %m " .. path .. " 2>/dev/null")
+    local mtime = 0
+    if attr then
+        local out = attr:read("*a")
+        attr:close()
+        mtime = tonumber(out) or 0
+    end
+    if registry_cache.path == path and registry_cache.mtime == mtime and registry_cache.data then
+        return registry_cache.data
+    end
+    local f = io.open(path, "r")
+    if not f then
+        local lists = load_lists(conf.lists_file or "./data/gateway/default-access-lists.json")
+        if lists and lists.scene_registry then
+            return lists.scene_registry
+        end
+        return nil
+    end
+    local raw = f:read("*a")
+    f:close()
+    local root = core.json.decode(raw)
+    if not root then
+        return nil
+    end
+    local data = root.scene_registry or root
+    registry_cache.path = path
+    registry_cache.mtime = mtime
+    registry_cache.data = data
+    return data
+end
+
+local function normalize_uri(raw)
+    if not raw or raw == "" then
+        return nil
+    end
+    local s = raw
+    local q = string.find(s, "?", 1, true)
+    if q then
+        s = string.sub(s, 1, q - 1)
+    end
+    local h = string.find(s, "#", 1, true)
+    if h then
+        s = string.sub(s, 1, h - 1)
+    end
+    if string.sub(s, 1, 1) ~= "/" then
+        s = "/" .. s
+    end
+    return s
+end
+
+local function uri_matches(route_uri, pattern)
+    local uri = normalize_uri(route_uri)
+    local pat = normalize_uri(pattern)
+    if not uri or not pat then
+        return false
+    end
+    if string.sub(pat, -1) == "*" then
+        local prefix = string.sub(pat, 1, -2)
+        return string.sub(uri, 1, string.len(prefix)) == prefix
+    end
+    return uri == pat
+end
+
+local function match_map(expected, actual)
+    if not expected then
+        return true
+    end
+    for k, v in pairs(expected) do
+        local got = actual and actual[k]
+        if got == nil or tostring(got) ~= tostring(v) then
+            return false
+        end
+    end
+    return true
+end
+
+local function default_scene_for_app(scenes, app_id)
+    for scene_id, def in pairs(scenes or {}) do
+        if def.app_id == app_id and def.default then
+            return scene_id
+        end
+    end
+    return nil
+end
+
+local function resolve_scene(registry, app_id, route_uri, query, headers)
+    if not registry or not app_id or app_id == "" then
+        return nil, "missing_app_id"
+    end
+    local scenes = registry.scenes
+    if not scenes then
+        return nil, "no_scenes"
+    end
+    local known = false
+    for _, def in pairs(scenes) do
+        if def.app_id == app_id then
+            known = true
+            break
+        end
+    end
+    if not known then
+        if registry.fail_on_unknown_app then
+            return nil, "unknown_app"
+        end
+        return default_scene_for_app(scenes, app_id), "default"
+    end
+    local candidates = {}
+    for scene_id, def in pairs(scenes) do
+        if def.app_id ~= app_id then
+            goto continue
+        end
+        if not def.uris or #def.uris == 0 then
+            goto continue
+        end
+        local uri_hit = false
+        for _, pat in ipairs(def.uris) do
+            if uri_matches(route_uri, pat) then
+                uri_hit = true
+                break
+            end
+        end
+        if not uri_hit then
+            goto continue
+        end
+        local match = def.match or {}
+        if not match_map(match.query, query) then
+            goto continue
+        end
+        if not match_map(match.headers, headers) then
+            goto continue
+        end
+        candidates[#candidates + 1] = {
+            scene_id = scene_id,
+            priority = def.priority or 0,
+        }
+        ::continue::
+    end
+    if #candidates > 0 then
+        table.sort(candidates, function(a, b)
+            return a.priority > b.priority
+        end)
+        return candidates[1].scene_id, "rule"
+    end
+    local def_scene = default_scene_for_app(scenes, app_id)
+    if def_scene then
+        return def_scene, "default"
+    end
+    if registry.fail_on_unresolved_scene then
+        return nil, "unresolved"
+    end
+    return nil, "unresolved"
 end
 
 local function var_entry_hit(vars_map, entry)
@@ -519,7 +687,39 @@ function _M.access(conf, ctx)
     local client_ip = ngx.var.remote_addr
     local content = read_body()
 
+    ngx.req.clear_header("X-Virbius-Scene")
+    local route_uri = ngx.var.uri
+    local query = query_args()
+    local headers_map = {}
+
     local hits, vars_ctx = check_access_lists(conf, ctx, content, user_id, device_id, client_ip)
+
+    local scene_id = nil
+    local registry = load_registry(conf)
+    if registry then
+        local resolved, src = resolve_scene(registry, vars_ctx and vars_ctx.app_id, route_uri, query, headers_map)
+        if resolved then
+            scene_id = resolved
+        elseif registry.fail_on_unknown_app or registry.fail_on_unresolved_scene then
+            return core.response.exit(403, {
+                code = "UNKNOWN_SCENE",
+                message = "scene resolution failed: " .. tostring(src),
+                trace_id = trace_id,
+            })
+        end
+    end
+    if not scene_id or scene_id == "" then
+        scene_id = conf.scene
+    end
+    if not scene_id or scene_id == "" then
+        return core.response.exit(403, {
+            code = "UNKNOWN_SCENE",
+            message = "scene not resolved",
+            trace_id = trace_id,
+        })
+    end
+    ngx.req.set_header("X-Virbius-Scene", scene_id)
+
     local prior_signals = nil
     if hits and #hits > 0 then
         local merged = merge_actions(hits, session_id)
@@ -559,7 +759,7 @@ function _M.access(conf, ctx)
     httpc:set_timeout(3000)
     local payload = core.json.encode({
         tenant_id = conf.tenant_id or "default",
-        scene = conf.scene or "chat",
+        scene = scene_id,
         role = "user",
         content = content,
         trace_id = trace_id,
@@ -569,6 +769,9 @@ function _M.access(conf, ctx)
         client_ip = client_ip,
         vars = vars_ctx,
         prior_signals = prior_signals,
+        route_uri = route_uri,
+        query = query,
+        headers = headers_map,
     })
     local res, err = httpc:request_uri(conf.agent_url .. "/v1/evaluate", {
         method = "POST",

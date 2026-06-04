@@ -1,0 +1,55 @@
+package io.virbius.control.gateway;
+
+import io.virbius.control.domain.dto.request.UpsertRuleRequest;
+import io.virbius.policy.BindScope;
+import java.util.List;
+import java.util.Map;
+
+/** Validates rule {@code bind_scope} against bundle gateway metadata. */
+public final class RuleBindScopeValidator {
+
+    private static final String DEFAULT_BUNDLE_VERSION = "0.1.0";
+
+    private RuleBindScopeValidator() {}
+
+    public static void validateRouteUris(
+            Map<String, Object> bundleMetadata, Map<String, Object> ruleScope, String ruleId) {
+        if (ruleScope == null || ruleScope.isEmpty()) {
+            return;
+        }
+        if (!BindScope.ROUTE.equals(BindScope.scopeFromRuleScope(ruleScope))) {
+            return;
+        }
+        Map<String, Object> bindRef = BindScope.bindRefFromScope(ruleScope);
+        List<String> ruleUris = BindScope.urisFromBindRef(bindRef);
+        if (ruleUris.isEmpty()) {
+            return;
+        }
+        List<String> gatewayUris = GatewayRoutesHelper.parseRoutes(bundleMetadata).stream()
+                .map(r -> r.uri().trim())
+                .toList();
+        if (gatewayUris.isEmpty()) {
+            throw new IllegalArgumentException("gateway.routes required before route bind_ref.uris (rule "
+                    + ruleId
+                    + ")");
+        }
+        for (String ruleUri : ruleUris) {
+            BindScope.validateUriPattern(ruleUri);
+            if (!BindScope.coveredByAny(ruleUri, gatewayUris)) {
+                throw new IllegalArgumentException("bind_ref.uris not covered by gateway.routes: "
+                        + ruleUri
+                        + " (rule "
+                        + ruleId
+                        + "); register entry in gateway.routes first");
+            }
+        }
+    }
+
+    public static void validateRouteUris(UpsertRuleRequest req, Map<String, Object> bundleMetadata) {
+        validateRouteUris(bundleMetadata, req.scope(), req.ruleId());
+    }
+
+    public static String defaultBundleVersion() {
+        return DEFAULT_BUNDLE_VERSION;
+    }
+}

@@ -386,6 +386,105 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiResultRuleRevision'
 
+  /api/v1/admin/tenants/{tenantId}/rules/validate-script:
+    post:
+      tags: [admin-rules]
+      summary: 校验 lua/groovy decide 脚本语法与引用
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateScriptRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+
+  /api/v1/admin/tenants/{tenantId}/rules/compile-condition:
+    post:
+      tags: [admin-rules]
+      summary: 条件 AST 编译为 decide(ctx) 脚本（不持久化 AST）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompileConditionRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+
+  /api/v1/admin/tenants/{tenantId}/rules/parse-condition:
+    post:
+      tags: [admin-rules]
+      summary: 尽力从脚本反解析条件 AST（失败则 advanced 模式）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParseConditionRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+
+  /api/v1/admin/tenants/{tenantId}/rules/recipes:
+    get:
+      tags: [admin-rules]
+      summary: 列出规则菜谱（表单模板，不持久化）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: layer
+          in: query
+          schema:
+            type: string
+            enum: [edge, gateway, cloud]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+
+  /api/v1/admin/tenants/{tenantId}/rules/simulate:
+    post:
+      tags: [admin-rules]
+      summary: 样例请求模拟（vars → scene → bind → decide → signal）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleSimulateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+
   /api/v1/admin/tenants/{tenantId}/rules/{ruleId}:
     get:
       tags: [admin-rules]
@@ -1380,10 +1479,74 @@ components:
           oneOf:
             - type: string
             - type: object
+        editor_mode:
+          type: string
+          enum: [simple, advanced]
+          description: 运营台编辑模式；simple 时服务端可从 condition 编译 body
+        condition:
+          type: object
+          description: 简单模式条件 AST（不持久化，仅保存时编译为 body）
       description: |
         新建或更新规则正文。**不包含** rollout / enforce。
+        持久化真源仍为 `scope` + `body`；`editor_mode` / `condition` 仅用于保存时编译。
         R1+：`dry_run|canary|full` 下 body 变更 → 强制 `rollout_state=draft`。
         PoC 放量：`PATCH .../runtime` 或 R1 `PATCH .../rollout`。
+
+    CompileConditionRequest:
+      type: object
+      required: [layer, runtime, condition]
+      properties:
+        layer:
+          type: string
+          enum: [edge, gateway, cloud]
+        runtime:
+          type: string
+          enum: [lua, groovy]
+        condition:
+          type: object
+
+    ParseConditionRequest:
+      type: object
+      required: [layer, runtime, script]
+      properties:
+        layer:
+          type: string
+          enum: [edge, gateway, cloud]
+        runtime:
+          type: string
+          enum: [lua, groovy]
+        script:
+          type: string
+
+    ValidateScriptRequest:
+      type: object
+      required: [layer, runtime, body]
+      properties:
+        layer:
+          type: string
+        runtime:
+          type: string
+          enum: [lua, groovy]
+        body:
+          oneOf:
+            - type: string
+            - type: object
+
+    RuleSimulateRequest:
+      type: object
+      required: [rule, fixture]
+      properties:
+        editor_mode:
+          type: string
+          enum: [simple, advanced]
+        condition:
+          type: object
+        rule:
+          type: object
+        fixture:
+          type: object
+        options:
+          type: object
 
     UpdateRuntimeRequest:
       type: object

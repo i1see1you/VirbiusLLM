@@ -3,6 +3,8 @@ package io.virbius.control.admin;
 import io.virbius.control.common.response.ApiResult;
 import io.virbius.control.domain.dto.request.CreateBundleRequest;
 import io.virbius.control.domain.dto.request.ContextBindingsRequest;
+import io.virbius.control.domain.dto.request.GatewayRoutesRequest;
+import io.virbius.control.domain.dto.request.SceneRegistryRequest;
 import io.virbius.control.service.BundleMetadataService;
 import io.virbius.control.service.BundleService;
 import io.virbius.control.service.PublishService;
@@ -88,6 +90,26 @@ public class BundleAdminController {
                 version,
                 BundleMetadataService.parseRequest(body),
                 sync));
+    }
+
+    @PutMapping("/{bundleId}/versions/{version}/metadata/gateway-routes")
+    public ApiResult<Map<String, Object>> putGatewayRoutes(
+            @PathVariable("tenantId") String tenantId,
+            @PathVariable("bundleId") String bundleId,
+            @PathVariable("version") String version,
+            @RequestParam(value = "sync", defaultValue = "true") boolean sync,
+            @RequestBody GatewayRoutesRequest body) {
+        return ApiResult.ok(metadataService.updateGatewayRoutes(tenantId, bundleId, version, body, sync));
+    }
+
+    @PutMapping("/{bundleId}/versions/{version}/metadata/scene-registry")
+    public ApiResult<Map<String, Object>> putSceneRegistry(
+            @PathVariable("tenantId") String tenantId,
+            @PathVariable("bundleId") String bundleId,
+            @PathVariable("version") String version,
+            @RequestParam(value = "sync", defaultValue = "true") boolean sync,
+            @RequestBody SceneRegistryRequest body) {
+        return ApiResult.ok(metadataService.updateSceneRegistry(tenantId, bundleId, version, body, sync));
     }
 
     @PostMapping("/{bundleId}/versions/{version}/metadata/sync-gateway")

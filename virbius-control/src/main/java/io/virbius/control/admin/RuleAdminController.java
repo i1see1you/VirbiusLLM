@@ -1,11 +1,16 @@
 package io.virbius.control.admin;
 
 import io.virbius.control.common.response.ApiResult;
+import io.virbius.control.domain.dto.request.CompileConditionRequest;
+import io.virbius.control.domain.dto.request.ParseConditionRequest;
 import io.virbius.control.domain.dto.request.UpdateRuleStatusRequest;
 import io.virbius.control.domain.dto.request.UpdateRuntimeRequest;
 import io.virbius.control.domain.dto.request.UpsertRuleRequest;
+import io.virbius.control.domain.dto.request.ValidateScriptRequest;
 import io.virbius.control.service.PublishService;
+import io.virbius.control.service.RuleAuthoringService;
 import io.virbius.control.service.RuleService;
+import io.virbius.control.service.RuleSimulateService;
 import java.util.List;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,10 +28,18 @@ public class RuleAdminController {
 
     private final RuleService ruleService;
     private final PublishService publishService;
+    private final RuleAuthoringService authoringService;
+    private final RuleSimulateService simulateService;
 
-    public RuleAdminController(RuleService ruleService, PublishService publishService) {
+    public RuleAdminController(
+            RuleService ruleService,
+            PublishService publishService,
+            RuleAuthoringService authoringService,
+            RuleSimulateService simulateService) {
         this.ruleService = ruleService;
         this.publishService = publishService;
+        this.authoringService = authoringService;
+        this.simulateService = simulateService;
     }
 
     @GetMapping
@@ -39,6 +52,36 @@ public class RuleAdminController {
     public ApiResult<Map<String, Object>> upsertRule(
             @PathVariable("tenantId") String tenantId, @RequestBody UpsertRuleRequest body) {
         return ApiResult.ok(ruleService.upsertRule(tenantId, body));
+    }
+
+    @PostMapping("/validate-script")
+    public ApiResult<Map<String, Object>> validateScript(
+            @PathVariable("tenantId") String tenantId, @RequestBody ValidateScriptRequest body) {
+        return ApiResult.ok(ruleService.validateScript(tenantId, body));
+    }
+
+    @PostMapping("/compile-condition")
+    public ApiResult<Map<String, Object>> compileCondition(
+            @PathVariable("tenantId") String tenantId, @RequestBody CompileConditionRequest body) {
+        return ApiResult.ok(authoringService.compile(body.layer(), body.runtime(), body.condition()));
+    }
+
+    @PostMapping("/parse-condition")
+    public ApiResult<Map<String, Object>> parseCondition(
+            @PathVariable("tenantId") String tenantId, @RequestBody ParseConditionRequest body) {
+        return ApiResult.ok(authoringService.parse(body.layer(), body.runtime(), body.script()));
+    }
+
+    @GetMapping("/recipes")
+    public ApiResult<Map<String, Object>> recipes(
+            @PathVariable("tenantId") String tenantId, @RequestParam(value = "layer", required = false) String layer) {
+        return ApiResult.ok(authoringService.recipes(layer));
+    }
+
+    @PostMapping("/simulate")
+    public ApiResult<Map<String, Object>> simulate(
+            @PathVariable("tenantId") String tenantId, @RequestBody Map<String, Object> body) {
+        return ApiResult.ok(simulateService.simulate(tenantId, body));
     }
 
     @GetMapping("/{ruleId}")

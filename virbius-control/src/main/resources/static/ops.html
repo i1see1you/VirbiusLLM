@@ -95,11 +95,28 @@
     .kpi-card .value { font-size: 1.15rem; font-weight: 600; }
     .rollout-section { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; }
     .rollout-section h3 { font-size: 0.92rem; margin: 0 0 0.5rem; color: #334155; }
-    .gate-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.75rem; font-size: 0.82rem; }
-    .gate-box.pass { border-color: #86efac; background: #f0fdf4; }
-    .gate-box.fail { border-color: #fca5a5; background: #fef2f2; }
     .bar-cell { display: flex; align-items: flex-end; gap: 1px; height: 2rem; min-width: 3rem; }
     .bar-seg { width: 4px; border-radius: 1px; }
+    .script-editor-wrap { position: relative; margin-bottom: 0.5rem; }
+    .script-ac {
+      position: absolute; z-index: 20; left: 0.35rem; max-height: 10rem; overflow-y: auto;
+      list-style: none; margin: 0; padding: 0.25rem 0; min-width: 12rem;
+      background: #fff; border: 1px solid #cbd5e1; border-radius: 4px; box-shadow: 0 4px 12px rgba(15,23,42,0.12);
+      font-family: ui-monospace, monospace; font-size: 0.8rem;
+    }
+    .script-ac li { padding: 0.3rem 0.55rem; cursor: pointer; }
+    .script-ac li:hover, .script-ac li.sel { background: #eff6ff; color: #1d4ed8; }
+    .script-wizard { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;
+      padding: 0.55rem 0.65rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; }
+    .script-snippet-row { margin-bottom: 0.35rem; }
+    .script-validate-ok { color: #166534; }
+    .script-validate-err { color: #991b1b; }
+    .cond-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.35rem; padding: 0.35rem; background: #f8fafc; border-radius: 4px; }
+    .sim-trace { font-size: 0.85rem; margin: 0.5rem 0; }
+    .sim-trace li.ok { color: #166534; }
+    .sim-trace li.fail { color: #991b1b; }
+    #fSimFixture { width: 100%; min-height: 10rem; font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; }
+    #ruleSummaryCard { margin: 0.5rem 0; padding: 0.5rem; background: #f0f9ff; border-radius: 4px; font-size: 0.9rem; }
   </style>
 </head>
 <body>
@@ -113,6 +130,8 @@
         <button type="button" class="nav-item active" data-tab="lists"><span class="nav-icon">📋</span><span class="nav-label">名单</span></button>
         <button type="button" class="nav-item" data-tab="cumulatives"><span class="nav-icon">📊</span><span class="nav-label">累计</span></button>
         <button type="button" class="nav-item" data-tab="bindings"><span class="nav-icon">🔗</span><span class="nav-label">请求映射</span></button>
+        <button type="button" class="nav-item" data-tab="scene-registry"><span class="nav-icon">🎭</span><span class="nav-label">场景注册</span></button>
+        <button type="button" class="nav-item" data-tab="gateway-routes"><span class="nav-icon">🛣</span><span class="nav-label">网关路由</span></button>
         <div class="nav-group expanded" id="navGroupRules">
           <button type="button" class="nav-item nav-group-head" data-tab="rules" id="navRulesHead">
             <span class="nav-icon">📜</span><span class="nav-label">规则</span><span class="nav-chevron">▼</span>
@@ -130,6 +149,7 @@
     <div class="main">
       <header class="main-topbar">
         <label class="tenant-field">租户 <input id="tenantId" value="default" autocomplete="off" /></label>
+        <span class="hint" style="margin:0">Bundle <code id="topBundleId">poc-default</code>@<code id="topBundleVer">0.1.0</code></span>
       </header>
       <input type="hidden" id="bundleId" value="poc-default" />
       <input type="hidden" id="bundleVer" value="0.1.0" />
@@ -137,7 +157,7 @@
 
   <div id="panel-lists" class="panel active card">
     <h2 style="margin:0 0 0.5rem;font-size:1rem">命名名单</h2>
-    <p class="hint">黑/白名单由关联 <code>list_match</code> 规则的 <code>intent_action</code> 决定（<code>allow</code> 放行，<code>deny</code> 拦截）；<code>risk_score</code> 用于合并优先级。var 维度条目格式 <code>logical=value</code>。</p>
+    <p class="hint">名单仅定义 <code>list_name</code> + 维度 + 纯值条目；拦截/放行由脚本规则 <code>listMatch(...)</code> + 规则行 <code>intent_action</code> / <code>risk_score</code> 决定。按 Header/Query 匹配：维度选 <code>var:逻辑变量</code>（如 <code>var:app_id</code>），条目填纯值（如 <code>evil</code>），脚本写 <code>listMatch('名单', ctx.var('app_id'))</code>。</p>
     <div class="row">
       <input id="newListName" placeholder="list_name" size="14" />
       <select id="newListDim">
@@ -145,8 +165,14 @@
         <option value="user_id">user_id</option>
         <option value="device_id">device_id</option>
         <option value="ip_cidr">ip_cidr</option>
-        <option value="var">var</option>
+        <option value="var">var（逻辑变量）</option>
       </select>
+      <span id="listVarWrap" style="display:none">
+        <label>逻辑变量
+          <select id="listVarLogical" style="min-width:8rem"></select>
+          <input id="listVarLogicalCustom" placeholder="或输入" style="width:7rem" />
+        </label>
+      </span>
       <input id="newListRemark" placeholder="名单备注" style="min-width:10rem" />
       <button type="button" id="btnListCreate">新建名单</button>
     </div>
@@ -243,6 +269,58 @@
     </div>
   </div>
 
+  <div id="panel-scene-registry" class="panel card">
+    <h2 style="margin:0 0 0.5rem;font-size:1rem">场景注册（scene_registry）</h2>
+    <p class="hint">每个 <code>scene_id</code> 归属唯一 <code>app_id</code>；同一 app 可有多个 scene。运行时由 <code>(app_id, uri, match)</code> 解析 scene（见「请求映射」中的 <code>app_id</code>）。<strong>uris</strong> 须已在「网关路由」覆盖（支持 <code>/path/*</code>）。<strong>添加 / 删除 / 改 fail 开关</strong>会写入 DB；点<strong>同步到网关</strong>推产物。</p>
+    <div class="row" style="flex-wrap:wrap;gap:0.75rem">
+      <label style="flex-direction:row;align-items:center;gap:0.35rem;margin:0">
+        <input type="checkbox" id="srFailUnknown" /> fail_on_unknown_app
+      </label>
+      <label style="flex-direction:row;align-items:center;gap:0.35rem;margin:0">
+        <input type="checkbox" id="srFailUnresolved" /> fail_on_unresolved_scene
+      </label>
+    </div>
+    <table id="sceneRegTable">
+      <thead><tr><th>scene_id</th><th>app_id</th><th>default</th><th>uris</th><th>priority</th><th>match query</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="row" style="margin-top:0.5rem;flex-wrap:wrap">
+      <input id="srSceneId" placeholder="scene_id（如 beta_chat）" size="18" />
+      <input id="srAppId" placeholder="app_id（如 beta）" size="12" />
+      <label style="flex-direction:row;align-items:center;gap:0.25rem;margin:0"><input type="checkbox" id="srDefault" /> default</label>
+      <input id="srUris" placeholder="/v1/chat/* 或 /v1/chat/completions" size="22" />
+      <input id="srPriority" type="number" value="0" style="width:4rem" />
+      <input id="srMatchQuery" placeholder="query k=v（可空，如 mode=clinical）" size="22" />
+      <button type="button" id="btnSceneRegAdd">添加 scene</button>
+      <button type="button" class="secondary" id="btnSyncSceneRegistry">同步到网关</button>
+    </div>
+  </div>
+
+  <div id="panel-gateway-routes" class="panel card">
+    <h2 style="margin:0 0 0.5rem;font-size:1rem">网关路由（gateway.routes）</h2>
+    <p class="hint">定义哪些 URI 进入网关 evaluate（精确 path 或末尾 <code>*</code> 前缀，如 <code>/v1/chat/*</code>）；scene 由「场景注册」解析。保存后需「同步到网关」推产物。</p>
+    <div class="row" style="flex-wrap:wrap;gap:0.75rem">
+      <label style="flex-direction:row;align-items:center;gap:0.35rem;margin:0">
+        <input type="checkbox" id="gwEvaluate" checked /> evaluate
+      </label>
+      <label>fail_mode
+        <select id="gwFailMode"><option value="open">open</option><option value="closed">closed</option></select>
+      </label>
+      <label>cloud_scan.agent_url <input id="gwAgentUrl" placeholder="http://127.0.0.1:9070" style="min-width:14rem" /></label>
+      <label>timeout_ms <input id="gwTimeoutMs" type="number" min="100" value="3000" style="width:5rem" /></label>
+    </div>
+    <table id="gwRoutesTable">
+      <thead><tr><th>uri</th><th>methods</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="row" style="margin-top:0.5rem;flex-wrap:wrap">
+      <input id="grUri" placeholder="/v1/chat/* 或 /v1/chat/completions" size="28" />
+      <input id="grMethods" placeholder="POST" size="8" value="POST" />
+      <button type="button" id="btnGwRouteAdd">添加入口 URI</button>
+      <button type="button" id="btnSaveGatewayRoutes">保存路由</button>
+    </div>
+  </div>
+
   <div id="panel-rules" class="panel card">
     <h2 style="margin:0 0 0.5rem;font-size:1rem">规则（Registry）</h2>
     <p class="hint">新建规则默认为 <code>draft</code>（不进执行面）；保存后请到左侧「<strong>策略上线</strong>」点 <code>上线</code> 进入 <code>dry_run</code> 观测。停用后可 <code>恢复草稿</code> 再编辑。<code>list_match</code> / <code>cumulative</code> 须配置 <code>bind_scope</code>（Global 租户全流量；Route 按 URI 优先匹配）。</p>
@@ -278,41 +356,102 @@
         </label>
         <label id="canaryWrap">canary% <input id="fCanary" type="number" min="0" max="100" value="5" style="width:3rem" /></label>
       </div>
-      <div class="row" id="listMatchRow" style="display:none">
-        <label>list_name <select id="fListName"></select></label>
+      <div class="row" id="scriptWizardRow" style="display:none">
+        <div class="script-wizard" style="width:100%;margin:0">
+          <label>脚本模板
+            <select id="wPattern">
+              <option value="list">名单命中</option>
+              <option value="cumulative">累计超阈</option>
+              <option value="l3">L3 汇总（仅 cloud groovy）</option>
+              <option value="custom">自定义</option>
+            </select>
+          </label>
+          <span id="wListWrap"><label>名单 <select id="wListName"></select></label></span>
+          <span id="wCumWrap">
+            <label>累计 <select id="wCumName"></select></label>
+            <label>比较
+              <select id="wCompare">
+                <option value="gte">≥</option>
+                <option value="gt">&gt;</option>
+                <option value="lte">≤</option>
+                <option value="lt">&lt;</option>
+                <option value="eq">=</option>
+              </select>
+            </label>
+            <label>阈值 <input id="wThreshold" type="number" min="1" value="120" style="width:5rem" /></label>
+          </span>
+          <button type="button" id="btnGenScript" class="secondary">生成脚本</button>
+        </div>
       </div>
-      <div class="row" id="cumulativeRuleRow" style="display:none">
-        <label>cumulative_name <select id="fCumName"></select></label>
-        <label>compare
-          <select id="fCumCompare">
-            <option value="gte">gte</option>
-            <option value="gt">gt</option>
-            <option value="lte">lte</option>
-            <option value="lt">lt</option>
-            <option value="eq">eq</option>
-          </select>
-        </label>
-        <label>threshold <input id="fCumThreshold" type="number" min="1" value="120" style="width:5rem" /></label>
+      <div class="row script-snippet-row" id="scriptSnippetRow" style="display:none">
+        <span class="hint" style="margin:0">片段：</span>
+        <button type="button" class="seg" data-snippet="list">名单 deny</button>
+        <button type="button" class="seg" data-snippet="cumulative">累计限流</button>
+        <button type="button" class="seg" data-snippet="l3">L3 汇总</button>
+        <button type="button" class="seg" data-snippet="var">逻辑变量</button>
+        <span class="hint" style="margin:0">Ctrl+Space 补全名单/累计/变量</span>
       </div>
       <div class="row" id="bindScopeRow" style="display:none">
         <label>bind_scope
           <select id="fBindScope">
             <option value="global">global（租户内全流量）</option>
             <option value="route">route（URI 优先）</option>
-            <option value="service">service（upstream / consumer）</option>
+            <option value="service">service（app_ids）</option>
           </select>
         </label>
         <label id="bindUriWrap">uris <input id="fBindUris" placeholder="/v1/chat/completions 或 /v1/chat/*" style="min-width:18rem" /></label>
-        <label id="bindSceneWrap">scenes <input id="fBindScenes" placeholder="无 uri 时：general_chat" style="min-width:12rem" /></label>
+        <label id="bindSceneWrap">scenes <input id="fBindScenes" placeholder="medical-prod_clinical" style="min-width:12rem" /></label>
       </div>
       <div class="row" id="bindServiceWrap" style="display:none">
-        <label>upstream_id <input id="fBindUpstream" placeholder="azure-openai" style="min-width:10rem" /></label>
-        <label>consumer_id <input id="fBindConsumer" placeholder="app-consumer" style="min-width:10rem" /></label>
-        <label>api_key_group <input id="fBindApiKeyGroup" placeholder="partner-a" style="min-width:8rem" /></label>
+        <label>app_ids <input id="fBindAppIds" placeholder="beta, medical-prod" style="min-width:18rem" /></label>
       </div>
       <p id="bindScopeHint" class="hint" style="display:none;margin:0 0 0.5rem">
-        Route：配置了 <code>uris</code> 时<strong>仅按 URI</strong>匹配（来自 APISIX 当前 route，非客户端 Header）。Service 至少填一项 upstream / consumer / api_key_group。
+        Route：配置了 <code>uris</code> 时<strong>仅按 URI</strong>匹配（须已在「网关路由」注册且被其覆盖；支持 <code>/path/*</code>）。Service 绑 <code>app_ids</code>（来自 context_bindings 的 <code>app_id</code>）。
       </p>
+      <div id="conditionAuthoringRow" class="row" style="display:none;flex-wrap:wrap;align-items:center;gap:0.75rem">
+        <label>编辑模式
+          <select id="fEditorMode"><option value="simple">简单（表单）</option><option value="advanced">高级（脚本）</option></select>
+        </label>
+        <label>模板
+          <select id="fRecipe"><option value="">— 选择 —</option></select>
+        </label>
+        <button type="button" class="secondary" id="btnApplyRecipe">应用</button>
+        <button type="button" class="secondary" id="btnPreviewScript">预览脚本</button>
+        <button type="button" class="secondary" id="btnSimulateRule">模拟运行</button>
+      </div>
+      <div id="simpleConditionPanel" style="display:none;margin-bottom:0.5rem">
+        <p class="hint" style="margin:0 0 0.35rem">触发条件（保存时编译为脚本，不落库 AST）：</p>
+        <div id="conditionLeaves"></div>
+        <div class="row" style="margin-top:0.35rem">
+          <button type="button" class="seg" id="btnAddListCond">+ 名单命中</button>
+          <button type="button" class="seg" id="btnAddCumCond">+ 累计阈值</button>
+        </div>
+        <pre id="scriptPreview" class="hint" style="display:none;margin-top:0.5rem;white-space:pre-wrap;background:#f8fafc;padding:0.5rem"></pre>
+      </div>
+      <div id="ruleSummaryCard" style="display:none"></div>
+      <div id="simulateFixtureRow" style="display:none;margin:0.5rem 0">
+        <p class="hint" style="margin:0 0 0.35rem">样例请求 fixture（JSON，仅用于模拟，不落库）：</p>
+        <div class="row" style="flex-wrap:wrap;align-items:center;gap:0.5rem;margin-bottom:0.35rem">
+          <label>预设
+            <select id="fSimFixturePreset">
+              <option value="clinical_chat">clinical_chat</option>
+              <option value="beta_chat">beta_chat</option>
+              <option value="l3_prior">L3 + prior_signals</option>
+              <option value="cum_over_limit">累计超限</option>
+              <option value="force_list_hit">强制名单命中</option>
+            </select>
+          </label>
+          <button type="button" class="secondary" id="btnSimFixtureApplyPreset">载入预设</button>
+          <button type="button" class="secondary" id="btnSimFixtureReset">重置为默认</button>
+        </div>
+        <textarea id="fSimFixture" spellcheck="false"></textarea>
+        <p id="simFixtureErr" class="hint script-validate-err" style="display:none;margin:0.35rem 0 0"></p>
+      </div>
+      <div id="simulatePanel" class="card" style="display:none;margin:0.5rem 0;padding:0.5rem;background:#fafafa">
+        <strong style="font-size:0.9rem">模拟 Trace</strong>
+        <ul id="simTraceList" class="sim-trace"></ul>
+        <p id="simSummary" class="hint" style="margin:0.35rem 0 0"></p>
+      </div>
       <p id="groovyHint" class="hint" style="display:none;margin:0 0 0.5rem">
         Groovy 脚本实现 <code>decide(ctx)</code>，返回 <code>true</code>（命中）/ <code>false</code>（未命中）。
         可用 <code>ctx.listMatch(name)</code>、<code>ctx.listMatch(name, value)</code>、<code>ctx.getCumulative(name)</code>、<code>ctx.var('logical')</code>。
@@ -321,7 +460,14 @@
       <p id="luaHint" class="hint" style="display:none;margin:0 0 0.5rem">
         Lua 脚本实现 <code>decide(ctx)</code>，返回 boolean。可用全局 <code>listMatch(name, value)</code>、<code>getCumulative(name)</code>、<code>ctx.var('logical')</code>。
       </p>
-      <textarea id="fBody"></textarea>
+      <div class="script-editor-wrap">
+        <textarea id="fBody"></textarea>
+        <ul id="scriptAcPopup" class="script-ac" style="display:none"></ul>
+      </div>
+      <div class="row" id="scriptValidateRow" style="display:none">
+        <button type="button" class="secondary" id="btnValidateScript">校验脚本</button>
+        <span id="scriptValidateMsg" class="hint" style="margin:0"></span>
+      </div>
       <div class="row">
         <button type="button" id="btnSaveRule">保存规则（新 revision）</button>
         <button type="button" class="secondary" id="btnActivateRule" style="display:none">启用（上线）</button>
@@ -335,13 +481,14 @@
 
   <div id="panel-rollout" class="panel card">
     <h2 style="margin:0 0 0.5rem;font-size:1rem">策略上线</h2>
-    <p class="hint">assisted 模式：先 <code>评估升级</code> 查看门禁，达标后 <code>应用建议</code>。draft 须先 <code>上线</code>；canary 阶梯与门禁阈值见表 <code>tb_tenant_rollout_policy</code>。</p>
+    <p class="hint">draft 须先 <code>上线</code> 进入 dry_run；达标后点 <code>升级 / 下一步</code>（后端仍校验门禁，未过可 force）。看板每 5 秒自动刷新。</p>
     <div class="row">
       <label>规则
         <select id="roRuleSelect" style="min-width:16rem"><option value="">— 选择规则 —</option></select>
       </label>
       <span id="roBadge"></span>
       <button type="button" class="secondary" id="roRefresh">刷新看板</button>
+      <span class="hint" id="roAutoRefreshHint">自动刷新 5s</span>
     </div>
     <div id="roFlowStrip" class="flow-strip"></div>
     <div id="roKpi" class="kpi-grid"></div>
@@ -363,11 +510,9 @@
     </div>
 
     <div class="rollout-section">
-      <h3>门禁评估</h3>
-      <div id="roGatePanel" class="gate-box">选择规则后点击「评估升级」</div>
-      <div class="row" style="margin-top:0.5rem">
-        <button type="button" id="roEvaluate">评估升级</button>
-        <button type="button" id="roApply">应用建议</button>
+      <h3>升级</h3>
+      <div class="row" style="margin-top:0.5rem;flex-wrap:wrap;align-items:center;gap:0.5rem">
+        <button type="button" id="roApply">升级 / 下一步</button>
         <label style="flex-direction:row;align-items:center;gap:0.25rem"><input type="checkbox" id="roForce" /> force 绕过</label>
         <input id="roForceComment" placeholder="force 说明（勾选 force 时必填）" style="min-width:14rem" />
       </div>
@@ -403,14 +548,6 @@
       </table>
       <button type="button" class="secondary" id="roTraceClose" style="margin-top:0.5rem">关闭</button>
     </div>
-
-    <div class="rollout-section">
-      <h3>门禁历史</h3>
-      <table id="roGatesTable">
-        <thead><tr><th>时间</th><th>from→to</th><th>结果</th><th>原因</th><th>comment</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
   </div>
 
       </div>
@@ -425,13 +562,103 @@
     let isNewRule = false;
     let editRuleMeta = null;
     let contextVars = [];
+    let gatewayRoutes = [];
+    let sceneEntries = [];
+    let sceneRegistryHydrating = false;
     let selectedCumulativeName = null;
     let isNewCumulative = false;
     let cumulativeRows = [];
     let rolloutRuleMeta = null;
-    let rolloutEvalResult = null;
     let rolloutAllRules = [];
     let rolloutCanaryLadder = [5, 20, 50, 100];
+    let rolloutRefreshTimer = null;
+    let rolloutRefreshBusy = false;
+    const ROLLOUT_REFRESH_MS = 5000;
+    let conditionLeaves = [];
+    let recipeCatalog = [];
+    const SIM_FIXTURE_PRESETS = {
+      clinical_chat: {
+        route_uri: '/v1/chat/completions',
+        headers: { 'X-App-Id': 'medical-prod' },
+        query: { mode: 'clinical' },
+        content: 'test prompt'
+      },
+      beta_chat: {
+        route_uri: '/v1/chat/completions',
+        headers: { 'X-App-Id': 'beta' },
+        query: {},
+        content: 'hello'
+      },
+      l3_prior: {
+        route_uri: '/v1/chat/completions',
+        headers: { 'X-App-Id': 'medical-prod' },
+        query: { mode: 'clinical' },
+        content: 'test prompt',
+        prior_signals: [
+          {
+            rule_id: 'gateway_deny_1',
+            intent_action: 'deny',
+            risk_score: 100,
+            reason_code: 'DENY_KEYWORD'
+          }
+        ]
+      },
+      cum_over_limit: {
+        route_uri: '/v1/chat/completions',
+        headers: { 'X-App-Id': 'medical-prod' },
+        query: {},
+        content: 'hello',
+        overrides: { cumulative: { user_req_1h: 150 } }
+      },
+      force_list_hit: {
+        route_uri: '/v1/chat/completions',
+        headers: { 'X-App-Id': 'beta' },
+        query: {},
+        content: 'hello',
+        overrides: { force_list_hit: true }
+      }
+    };
+
+    function formatSimFixture(obj) {
+      return JSON.stringify(obj, null, 2);
+    }
+
+    function resetSimFixture(presetKey) {
+      const key = presetKey && SIM_FIXTURE_PRESETS[presetKey] ? presetKey : 'clinical_chat';
+      document.getElementById('fSimFixture').value = formatSimFixture(SIM_FIXTURE_PRESETS[key]);
+      document.getElementById('fSimFixturePreset').value = key;
+      const errEl = document.getElementById('simFixtureErr');
+      errEl.style.display = 'none';
+      errEl.textContent = '';
+    }
+
+    function readSimFixture() {
+      const raw = document.getElementById('fSimFixture').value.trim();
+      const errEl = document.getElementById('simFixtureErr');
+      if (!raw) {
+        errEl.style.display = '';
+        errEl.textContent = 'fixture JSON 不能为空';
+        throw new Error(errEl.textContent);
+      }
+      try {
+        const obj = JSON.parse(raw);
+        if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+          throw new Error('根节点须为 JSON 对象');
+        }
+        errEl.style.display = 'none';
+        errEl.textContent = '';
+        return obj;
+      } catch (e) {
+        errEl.style.display = '';
+        errEl.textContent = 'fixture JSON 无效：' + e.message;
+        throw new Error(errEl.textContent);
+      }
+    }
+
+    function ensureSimFixtureEditor() {
+      const ta = document.getElementById('fSimFixture');
+      if (!ta.value.trim()) resetSimFixture();
+    }
 
     const FLOW_STEPS = ['draft', 'dry_run', 'canary', 'full'];
 
@@ -486,7 +713,8 @@ end`;
     function setRuleEditorReadOnly(disabled) {
       const ro = !!disabled;
       ['fReason', 'fRisk', 'fIntent', 'fEnforce', 'fCanary', 'fBody', 'fRuleId', 'fRuntime',
-        'fBindScope', 'fBindUris', 'fBindScenes', 'fBindUpstream', 'fBindConsumer', 'fBindApiKeyGroup'].forEach(id => {
+        'fBindScope', 'fBindUris', 'fBindScenes', 'fBindUpstream', 'fBindConsumer', 'fBindApiKeyGroup',
+        'wPattern', 'wListName', 'wCumName', 'wCompare', 'wThreshold', 'btnGenScript'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.disabled = ro;
       });
@@ -538,20 +766,33 @@ end`;
       document.getElementById('fCanary').value = '';
       const rt = document.getElementById('fRuntime').value;
       document.getElementById('fBody').value = defaultRuleBody(currentLayer, rt);
+      conditionLeaves = [{ type: 'list_match', list_name: 'deny_keyword', value_source: 'content' }];
+      document.getElementById('fEditorMode').value = 'simple';
+      renderConditionLeaves();
+      syncEditorModeUi();
       setRuleEditorCloudOnly(currentLayer);
       setRuleEditorStatusUi('draft');
       document.getElementById('fRuntime').onchange = () => {
         const rt = document.getElementById('fRuntime').value;
         document.getElementById('fBody').value = defaultRuleBody(currentLayer, rt);
-        syncListMatchUi(rt);
+        syncScriptAssistUi(rt);
+        clearScriptValidateMsg();
       };
-      syncListMatchUi(document.getElementById('fRuntime').value);
+      syncScriptAssistUi(document.getElementById('fRuntime').value);
+      resetSimFixture();
+      clearScriptValidateMsg();
       loadBindUiFromScope({ bind_scope: 'global' });
     }
 
     function tenant() { return document.getElementById('tenantId').value.trim() || 'default'; }
     function bundleId() { return document.getElementById('bundleId').value.trim() || 'poc-default'; }
     function bundleVer() { return document.getElementById('bundleVer').value.trim() || '0.1.0'; }
+    function syncTopbarBundle() {
+      const bid = document.getElementById('topBundleId');
+      const bver = document.getElementById('topBundleVer');
+      if (bid) bid.textContent = bundleId();
+      if (bver) bver.textContent = bundleVer();
+    }
     function admin(path, opts = {}) {
       const url = '/api/v1/admin/tenants/' + encodeURIComponent(tenant()) + path;
       return fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts }).then(async res => {
@@ -563,39 +804,518 @@ end`;
     function log(x) { logEl.textContent = typeof x === 'string' ? x : JSON.stringify(x, null, 2); }
 
     const DIM_HINT = {
-      keyword: '关键字', user_id: '用户', device_id: '设备', ip_cidr: 'IP/CIDR',
-      var: '逻辑变量'
+      keyword: '关键字', user_id: '用户', device_id: '设备', ip_cidr: 'IP/CIDR'
     };
+
+    function formatListDimension(dim) {
+      if (!dim) return '—';
+      if (String(dim).startsWith('var:')) return 'var(' + dim.slice(4) + ')';
+      if (String(dim) === 'var') return 'var（已废弃）';
+      const label = DIM_HINT[dim] || dim;
+      return label + ' `' + dim + '`';
+    }
+
+    function syncListDimUi() {
+      const isVar = document.getElementById('newListDim').value === 'var';
+      document.getElementById('listVarWrap').style.display = isVar ? '' : 'none';
+      if (isVar) fillListVarLogicalSelect();
+    }
+
+    function fillListVarLogicalSelect(selected) {
+      const sel = document.getElementById('listVarLogical');
+      const logicals = contextVars.map(v => v.logical).filter(Boolean);
+      const opts = logicals.length
+        ? logicals.map(l => `<option value="${escAttr(l)}">${esc(l)}</option>`).join('')
+        : '<option value="">— 无映射 —</option>';
+      sel.innerHTML = opts;
+      if (selected && logicals.includes(selected)) {
+        sel.value = selected;
+        document.getElementById('listVarLogicalCustom').value = selected;
+      } else if (selected) {
+        sel.innerHTML = `<option value="${escAttr(selected)}">${esc(selected)}</option>` + opts;
+        sel.value = selected;
+        document.getElementById('listVarLogicalCustom').value = selected;
+      }
+    }
+
+    function buildListDimension() {
+      const base = document.getElementById('newListDim').value;
+      if (base !== 'var') return base;
+      const logical = document.getElementById('listVarLogicalCustom').value.trim()
+        || document.getElementById('listVarLogical').value.trim();
+      if (!logical) throw new Error('var 维度须选择逻辑变量（先在「请求映射」配置）');
+      if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(logical)) {
+        throw new Error('逻辑变量名须为字母/数字/下划线，且不以数字开头');
+      }
+      return 'var:' + logical;
+    }
 
     let listCatalog = [];
 
-    function cumulativeRuleBody(name, compare, threshold) {
-      return {
-        cumulative_name: name,
-        condition: { compare_op: compare || 'gte', threshold: Number(threshold) || 120 }
-      };
+    const COMPARE_OP_SYMBOL = { gte: '>=', gt: '>', lte: '<=', lt: '<', eq: '==' };
+
+    function fillWizardListSelect(selected) {
+      const sel = document.getElementById('wListName');
+      const names = listCatalog.length ? listCatalog : ['deny_keyword'];
+      sel.innerHTML = names.map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`).join('');
+      if (selected && names.includes(selected)) sel.value = selected;
     }
 
-    function syncCumulativeRuleBody() {
-      if (document.getElementById('fRuntime').value !== 'cumulative') return;
-      const name = document.getElementById('fCumName').value;
-      if (!name) return;
-      document.getElementById('fBody').value = JSON.stringify(
-        cumulativeRuleBody(
-          name,
-          document.getElementById('fCumCompare').value,
-          document.getElementById('fCumThreshold').value),
-        null, 2);
-    }
-
-    function fillCumNameSelect(selected) {
-      const sel = document.getElementById('fCumName');
+    function fillWizardCumSelect(selected) {
+      const sel = document.getElementById('wCumName');
       const names = cumulativeRows.map(c => field(c, 'cumulative_name', 'cumulativeName')).filter(Boolean);
       sel.innerHTML = names.length
         ? names.map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`).join('')
-        : '<option value="">— 无累计定义 —</option>';
+        : '<option value="user_req_1h">user_req_1h</option>';
       if (selected && names.includes(selected)) sel.value = selected;
       else if (names.length) sel.value = names[0];
+    }
+
+    function syncWizardFields() {
+      const pattern = document.getElementById('wPattern').value;
+      document.getElementById('wListWrap').style.display = pattern === 'list' || pattern === 'l3' ? '' : 'none';
+      document.getElementById('wCumWrap').style.display = pattern === 'cumulative' ? '' : 'none';
+      const l3Opt = document.querySelector('#wPattern option[value="l3"]');
+      if (l3Opt) l3Opt.disabled = currentLayer !== 'cloud' || document.getElementById('fRuntime').value !== 'groovy';
+      if (pattern === 'l3' && l3Opt && l3Opt.disabled) document.getElementById('wPattern').value = 'list';
+    }
+
+    function generateScriptFromWizard() {
+      const runtime = document.getElementById('fRuntime').value;
+      const pattern = document.getElementById('wPattern').value;
+      const listName = document.getElementById('wListName').value || 'deny_keyword';
+      const cumName = document.getElementById('wCumName').value || 'user_req_1h';
+      const op = COMPARE_OP_SYMBOL[document.getElementById('wCompare').value] || '>=';
+      const threshold = Number(document.getElementById('wThreshold').value) || 120;
+      let script = '';
+      if (pattern === 'list') {
+        script = runtime === 'lua'
+          ? `function decide(ctx)\n  return listMatch('${listName}', ctx.content)\nend`
+          : `def decide(ctx) {\n  return ctx.listMatch('${listName}')\n}`;
+      } else if (pattern === 'cumulative') {
+        script = runtime === 'lua'
+          ? `function decide(ctx)\n  return getCumulative('${cumName}') ${op} ${threshold}\nend`
+          : `def decide(ctx) {\n  return ctx.getCumulative('${cumName}') ${op} ${threshold}\n}`;
+      } else if (pattern === 'l3') {
+        script = `def decide(ctx) {\n  if (ctx.listMatch('${listName}')) return true\n  if (!ctx.wouldHitBlock()) return false\n  return true\n}`;
+      }
+      if (script) {
+        document.getElementById('fBody').value = script;
+        clearScriptValidateMsg();
+      }
+    }
+
+    function scriptSnippet(kind) {
+      const runtime = document.getElementById('fRuntime').value;
+      const listName = document.getElementById('wListName').value || listCatalog[0] || 'deny_keyword';
+      const cumName = document.getElementById('wCumName').value
+        || field(cumulativeRows[0], 'cumulative_name', 'cumulativeName') || 'user_req_1h';
+      const logical = contextVars[0]?.logical || 'app_id';
+      if (kind === 'list') {
+        return runtime === 'lua'
+          ? `listMatch('${listName}', ctx.content)`
+          : `ctx.listMatch('${listName}')`;
+      }
+      if (kind === 'cumulative') {
+        return runtime === 'lua'
+          ? `getCumulative('${cumName}') >= 120`
+          : `ctx.getCumulative('${cumName}') >= 120`;
+      }
+      if (kind === 'l3') {
+        return `if (ctx.listMatch('${listName}')) return true\n  if (!ctx.wouldHitBlock()) return false\n  return true`;
+      }
+      if (kind === 'var') {
+        return runtime === 'lua'
+          ? `ctx.var('${logical}') == 'sensitive'`
+          : `ctx.var('${logical}') == 'sensitive'`;
+      }
+      return '';
+    }
+
+    function insertAtCursor(ta, text) {
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
+      ta.selectionStart = ta.selectionEnd = start + text.length;
+      ta.focus();
+    }
+
+    function clearScriptValidateMsg() {
+      const el = document.getElementById('scriptValidateMsg');
+      el.textContent = '';
+      el.className = 'hint';
+    }
+
+    function showScriptValidateResult(data) {
+      const el = document.getElementById('scriptValidateMsg');
+      const errs = data.errors || [];
+      const warns = data.warnings || [];
+      if (data.valid) {
+        el.className = 'hint script-validate-ok';
+        el.textContent = warns.length ? '校验通过（' + warns.join('；') + '）' : '校验通过';
+      } else {
+        el.className = 'hint script-validate-err';
+        el.textContent = errs.join('；');
+      }
+    }
+
+    async function validateScriptBody(showLog) {
+      const runtime = isNewRule ? document.getElementById('fRuntime').value : editRuleMeta.runtime;
+      const layer = isNewRule ? currentLayer : editRuleMeta.layer;
+      let body = await resolveBodyForSave();
+      const data = await admin('/rules/validate-script', {
+        method: 'POST',
+        body: JSON.stringify({ layer, runtime, body })
+      });
+      showScriptValidateResult(data);
+      if (showLog) log(data);
+      return data;
+    }
+
+    function isSimpleEditorMode() {
+      return document.getElementById('fEditorMode').value === 'simple';
+    }
+
+    function readConditionPayload() {
+      if (!conditionLeaves.length) return null;
+      if (conditionLeaves.length === 1) return { ...conditionLeaves[0] };
+      return { op: 'and', children: conditionLeaves.map(c => ({ ...c })) };
+    }
+
+    async function resolveBodyForSave() {
+      const runtime = isNewRule ? document.getElementById('fRuntime').value : editRuleMeta.runtime;
+      const layer = isNewRule ? currentLayer : editRuleMeta.layer;
+      if (isSimpleEditorMode() && conditionLeaves.length) {
+        const data = await admin('/rules/compile-condition', {
+          method: 'POST',
+          body: JSON.stringify({ layer, runtime, condition: readConditionPayload() })
+        });
+        return data.script;
+      }
+      try { return JSON.parse(document.getElementById('fBody').value); } catch { return document.getElementById('fBody').value; }
+    }
+
+    function syncEditorModeUi() {
+      const simple = isSimpleEditorMode();
+      document.getElementById('simpleConditionPanel').style.display = simple ? '' : 'none';
+      document.getElementById('fBody').style.display = simple ? 'none' : '';
+      document.getElementById('scriptWizardRow').style.display = simple ? 'none' : (document.getElementById('scriptWizardRow').style.display);
+      document.getElementById('scriptSnippetRow').style.display = simple ? 'none' : '';
+      if (simple) updateRuleSummaryCard();
+    }
+
+    function renderConditionLeaves() {
+      const host = document.getElementById('conditionLeaves');
+      host.innerHTML = '';
+      conditionLeaves.forEach((leaf, idx) => {
+        const row = document.createElement('div');
+        row.className = 'cond-row';
+        if (leaf.type === 'list_match') {
+          row.innerHTML = `<span>名单</span>
+            <select data-i="${idx}" data-f="list_name">${listOptions(leaf.list_name)}</select>
+            <span>匹配</span><select data-i="${idx}" data-f="value_source">
+              <option value="content">content</option>
+              <option value="var:app_id">var:app_id</option></select>
+            <button type="button" class="danger" data-del="${idx}">删</button>`;
+          row.querySelector('[data-f="list_name"]').value = leaf.list_name || 'deny_keyword';
+          row.querySelector('[data-f="value_source"]').value = leaf.value_source || 'content';
+        } else if (leaf.type === 'cumulative') {
+          row.innerHTML = `<span>累计</span>
+            <select data-i="${idx}" data-f="cumulative_name">${cumOptions(leaf.cumulative_name)}</select>
+            <select data-i="${idx}" data-f="compare">
+              <option value="gte">≥</option><option value="gt">&gt;</option><option value="eq">=</option></select>
+            <input data-i="${idx}" data-f="threshold" type="number" min="1" style="width:5rem" />
+            <button type="button" class="danger" data-del="${idx}">删</button>`;
+          row.querySelector('[data-f="cumulative_name"]').value = leaf.cumulative_name || 'user_req_1h';
+          row.querySelector('[data-f="compare"]').value = leaf.compare || 'gte';
+          row.querySelector('[data-f="threshold"]').value = leaf.threshold != null ? leaf.threshold : 120;
+        }
+        row.querySelectorAll('select,input').forEach(el => {
+          el.onchange = () => {
+            const i = Number(el.dataset.i);
+            const f = el.dataset.f;
+            conditionLeaves[i][f] = f === 'threshold' ? Number(el.value) : el.value;
+            updateRuleSummaryCard();
+          };
+        });
+        row.querySelector('[data-del]').onclick = () => {
+          conditionLeaves.splice(idx, 1);
+          renderConditionLeaves();
+          updateRuleSummaryCard();
+        };
+        host.appendChild(row);
+      });
+    }
+
+    function listOptions(selected) {
+      const names = listCatalog.length ? listCatalog : ['deny_keyword'];
+      return names.map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`).join('');
+    }
+
+    function cumOptions(selected) {
+      const names = cumulativeRows.map(c => field(c, 'cumulative_name', 'cumulativeName')).filter(Boolean);
+      if (!names.length) names.push('user_req_1h');
+      return names.map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`).join('');
+    }
+
+    async function loadRecipesForLayer(layer) {
+      const data = await admin('/rules/recipes?layer=' + encodeURIComponent(layer));
+      recipeCatalog = data.recipes || [];
+      const sel = document.getElementById('fRecipe');
+      sel.innerHTML = '<option value="">— 选择 —</option>' +
+        recipeCatalog.map(r => `<option value="${escAttr(r.recipe_id)}">${esc(r.label || r.recipe_id)}</option>`).join('');
+    }
+
+    function applyRecipe(recipeId) {
+      const r = recipeCatalog.find(x => x.recipe_id === recipeId);
+      if (!r) return;
+      loadBindUiFromScope({ bind_scope: r.bind_scope, bind_ref: r.bind_ref || {} });
+      const c = r.condition || {};
+      if (c.op === 'and' && Array.isArray(c.children)) conditionLeaves = c.children.map(x => ({ ...x }));
+      else conditionLeaves = [{ ...c }];
+      document.getElementById('fRisk').value = r.risk_score != null ? r.risk_score : 100;
+      document.getElementById('fIntent').value = r.intent_action || 'deny';
+      document.getElementById('fEditorMode').value = 'simple';
+      renderConditionLeaves();
+      syncEditorModeUi();
+      previewCompiledScript();
+    }
+
+    async function parseBodyIntoForm(layer, runtime, script) {
+      const data = await admin('/rules/parse-condition', {
+        method: 'POST',
+        body: JSON.stringify({ layer, runtime, script })
+      });
+      if (data.parseable && data.condition) {
+        document.getElementById('fEditorMode').value = 'simple';
+        const c = data.condition;
+        if (c.op === 'and' && Array.isArray(c.children)) conditionLeaves = c.children.map(x => ({ ...x }));
+        else if (c.type) conditionLeaves = [{ ...c }];
+        else conditionLeaves = [];
+        renderConditionLeaves();
+      } else {
+        document.getElementById('fEditorMode').value = 'advanced';
+        conditionLeaves = [];
+      }
+      syncEditorModeUi();
+    }
+
+    async function previewCompiledScript() {
+      if (!isSimpleEditorMode() || !conditionLeaves.length) {
+        document.getElementById('scriptPreview').style.display = 'none';
+        return;
+      }
+      const runtime = isNewRule ? document.getElementById('fRuntime').value : editRuleMeta.runtime;
+      const layer = isNewRule ? currentLayer : editRuleMeta.layer;
+      const data = await admin('/rules/compile-condition', {
+        method: 'POST',
+        body: JSON.stringify({ layer, runtime, condition: readConditionPayload() })
+      });
+      const pre = document.getElementById('scriptPreview');
+      pre.textContent = data.script || '';
+      pre.style.display = '';
+    }
+
+    function updateRuleSummaryCard() {
+      const card = document.getElementById('ruleSummaryCard');
+      const bs = document.getElementById('fBindScope').value;
+      const intent = document.getElementById('fIntent').value;
+      const risk = document.getElementById('fRisk').value;
+      const parts = conditionLeaves.map(l => {
+        if (l.type === 'list_match') return `名单 ${l.list_name}`;
+        if (l.type === 'cumulative') return `累计 ${l.cumulative_name} ${l.compare || '>='} ${l.threshold || 120}`;
+        return '';
+      }).filter(Boolean);
+      card.style.display = '';
+      card.textContent = `当 bind=${bs}${parts.length ? ' 且 ' + parts.join(' 且 ') : ''} → ${intent}@${risk}`;
+    }
+
+    async function runRuleSimulate() {
+      const runtime = isNewRule ? document.getElementById('fRuntime').value : editRuleMeta.runtime;
+      const layer = isNewRule ? currentLayer : editRuleMeta.layer;
+      const ruleId = isNewRule ? (document.getElementById('fRuleId').value.trim() || 'draft-preview') : selectedRuleId;
+      const fixture = readSimFixture();
+      const body = await resolveBodyForSave();
+      const payload = {
+        editor_mode: isSimpleEditorMode() ? 'simple' : 'advanced',
+        condition: isSimpleEditorMode() ? readConditionPayload() : null,
+        rule: {
+          rule_id: ruleId,
+          bundle_id: bundleId(),
+          layer,
+          runtime,
+          scope: buildRuleScope(),
+          body,
+          intent_action: document.getElementById('fIntent').value,
+          risk_score: Number(document.getElementById('fRisk').value),
+          reason_code: document.getElementById('fReason').value,
+          rollout_state: editRuleMeta && editRuleMeta.rollout_state ? editRuleMeta.rollout_state : 'dry_run'
+        },
+        fixture,
+        options: { cumulative_source: 'mock' }
+      };
+      const data = await admin('/rules/simulate', { method: 'POST', body: JSON.stringify(payload) });
+      const panel = document.getElementById('simulatePanel');
+      panel.style.display = '';
+      const ul = document.getElementById('simTraceList');
+      ul.innerHTML = (data.steps || []).map(s =>
+        `<li class="${s.ok ? 'ok' : 'fail'}"><strong>${esc(s.id)}</strong> ${esc(JSON.stringify(s.detail))}</li>`
+      ).join('');
+      document.getElementById('simSummary').textContent = data.summary && data.summary.message ? data.summary.message : '';
+      log(data);
+    }
+
+    let scriptAcState = { open: false, items: [], index: 0, replaceStart: 0, replaceEnd: 0 };
+
+    function scriptAcClose() {
+      scriptAcState.open = false;
+      document.getElementById('scriptAcPopup').style.display = 'none';
+    }
+
+    function scriptAcItems(kind, filter) {
+      const q = (filter || '').toLowerCase();
+      const match = (name) => !q || name.toLowerCase().includes(q);
+      if (kind === 'list') {
+        return listCatalog.filter(match).map(n => ({ label: n, insert: n }));
+      }
+      if (kind === 'cum') {
+        return cumulativeRows.map(c => field(c, 'cumulative_name', 'cumulativeName')).filter(Boolean)
+          .filter(match).map(n => ({ label: n, insert: n }));
+      }
+      if (kind === 'var') {
+        return contextVars.map(v => v.logical).filter(Boolean).filter(match)
+          .map(n => ({ label: n, insert: n }));
+      }
+      return [];
+    }
+
+    function detectScriptAcTrigger(ta) {
+      const head = ta.value.slice(0, ta.selectionStart);
+      const triggers = [
+        { re: /(?:^|[^\w])listMatch\s*\(\s*['"]?([^'"]*)$/, kind: 'list' },
+        { re: /(?:^|[^\w])getCumulative\s*\(\s*['"]?([^'"]*)$/, kind: 'cum' },
+        { re: /ctx\.getCumulative\s*\(\s*['"]?([^'"]*)$/, kind: 'cum' },
+        { re: /ctx\.var\s*\(\s*['"]?([^'"]*)$/, kind: 'var' },
+      ];
+      for (const t of triggers) {
+        const m = head.match(t.re);
+        if (m) {
+          return { kind: t.kind, filter: m[1] || '', replaceStart: head.length - (m[1] || '').length };
+        }
+      }
+      return null;
+    }
+
+    function scriptAcRender(items) {
+      const ul = document.getElementById('scriptAcPopup');
+      if (!items.length) {
+        scriptAcClose();
+        return;
+      }
+      ul.innerHTML = items.map((it, i) =>
+        `<li class="${i === scriptAcState.index ? 'sel' : ''}" data-i="${i}">${esc(it.label)}</li>`
+      ).join('');
+      ul.style.display = 'block';
+      ul.style.top = '2rem';
+      scriptAcState.open = true;
+      scriptAcState.items = items;
+      ul.querySelectorAll('li').forEach(li => {
+        li.onmousedown = (e) => {
+          e.preventDefault();
+          scriptAcPick(Number(li.dataset.i));
+        };
+      });
+    }
+
+    function scriptAcOpen(ta, kind, filter, replaceStart) {
+      const items = scriptAcItems(kind, filter);
+      scriptAcState.index = 0;
+      scriptAcState.replaceStart = replaceStart;
+      scriptAcState.replaceEnd = ta.selectionStart;
+      scriptAcRender(items);
+    }
+
+    function scriptAcPick(idx) {
+      const ta = document.getElementById('fBody');
+      const item = scriptAcState.items[idx];
+      if (!item) return;
+      const before = ta.value.slice(0, scriptAcState.replaceStart);
+      const after = ta.value.slice(scriptAcState.replaceEnd);
+      const quoted = before.endsWith("'") || before.endsWith('"');
+      const quote = before.endsWith('"') ? '"' : "'";
+      const insertText = quoted ? (item.insert + quote + ')') : ("'" + item.insert + "')");
+      ta.value = before + insertText + after;
+      const pos = before.length + insertText.length;
+      ta.selectionStart = ta.selectionEnd = pos;
+      scriptAcClose();
+      ta.focus();
+    }
+
+    function initScriptAutocomplete() {
+      const ta = document.getElementById('fBody');
+      ta.onkeydown = (e) => {
+        if (scriptAcState.open) {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            scriptAcState.index = Math.min(scriptAcState.index + 1, scriptAcState.items.length - 1);
+            scriptAcRender(scriptAcState.items);
+            return;
+          }
+          if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            scriptAcState.index = Math.max(scriptAcState.index - 1, 0);
+            scriptAcRender(scriptAcState.items);
+            return;
+          }
+          if (e.key === 'Enter' || e.key === 'Tab') {
+            e.preventDefault();
+            scriptAcPick(scriptAcState.index);
+            return;
+          }
+          if (e.key === 'Escape') {
+            scriptAcClose();
+            return;
+          }
+        }
+        if (e.ctrlKey && e.code === 'Space') {
+          e.preventDefault();
+          const tr = detectScriptAcTrigger(ta);
+          if (tr) scriptAcOpen(ta, tr.kind, tr.filter, tr.replaceStart);
+          else scriptAcOpen(ta, 'list', '', ta.selectionStart);
+        }
+      };
+      ta.oninput = () => {
+        clearScriptValidateMsg();
+        const tr = detectScriptAcTrigger(ta);
+        if (tr) scriptAcOpen(ta, tr.kind, tr.filter, tr.replaceStart);
+        else scriptAcClose();
+      };
+      ta.onblur = () => setTimeout(scriptAcClose, 150);
+    }
+
+    function syncScriptAssistUi(runtime) {
+      const scriptRt = runtime === 'lua' || runtime === 'groovy';
+      document.getElementById('conditionAuthoringRow').style.display = scriptRt ? '' : 'none';
+      document.getElementById('simulateFixtureRow').style.display = scriptRt ? '' : 'none';
+      document.getElementById('scriptWizardRow').style.display = scriptRt && !isSimpleEditorMode() ? '' : 'none';
+      document.getElementById('scriptSnippetRow').style.display = scriptRt && !isSimpleEditorMode() ? '' : 'none';
+      document.getElementById('scriptValidateRow').style.display = scriptRt ? '' : 'none';
+      document.getElementById('groovyHint').style.display = runtime === 'groovy' ? '' : 'none';
+      document.getElementById('luaHint').style.display = runtime === 'lua' ? '' : 'none';
+      syncBindScopeUi(runtime);
+      if (scriptRt) {
+        fillWizardListSelect();
+        fillWizardCumSelect();
+        syncWizardFields();
+        const layer = isNewRule ? currentLayer : (editRuleMeta && editRuleMeta.layer) || currentLayer;
+        loadRecipesForLayer(layer).catch(() => {});
+        syncEditorModeUi();
+        ensureSimFixtureEditor();
+      } else {
+        scriptAcClose();
+        clearScriptValidateMsg();
+        document.getElementById('simulatePanel').style.display = 'none';
+      }
     }
 
     function formatBindScope(scope) {
@@ -610,8 +1330,8 @@ end`;
         return 'route';
       }
       if (bs === 'service') {
-        const parts = [ref.upstream_id, ref.consumer_id, ref.api_key_group].filter(Boolean);
-        return parts.length ? `service:${parts.join('/')}` : 'service';
+        const ids = Array.isArray(ref.app_ids) ? ref.app_ids.join(', ') : '';
+        return ids ? `service:${ids}` : 'service';
       }
       return 'global';
     }
@@ -642,12 +1362,8 @@ end`;
         if (uris.length) ref.uris = uris;
         if (scenes.length) ref.scenes = scenes;
       } else if (bs === 'service') {
-        const u = document.getElementById('fBindUpstream').value.trim();
-        const c = document.getElementById('fBindConsumer').value.trim();
-        const g = document.getElementById('fBindApiKeyGroup').value.trim();
-        if (u) ref.upstream_id = u;
-        if (c) ref.consumer_id = c;
-        if (g) ref.api_key_group = g;
+        const ids = document.getElementById('fBindAppIds').value.split(',').map(s => s.trim()).filter(Boolean);
+        if (ids.length) ref.app_ids = ids;
       }
       if (Object.keys(ref).length) scope.bind_ref = ref;
       return scope;
@@ -659,18 +1375,8 @@ end`;
       const ref = s.bind_ref || {};
       document.getElementById('fBindUris').value = Array.isArray(ref.uris) ? ref.uris.join(', ') : '';
       document.getElementById('fBindScenes').value = Array.isArray(ref.scenes) ? ref.scenes.join(', ') : '';
-      document.getElementById('fBindUpstream').value = ref.upstream_id || '';
-      document.getElementById('fBindConsumer').value = ref.consumer_id || '';
-      document.getElementById('fBindApiKeyGroup').value = ref.api_key_group || '';
+      document.getElementById('fBindAppIds').value = Array.isArray(ref.app_ids) ? ref.app_ids.join(', ') : '';
       syncBindScopeFieldsUi();
-    }
-
-    function syncListMatchUi(runtime) {
-      document.getElementById('listMatchRow').style.display = 'none';
-      document.getElementById('cumulativeRuleRow').style.display = 'none';
-      document.getElementById('groovyHint').style.display = runtime === 'groovy' ? '' : 'none';
-      document.getElementById('luaHint').style.display = runtime === 'lua' ? '' : 'none';
-      syncBindScopeUi(runtime);
     }
 
     function syncIntentFromRisk() {
@@ -681,17 +1387,6 @@ end`;
         const cur = document.getElementById('fIntent').value;
         if (cur === 'allow') document.getElementById('fIntent').value = 'deny';
       }
-    }
-
-    function fillListNameSelect(selected) {
-      const sel = document.getElementById('fListName');
-      sel.innerHTML = listCatalog.map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`).join('');
-      if (selected && listCatalog.includes(selected)) sel.value = selected;
-      sel.onchange = () => {
-        if (document.getElementById('fRuntime').value === 'list_match') {
-          document.getElementById('fBody').value = JSON.stringify({ list_name: sel.value }, null, 2);
-        }
-      };
     }
 
     function entryValue(e) {
@@ -890,6 +1585,7 @@ end`;
         tr.querySelector('button').onclick = (e) => { e.stopPropagation(); selectCumulative(name); };
         tbody.appendChild(tr);
       });
+      fillWizardCumSelect();
     }
 
     async function selectCumulative(name) {
@@ -908,13 +1604,13 @@ end`;
       sel.innerHTML = '<option value="">选择名单</option>' +
         listCatalog.map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`).join('');
       if (prev && listCatalog.includes(prev)) sel.value = prev;
-      fillListNameSelect(document.getElementById('fListName').value);
+      fillWizardListSelect();
       const tbody = document.querySelector('#listsTable tbody');
       tbody.innerHTML = '';
       flattenListRows(data.lists).forEach(row => {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td><code>${esc(row.listName)}</code></td>
-          <td>${DIM_HINT[row.dim] || row.dim} <span class="tag">${esc(row.dim)}</span></td>
+          <td>${esc(formatListDimension(row.dim))}</td>
           <td><code>${esc(row.value)}</code></td>
           <td>${esc(fmtTime(row.createdAt))}</td>
           <td>${esc(fmtTime(row.expiresAt))}</td>
@@ -945,6 +1641,8 @@ end`;
         field: v.field || ''
       }));
       renderBindingsTable();
+      fillListVarLogicalSelect();
+      fillCumVarLogicalSelect();
     }
 
     function renderBindingsTable() {
@@ -958,6 +1656,152 @@ end`;
         tr.querySelector('button').onclick = () => { contextVars.splice(idx, 1); renderBindingsTable(); };
         tbody.appendChild(tr);
       });
+    }
+
+    function formatMatchHeaders(h) {
+      if (!h || typeof h !== 'object' || !Object.keys(h).length) return '—';
+      return Object.entries(h).map(([k, v]) => `${k}=${v}`).join(', ');
+    }
+
+    function parseMethodsText(s) {
+      return String(s || 'POST').split(/[,，\s]+/).map(x => x.trim().toUpperCase()).filter(Boolean);
+    }
+
+    async function loadSceneRegistry() {
+      sceneRegistryHydrating = true;
+      try {
+        const data = await admin(`/bundles/${encodeURIComponent(bundleId())}/versions/${encodeURIComponent(bundleVer())}/metadata`);
+        const reg = data.scene_registry || {};
+        document.getElementById('srFailUnknown').checked = !!reg.fail_on_unknown_app;
+        document.getElementById('srFailUnresolved').checked = !!reg.fail_on_unresolved_scene;
+        sceneEntries = (data.scene_entries || []).map(r => ({
+          sceneId: r.scene_id || '',
+          appId: r.app_id || '',
+          defaultScene: !!r.default,
+          uris: Array.isArray(r.uris) ? r.uris : [],
+          priority: r.priority != null ? Number(r.priority) : 0,
+          matchQuery: (r.match && r.match.query) ? { ...r.match.query } : {}
+        }));
+        renderSceneRegistryTable();
+      } finally {
+        sceneRegistryHydrating = false;
+      }
+    }
+
+    async function saveSceneRegistry(sync) {
+      if (!sceneEntries.length) {
+        throw new Error('至少一条 scene');
+      }
+      const data = await admin(
+        `/bundles/${encodeURIComponent(bundleId())}/versions/${encodeURIComponent(bundleVer())}/metadata/scene-registry?sync=${sync}`,
+        { method: 'PUT', body: JSON.stringify(readSceneRegistryPayload()) }
+      );
+      log(sync ? 'scene_registry 已同步到网关' : 'scene_registry 已保存', data);
+      await loadSceneRegistry();
+      return data;
+    }
+
+    function onSceneRegistryFlagsChange() {
+      if (sceneRegistryHydrating || !sceneEntries.length) return;
+      saveSceneRegistry(false).catch(e => {
+        log(e.message);
+        loadSceneRegistry();
+      });
+    }
+
+    function formatMatchQuery(q) {
+      if (!q || !Object.keys(q).length) return '—';
+      return Object.entries(q).map(([k, v]) => `${k}=${v}`).join(', ');
+    }
+
+    function renderSceneRegistryTable() {
+      const tbody = document.querySelector('#sceneRegTable tbody');
+      tbody.innerHTML = '';
+      sceneEntries.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td><code>${esc(row.sceneId)}</code></td>
+          <td><code>${esc(row.appId)}</code></td>
+          <td>${row.defaultScene ? '✓' : '—'}</td>
+          <td><code>${esc((row.uris || []).join(', '))}</code></td>
+          <td>${row.priority != null ? row.priority : 0}</td>
+          <td><code>${esc(formatMatchQuery(row.matchQuery))}</code></td>
+          <td><button class="danger">删</button></td>`;
+        tr.querySelector('button').onclick = async () => {
+          if (sceneEntries.length <= 1) { log('至少保留一条 scene'); return; }
+          sceneEntries.splice(idx, 1);
+          renderSceneRegistryTable();
+          try {
+            await saveSceneRegistry(false);
+          } catch (e) {
+            log(e.message);
+            await loadSceneRegistry();
+          }
+        };
+        tbody.appendChild(tr);
+      });
+    }
+
+    function readSceneRegistryPayload() {
+      return {
+        fail_on_unknown_app: document.getElementById('srFailUnknown').checked,
+        fail_on_unresolved_scene: document.getElementById('srFailUnresolved').checked,
+        scenes: sceneEntries.map(e => {
+          const row = {
+            scene_id: e.sceneId,
+            app_id: e.appId,
+            default_scene: e.defaultScene,
+            uris: e.uris && e.uris.length ? e.uris : [],
+            priority: e.priority != null ? e.priority : 0
+          };
+          if (e.matchQuery && Object.keys(e.matchQuery).length) row.match_query = e.matchQuery;
+          return row;
+        })
+      };
+    }
+
+    async function loadGatewayRoutes() {
+      const data = await admin(`/bundles/${encodeURIComponent(bundleId())}/versions/${encodeURIComponent(bundleVer())}/metadata`);
+      const gw = data.gateway || {};
+      document.getElementById('gwEvaluate').checked = gw.evaluate !== false;
+      document.getElementById('gwFailMode').value = (gw.fail_mode || 'open').toLowerCase();
+      const cs = gw.cloud_scan || {};
+      document.getElementById('gwAgentUrl').value = cs.agent_url || '';
+      document.getElementById('gwTimeoutMs').value = cs.timeout_ms != null ? cs.timeout_ms : 3000;
+      gatewayRoutes = (data.gateway_routes || []).map(r => ({
+        uri: r.uri || '',
+        methods: Array.isArray(r.methods) && r.methods.length ? r.methods : ['POST']
+      }));
+      renderGatewayRoutesTable();
+    }
+
+    function renderGatewayRoutesTable() {
+      const tbody = document.querySelector('#gwRoutesTable tbody');
+      tbody.innerHTML = '';
+      gatewayRoutes.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td><code>${esc(row.uri)}</code></td>
+          <td>${esc((row.methods || []).join(', '))}</td>
+          <td><button class="danger" data-i="${idx}">删</button></td>`;
+        tr.querySelector('button').onclick = () => { gatewayRoutes.splice(idx, 1); renderGatewayRoutesTable(); };
+        tbody.appendChild(tr);
+      });
+    }
+
+    function readGatewayRoutesPayload() {
+      const agentUrl = document.getElementById('gwAgentUrl').value.trim();
+      const timeoutMs = Number(document.getElementById('gwTimeoutMs').value);
+      const cloudScan = {};
+      if (agentUrl) cloudScan.agent_url = agentUrl;
+      if (!Number.isNaN(timeoutMs) && timeoutMs > 0) cloudScan.timeout_ms = timeoutMs;
+      return {
+        evaluate: document.getElementById('gwEvaluate').checked,
+        fail_mode: document.getElementById('gwFailMode').value || 'open',
+        cloud_scan: cloudScan,
+        routes: gatewayRoutes.map(r => ({
+          uri: r.uri,
+          methods: r.methods && r.methods.length ? r.methods : ['POST']
+        }))
+      };
     }
 
     async function loadRules() {
@@ -992,18 +1836,11 @@ end`;
         ? r.rollout_state : (r.rollout_state === 'dry_run' ? 'dry_run' : 'dry_run');
       document.getElementById('fCanary').value = r.canary_percent ?? '';
       const body = r.body;
-      document.getElementById('fBody').value = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
-      syncListMatchUi(r.runtime);
-      if (r.runtime === 'list_match' && body && body.list_name) {
-        fillListNameSelect(body.list_name);
-      }
-      if (r.runtime === 'cumulative' && body) {
-        const cond = body.condition || {};
-        fillCumNameSelect(body.cumulative_name);
-        document.getElementById('fCumCompare').value = cond.compare_op || body.compare_op || 'gte';
-        document.getElementById('fCumThreshold').value = cond.threshold ?? body.threshold ?? 120;
-        syncCumulativeRuleBody();
-      }
+      const script = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
+      document.getElementById('fBody').value = script;
+      syncScriptAssistUi(r.runtime);
+      await parseBodyIntoForm(r.layer, r.runtime, script);
+      clearScriptValidateMsg();
       loadBindUiFromScope(r.scope);
       setRuleEditorCloudOnly(r.layer);
       setRuleEditorStatusUi(r.rollout_state);
@@ -1108,52 +1945,32 @@ end`;
       }
     }
 
-    function renderRolloutGate(evalResult) {
-      rolloutEvalResult = evalResult;
-      const panel = document.getElementById('roGatePanel');
-      if (!evalResult) {
-        panel.className = 'gate-box';
-        panel.textContent = '选择规则后点击「评估升级」';
-        document.getElementById('roSuggestedHint').textContent = '';
+    function updateRolloutSuggestedHint(meta) {
+      const hint = document.getElementById('roSuggestedHint');
+      if (!meta) {
+        hint.textContent = '选择规则后可操作';
         return;
       }
-      const pass = !!evalResult.pass;
-      panel.className = 'gate-box ' + (pass ? 'pass' : 'fail');
-      const reasons = evalResult.reasons || [];
-      const dc = evalResult.data_coverage;
-      let dcHtml = '';
-      if (dc) {
-        const ok = !!dc.sufficient;
-        dcHtml = `<div style="margin-top:0.35rem;font-size:0.85rem;color:${ok ? '#166534' : '#b45309'}">`
-          + `数据覆盖 [${esc(dc.layer || '')}]: audit_24h=${dc.audit_events_24h ?? 0}`
-          + `, lag≈${(dc.ingest_lag_p95_minutes ?? 0).toFixed?.(1) ?? dc.ingest_lag_p95_minutes}min`
-          + (ok ? ' ✓' : ' — SDK 上报可能异常')
-          + '</div>';
+      const st = meta.rollout_state;
+      if (st === 'draft') {
+        hint.textContent = 'draft 规则请先点「上线」进入 dry_run';
+        return;
       }
-      const m = evalResult.metrics || {};
-      let g4Html = '';
-      if (m.g4_threshold != null) {
-        const g4ok = m.g4_skipped ? null : !!m.g4_pass;
-        const color = m.g4_skipped ? '#64748b' : (g4ok ? '#166534' : '#b45309');
-        g4Html = `<div style="margin-top:0.35rem;font-size:0.85rem;color:${color}">`
-          + `G4 突增: review_24h=${m.review_24h ?? '—'}`
-          + `, baseline_7d=${(m.baseline_7d_daily_avg ?? 0).toFixed?.(1) ?? m.baseline_7d_daily_avg}`
-          + `, threshold=${(m.g4_threshold ?? 0).toFixed?.(1) ?? m.g4_threshold}`
-          + (m.g4_skipped ? ' (skip: 基线不足3日)' : (g4ok ? ' ✓' : ' ✗'))
-          + '</div>';
+      if (st === 'disabled') {
+        hint.textContent = '已停用，可「恢复草稿」后编辑';
+        return;
       }
-      panel.innerHTML = `<div><strong>${pass ? '通过' : '未通过'}</strong> `
-        + `${esc(evalResult.from_state || '')} → ${esc(evalResult.to_state || '')}`
-        + (evalResult.target_canary_percent != null ? ` @ ${evalResult.target_canary_percent}%` : '')
-        + '</div>'
-        + g4Html
-        + dcHtml
-        + (reasons.length ? `<ul style="margin:0.35rem 0 0 1rem">${reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : '')
-        + (evalResult.metrics ? `<pre style="margin:0.5rem 0 0;font-size:0.75rem">${esc(JSON.stringify(evalResult.metrics, null, 2))}</pre>` : '');
-      const sug = evalResult.suggested_next;
-      document.getElementById('roSuggestedHint').textContent = sug
-        ? `建议下一步：${rolloutStateLabel(sug.rollout_state, sug.canary_percent)}`
-        : (rolloutRuleMeta && rolloutRuleMeta.rollout_state === 'draft' ? 'draft 规则请先点「上线」进入 dry_run' : '当前无建议升级（可能已在 full）');
+      if (st === 'full') {
+        hint.textContent = '已在 full，无下一步升级';
+        return;
+      }
+      const target = rolloutEvaluateTarget(meta);
+      if (!target) {
+        hint.textContent = '当前无下一步升级目标';
+        return;
+      }
+      hint.textContent = `下一步：${rolloutStateLabel(target.target_state, target.canary_percent)}`
+        + '（未达标时返回 409，可勾选 force 并填写说明）';
     }
 
     function renderRolloutSamples(samples) {
@@ -1210,23 +2027,6 @@ end`;
       }
     }
 
-    function renderRolloutGates(gates) {
-      const tbody = document.querySelector('#roGatesTable tbody');
-      tbody.innerHTML = '';
-      (gates || []).forEach(g => {
-        let reasons = g.reasons_json || '';
-        try { reasons = JSON.parse(reasons).join('; '); } catch { /* keep raw */ }
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${esc(fmtTime(g.created_at))}</td>
-          <td>${esc(g.from_state || '')} → ${esc(g.to_state || '')}</td>
-          <td>${g.pass ? 'pass' : 'fail'}</td><td>${esc(reasons)}</td><td>${esc(g.comment || '')}</td>`;
-        tbody.appendChild(tr);
-      });
-      if (!gates || !gates.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="hint">暂无门禁记录</td></tr>';
-      }
-    }
-
     function updateRolloutActions(meta) {
       const st = meta ? meta.rollout_state : null;
       const isDraft = st === 'draft';
@@ -1236,10 +2036,10 @@ end`;
       document.getElementById('roRecover').style.display = isDisabled ? '' : 'none';
       document.getElementById('roDisable').style.display = meta && !isDisabled ? '' : 'none';
       document.getElementById('roRollback').style.display = exec && st !== 'dry_run' ? '' : 'none';
-      document.getElementById('roEvaluate').style.display = meta && !isDraft && !isDisabled && st !== 'full' ? '' : 'none';
-      document.getElementById('roApply').style.display = document.getElementById('roEvaluate').style.display;
+      document.getElementById('roApply').style.display = meta && !isDraft && !isDisabled && st !== 'full' ? '' : 'none';
       document.getElementById('roLadderStart').style.display = exec && st !== 'full' ? '' : 'none';
       document.getElementById('roLadderPause').style.display = exec ? '' : 'none';
+      updateRolloutSuggestedHint(meta);
     }
 
     function rolloutEvaluateTarget(meta) {
@@ -1279,61 +2079,81 @@ end`;
       if (prev && rolloutAllRules.some(r => r.rule_id === prev)) sel.value = prev;
     }
 
-    async function refreshRolloutDashboard() {
-      await loadAllRulesForRollout();
+    async function refreshRolloutDashboard(opts) {
+      if (rolloutRefreshBusy) return;
+      rolloutRefreshBusy = true;
       try {
-        const pol = await admin('/rollout-policy');
-        if (pol && pol.canary_ladder && pol.canary_ladder.length) {
-          rolloutCanaryLadder = pol.canary_ladder;
-        }
-      } catch (_) { /* 读 tb_tenant_rollout_policy；无 UI 配置 */ }
-      const ruleId = rolloutRuleId();
-      if (!ruleId) {
-        rolloutRuleMeta = null;
-        document.getElementById('roBadge').innerHTML = '';
-        renderRolloutFlow('draft');
-        renderRolloutKpi({});
-        renderRolloutMetrics([]);
-        renderRolloutTimeline([]);
-        renderRolloutGate(null);
-        renderRolloutSamples([]);
-        renderRolloutGates([]);
-        updateRolloutActions(null);
-        return;
-      }
-      const meta = await admin('/rules/' + encodeURIComponent(ruleId));
-      rolloutRuleMeta = meta;
-      const st = meta.rollout_state || 'draft';
-      const pct = meta.canary_percent;
-      document.getElementById('roBadge').innerHTML = ruleStatusTag(st)
-        + (pct != null ? ` <span class="tag">${pct}%</span>` : '')
-        + ` <span class="hint">${esc(meta.layer)}/${esc(meta.runtime)}</span>`;
-      if (meta.layer === 'edge') {
+        await loadAllRulesForRollout();
         try {
-          const health = await admin('/rollout/ingest-health?layer=edge&hours=24');
-          document.getElementById('roBadge').innerHTML += ` <span class="hint">edge audit 24h: ${health.audit_events ?? 0}</span>`;
-        } catch (_) { /* optional */ }
+          const pol = await admin('/rollout-policy');
+          if (pol && pol.canary_ladder && pol.canary_ladder.length) {
+            rolloutCanaryLadder = pol.canary_ladder;
+          }
+        } catch (_) { /* 读 tb_tenant_rollout_policy；无 UI 配置 */ }
+        const ruleId = rolloutRuleId();
+        if (!ruleId) {
+          rolloutRuleMeta = null;
+          document.getElementById('roBadge').innerHTML = '';
+          renderRolloutFlow('draft');
+          renderRolloutKpi({});
+          renderRolloutMetrics([]);
+          renderRolloutTimeline([]);
+          renderRolloutSamples([]);
+          updateRolloutActions(null);
+          return;
+        }
+        const meta = await admin('/rules/' + encodeURIComponent(ruleId));
+        rolloutRuleMeta = meta;
+        const st = meta.rollout_state || 'draft';
+        const pct = meta.canary_percent;
+        document.getElementById('roBadge').innerHTML = ruleStatusTag(st)
+          + (pct != null ? ` <span class="tag">${pct}%</span>` : '')
+          + ` <span class="hint">${esc(meta.layer)}/${esc(meta.runtime)}</span>`;
+        if (meta.layer === 'edge') {
+          try {
+            const health = await admin('/rollout/ingest-health?layer=edge&hours=24');
+            document.getElementById('roBadge').innerHTML += ` <span class="hint">edge audit 24h: ${health.audit_events ?? 0}</span>`;
+          } catch (_) { /* optional */ }
+        }
+        renderRolloutFlow(st, pct);
+        updateRolloutActions(meta);
+        const [metrics, timeline, samples] = await Promise.all([
+          admin('/rules/' + encodeURIComponent(ruleId) + '/metrics?hours=24').catch(() => ({ series: [], totals: {} })),
+          admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/timeline').catch(() => []),
+          admin('/rules/' + encodeURIComponent(ruleId) + '/audit-samples?effective_action=review&limit=30').catch(() => [])
+        ]);
+        renderRolloutKpi(metrics.totals || {});
+        renderRolloutMetrics(metrics.series || []);
+        renderRolloutTimeline(timeline);
+        renderRolloutSamples(samples);
+      } finally {
+        rolloutRefreshBusy = false;
       }
-      renderRolloutFlow(st, pct);
-      updateRolloutActions(meta);
-      const [metrics, timeline, samples, gates] = await Promise.all([
-        admin('/rules/' + encodeURIComponent(ruleId) + '/metrics?hours=24').catch(() => ({ series: [], totals: {} })),
-        admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/timeline').catch(() => []),
-        admin('/rules/' + encodeURIComponent(ruleId) + '/audit-samples?effective_action=review&limit=30').catch(() => []),
-        admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/gates?limit=20').catch(() => [])
-      ]);
-      renderRolloutKpi(metrics.totals || {});
-      renderRolloutMetrics(metrics.series || []);
-      renderRolloutTimeline(timeline);
-      renderRolloutSamples(samples);
-      renderRolloutGates(gates);
-      renderRolloutGate(null);
+    }
+
+    function startRolloutAutoRefresh() {
+      stopRolloutAutoRefresh();
+      rolloutRefreshTimer = setInterval(() => {
+        if (document.getElementById('panel-rollout').classList.contains('active')) {
+          refreshRolloutDashboard({ silent: true }).catch(() => {});
+        }
+      }, ROLLOUT_REFRESH_MS);
+    }
+
+    function stopRolloutAutoRefresh() {
+      if (rolloutRefreshTimer) {
+        clearInterval(rolloutRefreshTimer);
+        rolloutRefreshTimer = null;
+      }
     }
 
     async function reloadAll() {
+      syncTopbarBundle();
       await loadLists();
       await loadCumulatives();
       await loadBindings();
+      await loadSceneRegistry();
+      await loadGatewayRoutes();
       await loadRules();
       if (document.getElementById('panel-rollout').classList.contains('active')) {
         await refreshRolloutDashboard();
@@ -1369,6 +2189,9 @@ end`;
       setActiveNav(tab);
       if (tab === 'rollout') {
         refreshRolloutDashboard().catch(e => log(e.message));
+        startRolloutAutoRefresh();
+      } else {
+        stopRolloutAutoRefresh();
       }
     }
 
@@ -1469,9 +2292,10 @@ end`;
 
     document.getElementById('btnListCreate').onclick = async () => {
       const name = document.getElementById('newListName').value.trim();
-      const dim = document.getElementById('newListDim').value;
       const remark = document.getElementById('newListRemark').value.trim() || null;
       if (!name) { log('请填写 list_name'); return; }
+      let dim;
+      try { dim = buildListDimension(); } catch (e) { log(e.message); return; }
       await admin('/lists/' + encodeURIComponent(name), {
         method: 'PUT',
         body: JSON.stringify({ dimension: dim, remark })
@@ -1481,6 +2305,7 @@ end`;
       await loadLists();
       log('名单已创建');
     };
+    document.getElementById('newListDim').onchange = syncListDimUi;
 
     document.getElementById('btnListAdd').onclick = () => {
       const listName = document.getElementById('entryListName').value;
@@ -1529,11 +2354,103 @@ end`;
         })})
       }).then(log).catch(e => log(e.message));
 
+    document.getElementById('srFailUnknown').onchange = onSceneRegistryFlagsChange;
+    document.getElementById('srFailUnresolved').onchange = onSceneRegistryFlagsChange;
+
+    document.getElementById('btnSceneRegAdd').onclick = async () => {
+      const sceneId = document.getElementById('srSceneId').value.trim();
+      const appId = document.getElementById('srAppId').value.trim();
+      const uriRaw = document.getElementById('srUris').value.trim();
+      if (!sceneId || !appId) { log('请填写 scene_id 与 app_id'); return; }
+      if (sceneEntries.some(e => e.sceneId === sceneId)) { log('scene_id 已存在'); return; }
+      const matchQuery = {};
+      const mq = document.getElementById('srMatchQuery').value.trim();
+      if (mq && mq.includes('=')) {
+        const eq = mq.indexOf('=');
+        matchQuery[mq.slice(0, eq).trim()] = mq.slice(eq + 1).trim();
+      }
+      sceneEntries.push({
+        sceneId,
+        appId,
+        defaultScene: document.getElementById('srDefault').checked,
+        uris: uriRaw ? uriRaw.split(',').map(s => s.trim()).filter(Boolean) : [],
+        priority: Number(document.getElementById('srPriority').value) || 0,
+        matchQuery
+      });
+      document.getElementById('srSceneId').value = '';
+      document.getElementById('srAppId').value = '';
+      document.getElementById('srDefault').checked = false;
+      document.getElementById('srUris').value = '';
+      document.getElementById('srMatchQuery').value = '';
+      renderSceneRegistryTable();
+      try {
+        await saveSceneRegistry(false);
+      } catch (e) {
+        log(e.message);
+        await loadSceneRegistry();
+      }
+    };
+    document.getElementById('btnSyncSceneRegistry').onclick = () =>
+      saveSceneRegistry(true).catch(e => log(e.message));
+
+    document.getElementById('btnGwRouteAdd').onclick = () => {
+      const uri = document.getElementById('grUri').value.trim();
+      if (!uri) { log('请填写 uri'); return; }
+      if (gatewayRoutes.some(r => r.uri === uri)) { log('uri 已存在'); return; }
+      gatewayRoutes.push({
+        uri,
+        methods: parseMethodsText(document.getElementById('grMethods').value)
+      });
+      document.getElementById('grUri').value = '';
+      document.getElementById('grMethods').value = 'POST';
+      renderGatewayRoutesTable();
+    };
+    document.getElementById('btnSaveGatewayRoutes').onclick = () => {
+      if (!gatewayRoutes.length) {
+        log('至少保留一条网关路由');
+        return;
+      }
+      return admin(`/bundles/${encodeURIComponent(bundleId())}/versions/${encodeURIComponent(bundleVer())}/metadata/gateway-routes?sync=true`, {
+        method: 'PUT',
+        body: JSON.stringify(readGatewayRoutesPayload())
+      }).then(async data => {
+        log(data);
+        await loadGatewayRoutes();
+      }).catch(e => log(e.message));
+    };
+
     document.getElementById('btnNewRule').onclick = () => openNewRuleEditor();
     document.getElementById('fRisk').onchange = syncIntentFromRisk;
-    document.getElementById('fCumName').onchange = syncCumulativeRuleBody;
-    document.getElementById('fCumCompare').onchange = syncCumulativeRuleBody;
-    document.getElementById('fCumThreshold').onchange = syncCumulativeRuleBody;
+    document.getElementById('wPattern').onchange = syncWizardFields;
+    document.getElementById('btnGenScript').onclick = () => generateScriptFromWizard();
+    document.getElementById('fEditorMode').onchange = () => syncEditorModeUi();
+    document.getElementById('btnApplyRecipe').onclick = () => {
+      const id = document.getElementById('fRecipe').value;
+      if (!id) { log('请选择模板'); return; }
+      applyRecipe(id);
+    };
+    document.getElementById('btnPreviewScript').onclick = () => previewCompiledScript().catch(e => log(e.message));
+    document.getElementById('btnSimulateRule').onclick = () => runRuleSimulate().catch(e => log(e.message));
+    document.getElementById('btnSimFixtureApplyPreset').onclick = () => {
+      resetSimFixture(document.getElementById('fSimFixturePreset').value);
+    };
+    document.getElementById('btnSimFixtureReset').onclick = () => resetSimFixture('clinical_chat');
+    document.getElementById('btnAddListCond').onclick = () => {
+      conditionLeaves.push({ type: 'list_match', list_name: listCatalog[0] || 'deny_keyword', value_source: 'content' });
+      renderConditionLeaves();
+      updateRuleSummaryCard();
+    };
+    document.getElementById('btnAddCumCond').onclick = () => {
+      const name = field(cumulativeRows[0], 'cumulative_name', 'cumulativeName') || 'user_req_1h';
+      conditionLeaves.push({ type: 'cumulative', cumulative_name: name, compare: 'gte', threshold: 120 });
+      renderConditionLeaves();
+      updateRuleSummaryCard();
+    };
+    document.getElementById('btnValidateScript').onclick = () =>
+      validateScriptBody(true).catch(e => log(e.message));
+    document.querySelectorAll('#scriptSnippetRow button[data-snippet]').forEach(btn => {
+      btn.onclick = () => insertAtCursor(document.getElementById('fBody'), scriptSnippet(btn.dataset.snippet));
+    });
     document.getElementById('fBindScope').onchange = syncBindScopeFieldsUi;
 
     document.getElementById('btnSaveRule').onclick = async () => {
@@ -1550,9 +2467,18 @@ end`;
       }
       const layer = isNewRule ? currentLayer : editRuleMeta.layer;
       const runtime = isNewRule ? document.getElementById('fRuntime').value : editRuleMeta.runtime;
-      if (runtime === 'cumulative') syncCumulativeRuleBody();
-      let body;
-      try { body = JSON.parse(document.getElementById('fBody').value); } catch { body = document.getElementById('fBody').value; }
+      const body = await resolveBodyForSave();
+      if (runtime === 'lua' || runtime === 'groovy') {
+        const vr = await admin('/rules/validate-script', {
+          method: 'POST',
+          body: JSON.stringify({ layer, runtime, body })
+        });
+        showScriptValidateResult(vr);
+        if (!vr.valid) {
+          log('脚本校验未通过：' + (vr.errors || []).join('；'));
+          return;
+        }
+      }
       await admin('/rules', {
         method: 'POST',
         body: JSON.stringify({
@@ -1564,7 +2490,9 @@ end`;
           risk_score: Number(document.getElementById('fRisk').value),
           intent_action: document.getElementById('fIntent').value,
           scope: buildRuleScope(),
-          body
+          body,
+          editor_mode: isSimpleEditorMode() ? 'simple' : 'advanced',
+          condition: isSimpleEditorMode() ? readConditionPayload() : null
         })
       });
       log(isNewRule ? '规则已创建' : '规则已保存');
@@ -1610,40 +2538,12 @@ end`;
     document.getElementById('roRefresh').onclick = () =>
       refreshRolloutDashboard().then(() => log('策略看板已刷新')).catch(e => log(e.message));
 
-    document.getElementById('roEvaluate').onclick = async () => {
-      const ruleId = rolloutRuleId();
-      if (!ruleId || !rolloutRuleMeta) return;
-      const target = rolloutEvaluateTarget(rolloutRuleMeta);
-      if (!target) {
-        log('当前状态无可评估的升级目标');
-        return;
-      }
-      try {
-        const evalResult = await admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/evaluate', {
-          method: 'POST',
-          body: JSON.stringify(target)
-        });
-        renderRolloutGate(evalResult);
-        log(evalResult.pass ? '门禁通过' : '门禁未通过');
-        const gates = await admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/gates?limit=20');
-        renderRolloutGates(gates);
-      } catch (e) {
-        log(e.message);
-      }
-    };
-
     document.getElementById('roApply').onclick = async () => {
       const ruleId = rolloutRuleId();
       if (!ruleId || !rolloutRuleMeta) return;
-      let target = rolloutEvaluateTarget(rolloutRuleMeta);
-      if (rolloutEvalResult && rolloutEvalResult.to_state) {
-        target = {
-          rollout_state: rolloutEvalResult.to_state,
-          canary_percent: rolloutEvalResult.target_canary_percent
-        };
-      }
+      const target = rolloutEvaluateTarget(rolloutRuleMeta);
       if (!target || (!target.rollout_state && !target.target_state)) {
-        log('请先「评估升级」且通过，或当前无建议目标');
+        log('当前无下一步升级目标');
         return;
       }
       const force = document.getElementById('roForce').checked;
@@ -1709,6 +2609,7 @@ end`;
       document.getElementById('roTraceModal').style.display = 'none';
     };
 
+    initScriptAutocomplete();
     reloadAll().catch(e => log(e.message));
   </script>
 </body>

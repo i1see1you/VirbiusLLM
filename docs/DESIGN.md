@@ -1096,7 +1096,7 @@ out/{tenant}/{bundle_version}/gateway/
 #### 8.10.3.2 Registry 输入（gateway 规则）
 
 - `layer: gateway`、`runtime: lua` 的 `rules[].body` → 编入 `rules.lua`。
-- `scope.tenants` / `scope.scenes` → Compiler 生成 Global/Service/Route 绑定（§11.4）；名单 / 累计 **`bind_scope`** 见 [bind-scope.md](openspec/bind-scope.md)。
+- `scope.tenants` / `scope.scenes` → Compiler 生成 Global/Service/Route 绑定（§11.4）；**`scene_registry`** 见 [scene-registry.md](openspec/scene-registry.md)；名单 / 累计 **`bind_scope`** 见 [bind-scope.md](openspec/bind-scope.md)。
 - **`bundle.gateway.routes[]`**：`scene`、`uri`、`methods`（可选 `priority`、`match.headers`）→ `apisix-routes-{scene}.json`；存 Registry `tb_bundles.metadata_json`。
 - 可选 `bundle.gateway.cloud_scan`：agent 调 engine 的 endpoint/timeout（元数据）。
 

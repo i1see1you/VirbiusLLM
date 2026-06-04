@@ -53,6 +53,7 @@ public class CompilerCli implements Runnable {
                 count += compileLayerRules(root, output, "gateway");
                 Path gwDir = output.resolve("gateway");
                 GatewayApisixEmitter.emitService(root, gwDir, json);
+                GatewayApisixEmitter.emitSceneRegistry(root, gwDir, json);
                 int routeCount = GatewayApisixEmitter.emitRoutes(root, gwDir, json);
                 System.out.println("gateway routes: " + routeCount);
             }
