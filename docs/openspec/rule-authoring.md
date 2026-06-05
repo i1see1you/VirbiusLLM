@@ -109,7 +109,7 @@ Cloud L3 根节点：
 
 L3 Groovy simulate 需在 fixture 提供 `prior_signals` 供 `wouldHitBlock()`（**仅高级 groovy 脚本**；默认租户无元 L3 规则）。
 
-**prompt simulate**（P2 最小范围）：bind 命中后 control 调用 engine `POST /v1/simulate/prompt`，矩阵**仅含当前 draft 一条**；`decide.result=true` 当且仅当 1B 返回 `hit_rule=true` 且 `triggered_id` 与本规则 `rule_id` 一致。不含 tenant 已发布规则合并、不含 ActionMerge。
+**prompt simulate**（P2 最小范围）：bind 命中后 control 调用 engine `POST /v1/simulate/prompt`，矩阵**仅含当前 draft 一条**；`decide.result=true` 当且仅当 1B 返回 `hit_rule=true` 且 `triggered_id` 与本规则 `rule_id` 一致。`decide` 步常规字段：`llm_hit_rule`、`triggered_id`、`reason`；**仅当 1B 调用失败或返回无法解析时**附带 `llm_response` 原文。不含 tenant 已发布规则合并、不含 ActionMerge。
 
 Advanced Lua：仅当脚本可 parse 为 AST 时可 simulate；否则返回错误。
 

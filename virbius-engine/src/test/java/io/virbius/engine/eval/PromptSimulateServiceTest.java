@@ -37,6 +37,7 @@ class PromptSimulateServiceTest {
         assertTrue(resp.hit());
         assertTrue(resp.llmHitRule());
         assertEquals("Rule_201", resp.triggeredId());
+        assertEquals("{\"hit_rule\": true, \"triggered_id\": \"Rule_201\", \"reason\": \"arch\"}", resp.llmResponse());
         verify(llmClient).complete(org.mockito.ArgumentMatchers.argThat(p -> p.contains("[Rule_201]")
                 && p.contains("禁止讨论架构")
                 && !p.contains("[Rule_202]")));
@@ -75,6 +76,7 @@ class PromptSimulateServiceTest {
                 "Rule_201", "body", "ARCH", "hello"));
 
         assertFalse(resp.hit());
-        assertEquals("LLM empty response", resp.error());
+        assertTrue(resp.error().startsWith("LLM empty response"));
+        assertEquals("", resp.llmResponse());
     }
 }

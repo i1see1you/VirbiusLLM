@@ -25,24 +25,30 @@ public class PromptSimulateService {
     public PromptSimulateResponseDto simulate(PromptSimulateRequestDto request) {
         String ruleId = request.ruleId();
         if (ruleId == null || ruleId.isBlank()) {
-            return new PromptSimulateResponseDto(false, false, null, null, "rule_id required");
+            return new PromptSimulateResponseDto(false, false, null, null, null, "rule_id required");
         }
         String content = request.content();
         if (content == null || content.isBlank()) {
-            return new PromptSimulateResponseDto(false, false, null, null, "content required");
+            return new PromptSimulateResponseDto(false, false, null, null, null, "content required");
         }
 
         RuleEntry draft = draftRule(ruleId, request.body(), request.reasonCode());
         String prompt = PromptMatrixBuilder.buildChatMlPrompt(llmProps, List.of(draft), content);
-        String assistant = llmClient.complete(prompt);
+        PromptLlmClient.CompleteResult llm = llmClient.completeDetail(prompt);
+        if (llm.error() != null && !llm.error().isBlank()) {
+            return new PromptSimulateResponseDto(
+                    false, false, null, null, llm.content(), llm.error());
+        }
+        String assistant = llm.content();
         if (assistant == null || assistant.isBlank()) {
-            return new PromptSimulateResponseDto(false, false, null, null, "LLM empty response");
+            return new PromptSimulateResponseDto(
+                    false, false, null, null, assistant, "LLM empty response (model=" + llmProps.model() + ")");
         }
 
         PromptAuditResult audit = auditParser.parse(assistant);
         boolean hit = audit.hitRule() && ruleIdsMatch(ruleId, audit.triggeredId());
         return new PromptSimulateResponseDto(
-                hit, audit.hitRule(), audit.triggeredId(), audit.reason(), null);
+                hit, audit.hitRule(), audit.triggeredId(), audit.reason(), assistant, null);
     }
 
     private static RuleEntry draftRule(String ruleId, String body, String reasonCode) {

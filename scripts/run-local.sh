@@ -105,7 +105,11 @@ done
 ensure_redis
 
 echo "Starting services (logs: $LOG_DIR)"
+PROMPT_LLM_MODEL="${VIRBIUS_PROMPT_LLM_MODEL:-virbius-prompt-1b}"
+PROMPT_LLM_BASE="${VIRBIUS_PROMPT_LLM_BASE_URL:-http://127.0.0.1:11434}"
+echo "prompt-llm: $PROMPT_LLM_BASE model=$PROMPT_LLM_MODEL"
 nohup env VIRBIUS_DATA_DIR="$VIRBIUS_DATA_DIR" VIRBIUS_REDIS_URL="$VIRBIUS_REDIS_URL" \
+  VIRBIUS_PROMPT_LLM_BASE_URL="$PROMPT_LLM_BASE" VIRBIUS_PROMPT_LLM_MODEL="$PROMPT_LLM_MODEL" \
   java -jar "$ROOT/virbius-engine/target/virbius-engine-0.1.0-SNAPSHOT.jar" \
   >"$LOG_DIR/engine.log" 2>&1 &
 nohup env VIRBIUS_DATA_DIR="$VIRBIUS_DATA_DIR" VIRBIUS_REDIS_URL="$VIRBIUS_REDIS_URL" \

@@ -185,15 +185,33 @@ public class RuleSimulateService {
         String body = GroovyRuleBodies.asScript(rule.get("body"));
         String reasonCode = str(rule.get("reason_code"));
         Map<String, Object> llm = promptSimulateClient.simulate(ruleId, body, reasonCode, matchCtx.content());
+        putPromptLlmDetail(decideDetail, llm);
         Object err = llm.get("error");
         if (err != null && !String.valueOf(err).isBlank()) {
             throw new IllegalStateException(String.valueOf(err));
         }
-        boolean hit = Boolean.TRUE.equals(llm.get("hit"));
+        return Boolean.TRUE.equals(llm.get("hit"));
+    }
+
+    private static void putPromptLlmDetail(Map<String, Object> decideDetail, Map<String, Object> llm) {
         decideDetail.put("llm_hit_rule", llm.get("llm_hit_rule"));
         decideDetail.put("triggered_id", llm.get("triggered_id"));
         decideDetail.put("reason", llm.get("reason"));
-        return hit;
+        if (isAbnormalLlmResponse(llm)) {
+            Object raw = llm.get("llm_response");
+            if (raw != null && !String.valueOf(raw).isBlank()) {
+                decideDetail.put("llm_response", raw);
+            }
+        }
+    }
+
+    private static boolean isAbnormalLlmResponse(Map<String, Object> llm) {
+        Object err = llm.get("error");
+        if (err != null && !String.valueOf(err).isBlank()) {
+            return true;
+        }
+        String raw = str(llm.get("llm_response"));
+        return raw != null && !raw.isBlank() && !raw.contains("hit_rule");
     }
 
     @SuppressWarnings("unchecked")
@@ -371,6 +389,10 @@ public class RuleSimulateService {
             return promptRuntime ? "bind_scope 未命中，不会调用 1B" : "bind_scope 未命中，脚本不会执行";
         }
         if (!hit) {
+            Object llmErr = decideDetail.get("error");
+            if (promptRuntime && llmErr != null && !String.valueOf(llmErr).isBlank()) {
+                return "bind 命中但 1B 调用失败：" + llmErr;
+            }
             if (promptRuntime && Boolean.TRUE.equals(decideDetail.get("llm_hit_rule"))) {
                 return "bind 命中但 triggered_id 非本规则，draft 未命中";
             }

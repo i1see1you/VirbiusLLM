@@ -34,6 +34,10 @@ public class PromptLlmClient {
 
     /** @return assistant text; empty on HTTP failure */
     public String complete(String promptText) {
+        return completeDetail(promptText).content();
+    }
+
+    public CompleteResult completeDetail(String promptText) {
         String url = props.baseUrl().replaceAll("/+$", "") + props.apiPath();
         ObjectNode body = mapper.createObjectNode();
         body.put("model", props.model());
@@ -53,11 +57,43 @@ public class PromptLlmClient {
                             .body(body.toString())
                             .retrieve()
                             .body(String.class);
-            return extractAssistantContent(response);
+            String content = extractAssistantContent(response);
+            if (content == null || content.isBlank()) {
+                String err = extractApiError(response);
+                if (err != null) {
+                    return new CompleteResult("", err);
+                }
+            }
+            return new CompleteResult(content != null ? content : "", null);
         } catch (RestClientException e) {
             log.warn("prompt-llm request failed: {}", e.getMessage());
-            return "";
+            return new CompleteResult("", extractApiError(e.getMessage()));
         }
+    }
+
+    public record CompleteResult(String content, String error) {}
+
+    private String extractApiError(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            int jsonStart = raw.indexOf('{');
+            if (jsonStart < 0) {
+                return null;
+            }
+            JsonNode root = mapper.readTree(raw.substring(jsonStart));
+            JsonNode err = root.path("error");
+            if (err.isObject()) {
+                String msg = err.path("message").asText(null);
+                if (msg != null && !msg.isBlank()) {
+                    return msg;
+                }
+            }
+        } catch (Exception ignored) {
+            // fall through
+        }
+        return null;
     }
 
     private String extractAssistantContent(String responseBody) {

@@ -7,4 +7,5 @@ public record PromptSimulateResponseDto(
         @JsonProperty("llm_hit_rule") boolean llmHitRule,
         @JsonProperty("triggered_id") String triggeredId,
         String reason,
+        @JsonProperty("llm_response") String llmResponse,
         String error) {}
