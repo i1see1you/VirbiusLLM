@@ -96,6 +96,7 @@ typedef struct {
   int32_t rule_revision;
   const char* reason_code;
   const char* layer;        // 固定 "edge"
+  const char* trace_id;     // 最终 trace（空 ctx 时 SDK 生成）；须 virbius_free_string
 } virbius_scan_result;
 ```
 
@@ -104,8 +105,9 @@ typedef struct {
 | 函数 | 说明 |
 |------|------|
 | `virbius_init(const char* manifest_url)` | 拉取 `edge-manifest.json`，验签，加载 bin |
-| `virbius_scan(ctx, text, &result)` | L0 检测；**`trace_id` 为空时 SDK 自动生成**；block 写 audit（含 `trace_id_source=sdk`） |
+| `virbius_scan(ctx, text, &result)` | L0 检测；**`trace_id` 为空时 SDK 自动生成**；**`result.trace_id` 回传**；block 写 audit（含 `trace_id_source=sdk`） |
 | `virbius_reload()` | 轮询 Config Bus / manifest 版本后热更新 |
+| `virbius_free_string(char* p)` | 释放 `result` 中 SDK 分配的字符串 |
 
 ### 4.3 检测顺序
 

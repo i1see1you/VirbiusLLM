@@ -43,6 +43,7 @@ fn queue() -> &'static Mutex<Vec<AuditEvent>> {
 pub fn maybe_record(
     cfg: &SdkConfig,
     trace_id: &str,
+    trace_id_source: &str,
     scene: &str,
     result: &EnforceResult,
     session_id: Option<&str>,
@@ -81,7 +82,7 @@ pub fn maybe_record(
     };
     let event = AuditEvent {
         trace_id: trace_id.to_string(),
-        trace_id_source: "client".into(),
+        trace_id_source: trace_id_source.to_string(),
         tenant_id: manifest::tenant_id(),
         scene: scene.to_string(),
         layer: "edge".into(),
