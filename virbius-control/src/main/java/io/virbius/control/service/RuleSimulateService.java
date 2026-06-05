@@ -30,11 +30,14 @@ public class RuleSimulateService {
 
     private final RegistryRepository store;
     private final ListMetaRepository listMetaRepo;
+    private final PromptSimulateClient promptSimulateClient;
     private final GroovyL3Executor groovyExecutor = new GroovyL3Executor();
 
-    public RuleSimulateService(RegistryRepository store, ListMetaRepository listMetaRepo) {
+    public RuleSimulateService(
+            RegistryRepository store, ListMetaRepository listMetaRepo, PromptSimulateClient promptSimulateClient) {
         this.store = store;
         this.listMetaRepo = listMetaRepo;
+        this.promptSimulateClient = promptSimulateClient;
     }
 
     @SuppressWarnings("unchecked")
@@ -48,7 +51,10 @@ public class RuleSimulateService {
         String layer = str(rule.get("layer"));
         String runtime = str(rule.get("runtime"));
         Map<String, Object> scope = map(rule.get("scope"));
-        String script = resolveScript(layer, runtime, editorMode, condition, rule.get("body"));
+        boolean promptRuntime = "prompt".equalsIgnoreCase(runtime);
+        String script = promptRuntime
+                ? GroovyRuleBodies.asScript(rule.get("body"))
+                : resolveScript(layer, runtime, editorMode, condition, rule.get("body"));
 
         String bundleId = str(rule.get("bundle_id"));
         if (bundleId == null || bundleId.isBlank()) {
@@ -113,16 +119,20 @@ public class RuleSimulateService {
         boolean hit = false;
         boolean wouldExecute = bindMatched;
         String decideError = null;
+        Map<String, Object> decideDetail = new LinkedHashMap<>();
         if (bindMatched) {
             try {
-                hit = evaluateDecide(
-                        tenantId, layer, runtime, script, condition, matchCtx, fixture, rule, metadata);
+                if (promptRuntime) {
+                    hit = evaluatePromptDecide(rule, matchCtx, decideDetail);
+                } else {
+                    hit = evaluateDecide(
+                            tenantId, layer, runtime, script, condition, matchCtx, fixture, rule, metadata);
+                }
             } catch (Exception e) {
                 decideError = e.getMessage();
                 wouldExecute = false;
             }
         }
-        Map<String, Object> decideDetail = new LinkedHashMap<>();
         decideDetail.put("result", hit);
         decideDetail.put("skipped", !bindMatched);
         if (decideError != null) {
@@ -153,7 +163,7 @@ public class RuleSimulateService {
         summary.put("effective_action", bindMatched && hit ? effective : "allow");
         summary.put(
                 "message",
-                buildSummary(bindMatched, hit, effective, rolloutState));
+                buildSummary(bindMatched, hit, effective, rolloutState, promptRuntime, decideDetail));
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", decideError == null);
@@ -164,6 +174,26 @@ public class RuleSimulateService {
             out.put("errors", List.of(decideError));
         }
         return out;
+    }
+
+    private boolean evaluatePromptDecide(
+            Map<String, Object> rule, MatchContext matchCtx, Map<String, Object> decideDetail) throws Exception {
+        String ruleId = str(rule.get("rule_id"));
+        if (ruleId == null || ruleId.isBlank()) {
+            ruleId = "draft-preview";
+        }
+        String body = GroovyRuleBodies.asScript(rule.get("body"));
+        String reasonCode = str(rule.get("reason_code"));
+        Map<String, Object> llm = promptSimulateClient.simulate(ruleId, body, reasonCode, matchCtx.content());
+        Object err = llm.get("error");
+        if (err != null && !String.valueOf(err).isBlank()) {
+            throw new IllegalStateException(String.valueOf(err));
+        }
+        boolean hit = Boolean.TRUE.equals(llm.get("hit"));
+        decideDetail.put("llm_hit_rule", llm.get("llm_hit_rule"));
+        decideDetail.put("triggered_id", llm.get("triggered_id"));
+        decideDetail.put("reason", llm.get("reason"));
+        return hit;
     }
 
     @SuppressWarnings("unchecked")
@@ -330,12 +360,21 @@ public class RuleSimulateService {
         return intent != null ? intent.toLowerCase(Locale.ROOT) : "review";
     }
 
-    private static String buildSummary(boolean bindMatched, boolean hit, String effective, String rollout) {
+    private static String buildSummary(
+            boolean bindMatched,
+            boolean hit,
+            String effective,
+            String rollout,
+            boolean promptRuntime,
+            Map<String, Object> decideDetail) {
         if (!bindMatched) {
-            return "bind_scope 未命中，脚本不会执行";
+            return promptRuntime ? "bind_scope 未命中，不会调用 1B" : "bind_scope 未命中，脚本不会执行";
         }
         if (!hit) {
-            return "bind 命中但 decide=false，规则不触发";
+            if (promptRuntime && Boolean.TRUE.equals(decideDetail.get("llm_hit_rule"))) {
+                return "bind 命中但 triggered_id 非本规则，draft 未命中";
+            }
+            return promptRuntime ? "bind 命中但 1B 未触发本规则" : "bind 命中但 decide=false，规则不触发";
         }
         if ("dry_run".equalsIgnoreCase(rollout)) {
             return "规则命中；dry_run 下 effective_action=" + effective + "，不拦截";

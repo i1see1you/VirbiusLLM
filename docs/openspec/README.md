@@ -13,7 +13,8 @@
 | [schemas/audit-event.schema.json](./schemas/audit-event.schema.json) | 审计 jsonl 单行事件 |
 | [schemas/control-context.schema.json](./schemas/control-context.schema.json) | 端/管/云公用防控请求上下文 |
 | [schemas/edge-manifest.schema.json](./schemas/edge-manifest.schema.json) | 端侧 CDN 清单 |
-| [groovy-l3-contract.md](./groovy-l3-contract.md) | 云侧 Groovy 脚本与 `ctx` API（boolean `decide`） |
+| [rule-hit-merge.md](./rule-hit-merge.md) | **命中 + L3 合并**：prompt/groovy/prior 同池 ActionMerge（**无 cloud_groovy_l3**） |
+| [groovy-l3-contract.md](./groovy-l3-contract.md) | 云侧 **Groovy 检测脚本**（boolean `decide`）；L3 合并见 rule-hit-merge |
 | [script-rules.md](./script-rules.md) | **统一脚本方案**：lua/groovy `decide(ctx)` → boolean；`listMatch` / `getCumulative` |
 | [cumulative-counter.md](./cumulative-counter.md) | 累计定义 `tb_cumulative`、CounterStore、Redis 桶 |
 | [list-match.md](./list-match.md) | 名单定义与快照（规则侧见 [script-rules.md](./script-rules.md)） |
@@ -24,6 +25,7 @@
 | [rule-level-enforce.md](./rule-level-enforce.md) | **执行面** enforce / ActionMerge（管侧真拦 + 云 PolicyMerge） |
 | [rule-rollout.md](./rule-rollout.md) | **运营面** rollout_state、放量 SOP、看板、门禁、canary 阶梯（**定稿**） |
 | [rule-authoring.md](./rule-authoring.md) | **P1/P2** 表单驱动条件编译、脚本反解析、规则 simulate（**不存 authoring**） |
+| [prompt-llm.md](./prompt-llm.md) | **Prompt 规则矩阵** + 1B 模型（Ollama/vLLM）单次推理 |
 
 **默认基址（PoC）**
 

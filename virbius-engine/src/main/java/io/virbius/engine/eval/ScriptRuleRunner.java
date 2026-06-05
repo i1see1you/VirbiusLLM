@@ -1,6 +1,5 @@
 package io.virbius.engine.eval;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.virbius.engine.cache.PolicyDataCache;
 import io.virbius.engine.cache.RuleCache;
@@ -10,7 +9,6 @@ import io.virbius.groovy.l3.L3RuleView;
 import io.virbius.groovy.l3.L3SignalView;
 import io.virbius.groovy.l3.PolicyContext;
 import io.virbius.groovy.l3.ScriptEnvironment;
-import io.virbius.policy.BindScope;
 import io.virbius.policy.CounterStore;
 import io.virbius.policy.CumulativeWindow;
 import io.virbius.policy.IntentAction;
@@ -60,8 +58,10 @@ public class ScriptRuleRunner {
             if (!"groovy".equals(rule.runtime()) || !"cloud".equals(rule.layer())) {
                 continue;
             }
-            JsonNode scope = parseScope(rule);
-            if (scope != null && !BindScope.matches(scope, matchCtx)) {
+            if (LegacyPolicyRules.isDeprecatedMetaRule(rule.ruleId())) {
+                continue;
+            }
+            if (!RuleScopeSupport.matchesBind(rule, matchCtx)) {
                 continue;
             }
             try {
@@ -146,23 +146,6 @@ public class ScriptRuleRunner {
                 rule.intentAction(),
                 rule.enforceMode(),
                 rule.canaryPercent() > 0 ? rule.canaryPercent() : null);
-    }
-
-    private JsonNode parseScope(RuleEntry rule) {
-        if (rule.scope() == null) {
-            return null;
-        }
-        try {
-            if (rule.scope() instanceof String s) {
-                if (s.isBlank()) {
-                    return null;
-                }
-                return mapper.readTree(s);
-            }
-            return mapper.valueToTree(rule.scope());
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     private static String bodyText(Object body) {

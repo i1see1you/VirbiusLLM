@@ -366,7 +366,8 @@ MVP 必填 rule：
 | `cloud_l1_blacklist` | cloud | native |
 | `cloud_l1_request_*` | cloud | native |
 | `cloud_prompt_l1` | cloud | prompt |
-| `cloud_groovy_l3` | cloud | groovy |
+| `Rule_201`–`Rule_203` | cloud | prompt |
+| （可选）cloud groovy 检测脚本 | cloud | groovy |
 
 ---
 

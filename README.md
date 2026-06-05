@@ -56,7 +56,7 @@ VirbiusLLM 是一款为大模型定制的安全防护工具，支持实时 Skill
 |------|------|
 | **MVP（端-管-云）** | 10–12 周：端 `virbius-core`（违禁词+黑名单）+ 网关双插件 + engine + Registry 发布；**含 dry_run/canary/full**。详见 [§11.6](docs/DESIGN.md)。 |
 | **定义检测分级 L0–L3** | L0 端；L1/L2 云检测（管侧 RPC 调用）；L3 云 Policy。管侧仅静态 Skill。明确每层最大延迟与触发条件。 |
-| **统一决策模型** | 多端/管/云都产出「风险分 + 动作」，由 **`virbius-engine`**（Groovy L3）合并（避免多处各拦各的）。 |
+| **统一决策模型** | 多端/管/云都产出「风险分 + 动作」，由 **`virbius-engine`**（`PolicyMerger` / ActionMerge）合并（避免多处各拦各的）。 |
 | **流式输出审计规范** | 规定 chunk 大小、缓冲窗口、是否允许「先出后撤」；高合规场景建议 hold-then-release。 |
 | **Skill 生命周期** | `draft` → **publish** → **dry_run**（`effective_action=review`）→ **canary** → **full**；门禁/阶梯租户级配置；详见 [rule-rollout.md](docs/openspec/rule-rollout.md) |
 | **Fail 策略表** | 按租户配置：核心金融 fail-close，内部工具 fail-open + 异步告警。 |

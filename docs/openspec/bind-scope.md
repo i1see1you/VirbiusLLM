@@ -13,7 +13,7 @@
 
 | # | 决策 |
 |---|------|
-| 1 | **`bind_scope` 只决定「是否对本请求 ingest / 判定」**；**不**改变 Groovy L3 终判位置（仍在 cloud `virbius-engine`） |
+| 1 | **`bind_scope` 只决定「是否对本请求 ingest / 判定 / 进 prompt 矩阵」**；**L3 合并**在 cloud `PolicyMerger`（Java），见 [rule-hit-merge.md](./rule-hit-merge.md) |
 | 2 | 同一 **`(cumulative_name, value)`** 每请求最多 **ingest 一次**（同 scope 匹配上下文中 key 去重） |
 | 3 | **Global 与 Route 级限流使用不同 `cumulative_name`**，除非日后显式采用 Redis key scope 段（P2，非 MVP） |
 | 4 | **`scene_id` 由服务端经 [scene-registry.md](./scene-registry.md) 解析**；累计 / 名单 bind **不信任**客户端伪造 Header |
@@ -203,9 +203,10 @@ allow 名单（按 bind 过滤）
 | 环节 | bind_scope 作用 |
 |------|-----------------|
 | **Ingest** | 仅对 **bind 匹配** 的累计定义 / ingest target 写 Redis |
-| **名单 match** | 仅对 bind 匹配的 `list_match` 规则执行 |
-| **累计判定** | 仅对 bind 匹配的 `cumulative` 规则 read + compare |
-| **Groovy L3** | **不**解析 bind_scope；读 `ctx.signals()` / 预取快照 |
+| **名单 match** | 仅对 bind 匹配的名单 / lua 脚本规则执行 |
+| **累计判定** | 仅对 bind 匹配的累计 / 脚本规则 read + compare |
+| **prompt 矩阵** | 仅 **bind 匹配** 的 `runtime=prompt` 规则进入本次 1B 矩阵 |
+| **L3 合并** | **`PolicyMerger`（Java）**；不解析 bind_scope；读全部 Signal 池 |
 
 同一请求可同时命中 **Global + Service + Route** 等不同 scope 的规则（不同 `cumulative_name` / `list_name`）：各自 ingest / 判定，ActionMerge 按 **max risk_score** 合并。
 
@@ -233,7 +234,7 @@ Redis key 仍为 `virbius:cum:{tenant}:{cumulative_name}:{value}`（暂无 scope
 | 2 | `route` → `bind_ref.scenes` 或 `bind_ref.uris` 至少一项 |
 | 3 | **`service` → `bind_ref.app_ids` 至少一项**；**禁止**新规则使用 `upstream_id` / `consumer_id` / `api_key_group` |
 | 4 | `global` → 勿将 tenant 写入 `bind_ref` 冒充 service |
-| 5 | `runtime ∈ { list_match, cumulative, lua, groovy }` 等需 bind 时须合法 `bind_scope`（MVP 默认 `global` 可配置缺省） |
+| 5 | `runtime ∈ { list_match, cumulative, lua, groovy, prompt }` 等需 bind 时须合法 `bind_scope`（缺省 `global`） |
 | 6 | `bind_ref.scenes` 中 scene_id 须存在于 **scene_registry** / `scope.scenes` |
 | 7 | `bind_ref.uris` 每项须被 **gateway.routes** 某条 uri **覆盖**（§5.1） |
 | 8 | Compiler 将 bind 投影到 gateway 产物（DESIGN §8.10） |

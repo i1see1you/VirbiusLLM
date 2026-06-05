@@ -44,7 +44,7 @@ ls /tmp/virbius-out/gateway/apisix-routes-*.json
 |-------|------------------------|----------|
 | edge | `edge_l0_content_deny` | 端侧 CDN / virbius-core（非本目录） |
 | gateway | `gw_subject_network_deny`, `gw_content_deny` | `lists_file` JSON + 插件本地匹配 |
-| cloud | `cloud_l1_blacklist`, `cloud_prompt_l1`, `cloud_groovy_l3` | gateway-agent → virbius-engine |
+| cloud | `cloud_l1_blacklist`, `cloud_prompt_l1`, `Rule_201`–`Rule_203` | gateway-agent → virbius-engine |
 
 Route 只决定 **是否 evaluate、scene、fail_mode**；Prompt / Groovy 仅在 engine 执行。
 

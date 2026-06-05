@@ -112,8 +112,8 @@ in_canary = (bucket < canary_percent)
   → gateway ActionMerge
   → if effective_action ∈ {block, captcha}: 403/428 + 管侧审计，结束
   → if effective_action = review: prior_signals（内部）+ POST evaluate
-  → cloud PolicyMerger(prior + 本地 signals) → EngineDecision
-  → 无 cloud 命中时 Groovy L3 终判（脚本返回 action，见 groovy-l3-contract）
+  → cloud PolicyMerger(prior + prompt/groovy signals) → EngineDecision
+  → 无 cloud 命中时 effective_action=allow（或 prior 已决）
 ```
 
 `prior_signals` 为 **gateway→engine 内部字段**，不出现在对外 API 响应。
@@ -134,8 +134,7 @@ in_canary = (bucket < canary_percent)
 | layer | runtime | 合并执行点 | 产物 |
 |-------|---------|-----------|------|
 | gateway | `list_match`, `cumulative`, `lua` | gateway-agent / APISIX | `{tenant}-access-lists.json` |
-| cloud | `list_match`, `prompt`, `cumulative` | engine `PolicyMerger` | RuleCache |
-| cloud | `groovy` | Groovy `decide(ctx)` + enforce 解析 | RuleCache |
+| cloud | `prompt`, 可选 `groovy`（检测） | engine `PolicyMerger` + Runner | RuleCache |
 
 ---
 
@@ -176,7 +175,7 @@ in_canary = (bucket < canary_percent)
 }
 ```
 
-Groovy L3：脚本返回 `[action: 'allow'|'block'|'captcha'|'review']`；`dry_run` 命中应返回 `review`（见 [groovy-l3-contract.md](./groovy-l3-contract.md)）。
+合并算法见 [rule-hit-merge.md](./rule-hit-merge.md)。**不再**使用 `cloud_groovy_l3` 元规则脚本。
 
 ---
 

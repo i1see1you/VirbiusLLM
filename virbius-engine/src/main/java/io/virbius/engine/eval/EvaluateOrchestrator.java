@@ -43,7 +43,7 @@ public class EvaluateOrchestrator {
                 req.scene(),
                 req.routeUri());
 
-        signals.addAll(promptRunner.run(req.tenantId(), req.content()));
+        signals.addAll(promptRunner.run(req.tenantId(), matchCtx));
         signals.addAll(scriptRuleRunner.run(req.tenantId(), matchCtx, req.priorSignals()));
 
         PolicyMerger.PolicyMergeResult merged = policyMerger.merge(req.tenantId(), req.sessionId(), signals);
@@ -51,8 +51,8 @@ public class EvaluateOrchestrator {
         SignalDto primary = merged.primarySignal();
         boolean degraded = false;
 
-        String primaryRuleId = primary != null ? primary.ruleId() : "cloud_groovy_l3";
-        int primaryRevision = primary != null ? primary.ruleRevision() : 1;
+        String primaryRuleId = primary != null ? primary.ruleId() : "POLICY_ALLOW";
+        int primaryRevision = primary != null ? primary.ruleRevision() : 0;
         String reasonCode = primary != null ? primary.reasonCode() : "POLICY_ALLOW";
 
         auditWriter.write(req, decision, primaryRuleId, primaryRevision, reasonCode, degraded);

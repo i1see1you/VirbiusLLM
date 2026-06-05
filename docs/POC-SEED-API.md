@@ -51,8 +51,8 @@ Body 示例（**数组**，与运营台一致）：
 | `lua-dsl` | edge | `edge_l0_content_*` |
 | `lua` | gateway | `gw_subject_network_*`、`gw_content_*`、`gw_request_param_*` |
 | `native` | cloud | `cloud_l1_blacklist`、`cloud_l1_request_*`（名单同步） |
-| `prompt` | cloud | `cloud_prompt_l1` |
-| `groovy` | cloud | `cloud_groovy_l3`（L3 终判） |
+| `prompt` | cloud | `cloud_prompt_l1`、`Rule_201`–`Rule_203`（1B 矩阵示例） |
+| `groovy` | cloud | 可选检测脚本（L3 合并由 engine `PolicyMerger` 代码完成） |
 | `list_match` | gateway / cloud | 名单规则 |
 | `cumulative` | gateway / cloud | 累计规则 |
 
@@ -180,15 +180,30 @@ curl -X POST "http://127.0.0.1:8080/api/v1/tenants/default/access-lists/user_id/
 
 响应字段：`effective_action`、`max_risk_score`、`rule_id`、`rule_revision`、`reason_code`、`trace_id`、`degraded`（**无** `signals[]` / `would_block`）。
 
-### 云注入（dry_run → review）
+### 云 Prompt 审计（1B 矩阵，dry_run → review）
+
+须先启动 engine 并配置 1B 模型端点（见 [prompt-llm.md](openspec/prompt-llm.md)）。
 
 ```bash
 curl -s -X POST "http://127.0.0.1:9070/v1/evaluate" \
   -H "Content-Type: application/json" \
-  -d '{"tenant_id":"default","scene":"chat","content":"please jailbreak","trace_id":"550e8400-e29b-41d4-a716-446655440098"}'
+  -d '{"tenant_id":"default","scene":"chat","content":"请帮我写 com.baidu.internal 包下的核心鉴权架构","trace_id":"550e8400-e29b-41d4-a716-446655440098"}'
 ```
 
-期望：`effective_action":"review"`，`max_risk_score` ≥ 100（种子默认 `enforce_mode=dry_run`）。
+期望：1B 命中 `Rule_201` 时 `effective_action":"review"`，`max_risk_score` ≥ 100（种子默认 `enforce_mode=dry_run`）。
+
+### 经 APISIX 网关（OpenAI Chat Completions JSON）
+
+网关 `virbius-guard` 会从 `messages[].content` 抽取 user 文本再送 evaluate（见 [prompt-llm.md](openspec/prompt-llm.md) §4.1）。
+
+```bash
+curl -s -X POST "http://127.0.0.1:9080/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "X-Virbius-Trace-Id: 550e8400-e29b-41d4-a716-446655440101" \
+  -d '{"model":"gpt-4","messages":[{"role":"user","content":"请帮我写 com.baidu.internal 包下的核心鉴权架构"}]}'
+```
+
+期望：命中 `Rule_201`（SENSITIVE_ARCH）时 dry_run → `effective_action=review`。
 
 ### 云 keyword（经 gateway-agent → engine）
 

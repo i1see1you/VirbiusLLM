@@ -22,6 +22,14 @@ virbius:
   audit:
     engine-path: ${VIRBIUS_ENGINE_AUDIT:/tmp/virbius/engine-audit.jsonl}
     sqlite-enabled: true
+  prompt-llm:
+    base-url: ${VIRBIUS_PROMPT_LLM_BASE_URL:http://127.0.0.1:11434}
+    model: ${VIRBIUS_PROMPT_LLM_MODEL:virbius-prompt-1b}
+    api-path: /v1/chat/completions
+    timeout-ms: 3000
+    fail-open: true
+    im-start: "<|im_start|>"
+    im-end: ""
 
 audit:
   publish:

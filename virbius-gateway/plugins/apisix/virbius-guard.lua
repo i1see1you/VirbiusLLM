@@ -62,6 +62,50 @@ local function read_body()
     return ngx.req.get_body_data() or ""
 end
 
+--- Extract user prompt text from OpenAI-style chat JSON; fallback to raw body.
+local function extract_prompt_content(raw)
+    if not raw or raw == "" then
+        return ""
+    end
+    local ok, body = pcall(core.json.decode, raw)
+    if not ok or type(body) ~= "table" then
+        return raw
+    end
+    if type(body.input) == "string" and body.input ~= "" then
+        return body.input
+    end
+    if type(body.prompt) == "string" and body.prompt ~= "" then
+        return body.prompt
+    end
+    local messages = body.messages
+    if type(messages) ~= "table" then
+        return raw
+    end
+    local parts = {}
+    for _, msg in ipairs(messages) do
+        if type(msg) == "table" and msg.role == "user" then
+            local c = msg.content
+            if type(c) == "string" and c ~= "" then
+                table.insert(parts, c)
+            elseif type(c) == "table" then
+                for _, part in ipairs(c) do
+                    if type(part) == "table" and part.type == "text" and type(part.text) == "string" and part.text ~= "" then
+                        table.insert(parts, part.text)
+                    end
+                end
+            end
+        end
+    end
+    if #parts > 0 then
+        return table.concat(parts, "\n")
+    end
+    return raw
+end
+
+local function read_prompt_content()
+    return extract_prompt_content(read_body())
+end
+
 local function load_lists(path)
     local attr = io.popen("stat -f %m " .. path .. " 2>/dev/null")
     local mtime = 0
@@ -685,7 +729,7 @@ function _M.access(conf, ctx)
     local device_id = core.request.header(ctx, "X-Virbius-Device-Id")
     local session_id = core.request.header(ctx, "X-Virbius-Session-Id")
     local client_ip = ngx.var.remote_addr
-    local content = read_body()
+    local content = read_prompt_content()
 
     ngx.req.clear_header("X-Virbius-Scene")
     local route_uri = ngx.var.uri
