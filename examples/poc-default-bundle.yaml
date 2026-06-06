@@ -57,6 +57,7 @@ rules:
   - rule_id: edge_l0_content_deny
     layer: edge
     runtime: lua-dsl
+    rollout_state: dry_run
     reason_code: EDGE_CONTENT_KEYWORD_DENY
     risk_score: 100
     body:
@@ -69,6 +70,20 @@ rules:
         - 炸弹制作
         - jailbreak
         - 绕过
+  - rule_id: edge_medical_extra_deny
+    layer: edge
+    runtime: lua-dsl
+    rollout_state: dry_run
+    scope:
+      bind_scope: service
+      bind_ref:
+        app_ids: [medical-prod]
+    reason_code: EDGE_MEDICAL_EXTRA_DENY
+    risk_score: 100
+    body:
+      list_type: deny
+      keywords:
+        - clinical-secret
   - rule_id: gw_subject_network_deny
     layer: gateway
     runtime: lua

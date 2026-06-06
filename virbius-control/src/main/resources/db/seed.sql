@@ -81,6 +81,18 @@ INSERT INTO tb_rule_history (
                   reason_code, risk_score, intent_action, scope_json, body_json,
     rollout_state, canary_percent, effective_from, modified_at
 )
+SELECT 'default', 'edge_medical_extra_deny', 1, 'poc-default', 'edge', 'lua-dsl',
+    'EDGE_MEDICAL_EXTRA_DENY', 100, 'deny',
+    '{"bind_scope":"service","bind_ref":{"app_ids":["medical-prod"]}}',
+    '{"keywords":["clinical-secret"],"list_type":"deny"}',
+    'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'edge_medical_extra_deny' AND rule_revision = 1);
+
+INSERT INTO tb_rule_history (
+    tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
+                  reason_code, risk_score, intent_action, scope_json, body_json,
+    rollout_state, canary_percent, effective_from, modified_at
+)
 SELECT 'default', 'gw_subject_network_deny', 1, 'poc-default', 'gateway', 'lua',
     'GW_SUBJECT_USER_DENY', 100, 'deny', '{}',
     '{"list_type":"deny","subjects":{"user_ids":["u-banned-poc"],"device_ids":["dev-blocked-poc"],"ip_cidrs":[]}}',

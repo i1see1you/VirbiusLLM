@@ -1,5 +1,6 @@
 mod api;
 mod audit;
+mod dlp;
 mod engine;
 mod enforce;
 mod manifest;
@@ -8,7 +9,10 @@ mod runtime;
 mod trace;
 mod upload;
 
-pub use api::{EffectiveAction, RuleHit, ScanContext, ScanOutcome, TraceIdSource, VirbiusEdge, VirbiusError};
+pub use api::{
+    DesensitizeInResult, DesensitizeOutResult, DlpHit, EffectiveAction, RuleHit, ScanContext,
+    ScanOutcome, TraceIdSource, VirbiusEdge, VirbiusError,
+};
 
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};

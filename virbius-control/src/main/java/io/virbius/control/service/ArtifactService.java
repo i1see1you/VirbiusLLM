@@ -7,6 +7,9 @@ import io.virbius.control.domain.RolloutStateHelper;
 import io.virbius.control.domain.TenantRolloutPolicy;
 import io.virbius.control.groovy.GroovyRuleBodies;
 import io.virbius.control.policy.BindScopeExport;
+import io.virbius.control.gateway.DlpRuleValidator;
+import io.virbius.policy.EdgeManifestFilter;
+import io.virbius.policy.SceneRegistry;
 import io.virbius.control.policy.RuleBodyRefs;
 import io.virbius.control.repository.CumulativeRepository;
 import io.virbius.control.repository.ListMetaRepository;
@@ -57,7 +60,7 @@ public class ArtifactService {
         try {
             paths.put("gateway", writeGateway(tenantId, bundleMetadata).toString());
             paths.put("scene_registry", writeSceneRegistry(tenantId, bundleMetadata).toString());
-            paths.put("edge", writeEdge(tenantId).toString());
+            paths.putAll(writeEdge(tenantId, bundleMetadata));
         } catch (Exception e) {
             log.warn("failed to write list artifacts: {}", e.getMessage());
             paths.put("error", e.getMessage());
@@ -213,17 +216,76 @@ public class ArtifactService {
                 && (body.contains("getCumulative") || body.contains("getCumulative("));
     }
 
-    private java.nio.file.Path writeEdge(String tenantId) throws Exception {
-        java.nio.file.Path dir = dataDir.resolve("edge");
-        java.nio.file.Files.createDirectories(dir);
-        java.nio.file.Path manifestFile = dir.resolve(tenantId + "-edge-manifest.json");
-        java.nio.file.Path legacyFile = dir.resolve(tenantId + "-content-lists.json");
-        TenantRolloutPolicy policy = policyRepository.getOrDefault(tenantId);
+    private Map<String, String> writeEdge(String tenantId, Map<String, Object> bundleMetadata) throws Exception {
+        SceneRegistry registry =
+                io.virbius.control.gateway.SceneRegistryHelper.parseRegistry(bundleMetadata);
+        List<RuleRevision> allRules = listEdgeRulesInExecutionPlane(tenantId);
+        List<Map<String, Object>> scopes = allRules.stream()
+                .map(r -> r.scope() != null ? r.scope() : Map.<String, Object>of())
+                .toList();
+        List<String> appIds = EdgeManifestFilter.collectAppIds(registry, scopes);
 
+        Map<String, String> paths = new LinkedHashMap<>();
+        java.nio.file.Path edgeBase = dataDir.resolve("edge");
+        java.nio.file.Files.createDirectories(edgeBase);
+
+        if (appIds.isEmpty()) {
+            java.nio.file.Path manifestFile = edgeBase.resolve(tenantId + "-edge-manifest.json");
+            writeEdgeManifestFile(tenantId, null, allRules, manifestFile);
+            java.nio.file.Path legacyFile = edgeBase.resolve(tenantId + "-content-lists.json");
+            writeEdgeLegacyLists(tenantId, buildEdgeRuleBlocks(allRules), legacyFile);
+            paths.put("edge", manifestFile.toString());
+            return paths;
+        }
+
+        for (String appId : appIds) {
+            java.nio.file.Path dir = edgeBase.resolve(tenantId).resolve(appId);
+            java.nio.file.Files.createDirectories(dir);
+            List<RuleRevision> filtered = filterEdgeRulesForApp(allRules, appId, registry);
+            java.nio.file.Path manifestFile = dir.resolve("edge-manifest.json");
+            writeEdgeManifestFile(tenantId, appId, filtered, manifestFile);
+            java.nio.file.Path legacyFile = dir.resolve(tenantId + "-content-lists.json");
+            writeEdgeLegacyLists(tenantId, buildEdgeRuleBlocks(filtered), legacyFile);
+            paths.put("edge:" + appId, manifestFile.toString());
+        }
+        paths.put("edge", paths.get("edge:" + appIds.get(0)));
+        return paths;
+    }
+
+    private List<RuleRevision> listEdgeRulesInExecutionPlane(String tenantId) {
+        List<RuleRevision> out = new ArrayList<>();
+        for (RuleRevision rule : registryRepo.listCurrentRules(tenantId, "edge")) {
+            if (RolloutStateHelper.inExecutionPlane(rule)) {
+                out.add(rule);
+            }
+        }
+        return out;
+    }
+
+    private List<RuleRevision> filterEdgeRulesForApp(
+            List<RuleRevision> rules, String appId, SceneRegistry registry) {
+        List<RuleRevision> out = new ArrayList<>();
+        for (RuleRevision rule : rules) {
+            Map<String, Object> scope = rule.scope() != null ? rule.scope() : Map.of();
+            if (EdgeManifestFilter.includesForApp(scope, appId, registry)) {
+                out.add(rule);
+            }
+        }
+        return out;
+    }
+
+    private void writeEdgeManifestFile(
+            String tenantId, String appId, List<RuleRevision> rules, java.nio.file.Path manifestFile)
+            throws Exception {
+        TenantRolloutPolicy policy = policyRepository.getOrDefault(tenantId);
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("tenant_id", tenantId);
         root.put("manifest_version", "1");
-        root.put("rules", buildEdgeRuleBlocks(tenantId));
+        if (appId != null) {
+            root.put("app_id", appId);
+        }
+        root.put("rules", buildEdgeRuleBlocks(rules));
+        root.put("dlp_rules", buildDlpRuleBlocks(rules));
 
         Map<String, Object> sdk = new LinkedHashMap<>();
         if (!auditIngestUrl.isBlank()) {
@@ -237,51 +299,101 @@ public class ArtifactService {
         sdk.put("audit_flush_interval_ms", 30000);
         sdk.put("audit_queue_max", 500);
         sdk.put("canary_session_key", "device_id");
+        sdk.put("dlp_vault_ttl_ms", 1_800_000L);
         root.put("sdk_config", sdk);
 
+        List<Map<String, Object>> ruleBlocks = buildEdgeRuleBlocks(rules);
         Map<String, Object> legacyLists = new LinkedHashMap<>();
         legacyLists.put("tenant_id", tenantId);
-        legacyLists.put("deny", Map.of("keywords", collectEdgeDenyKeywords(tenantId)));
-        legacyLists.put("allow", Map.of("keywords", collectEdgeAllowKeywords(tenantId)));
+        legacyLists.put("deny", Map.of("keywords", collectDenyKeywords(ruleBlocks)));
+        legacyLists.put("allow", Map.of("keywords", collectAllowKeywords(ruleBlocks)));
         root.put("lists", legacyLists);
 
         mapper.writerWithDefaultPrettyPrinter().writeValue(manifestFile.toFile(), root);
-        mapper.writerWithDefaultPrettyPrinter().writeValue(legacyFile.toFile(), legacyLists);
-        return manifestFile;
     }
 
-    private List<Map<String, Object>> buildEdgeRuleBlocks(String tenantId) {
+    private void writeEdgeLegacyLists(
+            String tenantId, List<Map<String, Object>> ruleBlocks, java.nio.file.Path legacyFile)
+            throws Exception {
+        Map<String, Object> legacyLists = new LinkedHashMap<>();
+        legacyLists.put("tenant_id", tenantId);
+        legacyLists.put("deny", Map.of("keywords", collectDenyKeywords(ruleBlocks)));
+        legacyLists.put("allow", Map.of("keywords", collectAllowKeywords(ruleBlocks)));
+        mapper.writerWithDefaultPrettyPrinter().writeValue(legacyFile.toFile(), legacyLists);
+    }
+
+    /** Package-visible for unit tests. */
+    List<Map<String, Object>> buildEdgeRuleBlocksForApp(
+            String tenantId, String appId, Map<String, Object> bundleMetadata) {
+        SceneRegistry registry =
+                io.virbius.control.gateway.SceneRegistryHelper.parseRegistry(bundleMetadata);
+        List<RuleRevision> filtered =
+                filterEdgeRulesForApp(listEdgeRulesInExecutionPlane(tenantId), appId, registry);
+        return buildEdgeRuleBlocks(filtered);
+    }
+
+    /** Package-visible for unit tests. */
+    List<Map<String, Object>> buildDlpRuleBlocksForApp(
+            String tenantId, String appId, Map<String, Object> bundleMetadata) {
+        SceneRegistry registry =
+                io.virbius.control.gateway.SceneRegistryHelper.parseRegistry(bundleMetadata);
+        List<RuleRevision> filtered =
+                filterEdgeRulesForApp(listEdgeRulesInExecutionPlane(tenantId), appId, registry);
+        return buildDlpRuleBlocks(filtered);
+    }
+
+    private List<Map<String, Object>> buildEdgeRuleBlocks(List<RuleRevision> rules) {
         List<Map<String, Object>> blocks = new ArrayList<>();
-        for (RuleRevision rule : registryRepo.listCurrentRules(tenantId, "edge")) {
-            if (!RolloutStateHelper.inExecutionPlane(rule)) {
+        for (RuleRevision rule : rules) {
+            if (DlpRuleValidator.isDlpRuntime(rule.runtime())) {
                 continue;
             }
-            Map<String, Object> block = new LinkedHashMap<>();
-            block.put("rule_id", rule.ruleId());
-            block.put("rule_revision", rule.ruleRevision());
-            block.put("reason_code", rule.reasonCode());
-            block.put("risk_score", rule.riskScore());
-            block.put("intent_action", rule.intentAction() != null ? rule.intentAction() : "deny");
-            block.put("enforce_mode", rule.enforceMode());
-            block.put("rollout_state", rule.rolloutState() != null ? rule.rolloutState() : "dry_run");
-            if (rule.exportedCanaryPercent() != null) {
-                block.put("canary_percent", rule.exportedCanaryPercent());
-            } else if (rule.canaryPercent() != null) {
-                block.put("canary_percent", rule.canaryPercent());
-            }
-            if (rule.body() != null) {
-                block.put("body", rule.body());
-            }
-            blocks.add(block);
+            blocks.add(toRuleBlock(rule));
         }
         blocks.sort((a, b) -> String.valueOf(a.get("rule_id")).compareTo(String.valueOf(b.get("rule_id"))));
         return blocks;
     }
 
+    private List<Map<String, Object>> buildDlpRuleBlocks(List<RuleRevision> rules) {
+        List<Map<String, Object>> blocks = new ArrayList<>();
+        for (RuleRevision rule : rules) {
+            if (!DlpRuleValidator.isDlpRuntime(rule.runtime())) {
+                continue;
+            }
+            blocks.add(toRuleBlock(rule));
+        }
+        blocks.sort((a, b) -> String.valueOf(a.get("rule_id")).compareTo(String.valueOf(b.get("rule_id"))));
+        return blocks;
+    }
+
+    private Map<String, Object> toRuleBlock(RuleRevision rule) {
+        Map<String, Object> block = new LinkedHashMap<>();
+        block.put("rule_id", rule.ruleId());
+        block.put("rule_revision", rule.ruleRevision());
+        block.put("reason_code", rule.reasonCode());
+        block.put("risk_score", rule.riskScore());
+        block.put(
+                "intent_action",
+                DlpRuleValidator.isDlpRuntime(rule.runtime())
+                        ? "allow"
+                        : (rule.intentAction() != null ? rule.intentAction() : "deny"));
+        block.put("enforce_mode", rule.enforceMode());
+        block.put("rollout_state", rule.rolloutState() != null ? rule.rolloutState() : "dry_run");
+        if (rule.exportedCanaryPercent() != null) {
+            block.put("canary_percent", rule.exportedCanaryPercent());
+        } else if (rule.canaryPercent() != null) {
+            block.put("canary_percent", rule.canaryPercent());
+        }
+        if (rule.body() != null) {
+            block.put("body", rule.body());
+        }
+        return block;
+    }
+
     @SuppressWarnings("unchecked")
-    private List<String> collectEdgeDenyKeywords(String tenantId) {
+    private List<String> collectDenyKeywords(List<Map<String, Object>> ruleBlocks) {
         List<String> out = new ArrayList<>();
-        for (Map<String, Object> block : buildEdgeRuleBlocks(tenantId)) {
+        for (Map<String, Object> block : ruleBlocks) {
             Object body = block.get("body");
             if (!(body instanceof Map<?, ?> bodyMap)) {
                 continue;
@@ -302,9 +414,9 @@ public class ArtifactService {
     }
 
     @SuppressWarnings("unchecked")
-    private List<String> collectEdgeAllowKeywords(String tenantId) {
+    private List<String> collectAllowKeywords(List<Map<String, Object>> ruleBlocks) {
         List<String> out = new ArrayList<>();
-        for (Map<String, Object> block : buildEdgeRuleBlocks(tenantId)) {
+        for (Map<String, Object> block : ruleBlocks) {
             Object body = block.get("body");
             if (!(body instanceof Map<?, ?> bodyMap)) {
                 continue;

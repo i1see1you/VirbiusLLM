@@ -8,9 +8,13 @@ pub use result::{EffectiveAction, RuleHit, ScanOutcome};
 
 pub use crate::trace::TraceIdSource;
 
+use crate::dlp;
 use crate::engine::{self, ScanRequest};
-use crate::runtime;
 use crate::manifest;
+use crate::runtime;
+use std::time::Duration;
+
+pub use crate::dlp::{DesensitizeInResult, DesensitizeOutResult, DlpHit};
 
 /// Edge L0 SDK entry point (idiomatic Rust).
 #[derive(Debug, Default, Clone, Copy)]
@@ -47,6 +51,62 @@ impl VirbiusEdge {
         });
         Ok(to_outcome(engine_result))
     }
+
+    /// Mask PII before cloud upload; dry_run rules detect only (plaintext returned).
+    pub fn desensitize_in(&self, content: &str) -> Result<DesensitizeInResult, VirbiusError> {
+        self.desensitize_in_with(ScanContext::default(), content)
+    }
+
+    pub fn desensitize_in_with(
+        &self,
+        ctx: ScanContext,
+        content: &str,
+    ) -> Result<DesensitizeInResult, VirbiusError> {
+        if content.is_empty() {
+            return Err(VirbiusError::EmptyContent);
+        }
+        let (trace_id, _) = ctx.resolve_trace_id()?;
+        Ok(run_desensitize_in(&ctx, &trace_id, content))
+    }
+
+    /// Restore placeholders in model output using the trace-scoped vault.
+    pub fn desensitize_out(&self, trace_id: &str, content: &str) -> DesensitizeOutResult {
+        self.desensitize_out_with(trace_id, content, ScanContext::default())
+    }
+
+    pub fn desensitize_out_with(
+        &self,
+        trace_id: &str,
+        content: &str,
+        ctx: ScanContext,
+    ) -> DesensitizeOutResult {
+        let session_id = session_id_from_context(&ctx);
+        dlp::desensitize_out(content, trace_id, session_id.as_deref())
+    }
+}
+
+fn run_desensitize_in(ctx: &ScanContext, trace_id: &str, content: &str) -> DesensitizeInResult {
+    let manifest = manifest::load();
+    let session_id = session_id_from_context(ctx);
+    let ttl = Duration::from_millis(manifest.sdk_config.dlp_vault_ttl_ms);
+    dlp::desensitize_in(
+        content,
+        trace_id,
+        &manifest.dlp_rules,
+        ttl,
+        session_id.as_deref(),
+    )
+}
+
+fn session_id_from_context(ctx: &ScanContext) -> Option<String> {
+    let cfg = manifest::load().sdk_config;
+    manifest::session_key_value(
+        &cfg.canary_session_key,
+        ctx.user_id.as_deref(),
+        ctx.device_id.as_deref(),
+        None,
+    )
+    .map(|s| s.to_string())
 }
 
 fn to_outcome(engine_result: engine::ScanEngineResult) -> ScanOutcome {
@@ -147,5 +207,40 @@ mod tests {
     fn scan_rejects_empty_content() {
         let edge = VirbiusEdge::new();
         assert_eq!(edge.scan(""), Err(VirbiusError::EmptyContent));
+    }
+
+    #[test]
+    fn desensitize_masks_phone_in_full_mode() {
+        with_manifest(
+            r#"{
+              "dlp_rules": [{
+                "rule_id": "dlp_phone",
+                "rule_revision": 1,
+                "reason_code": "DLP_PHONE",
+                "risk_score": 0,
+                "intent_action": "allow",
+                "enforce_mode": "full",
+                "rollout_state": "full",
+                "body": { "entity_type": "phone_cn" }
+              }],
+              "sdk_config": { "dlp_vault_ttl_ms": 60000 }
+            }"#,
+            || {
+                let edge = VirbiusEdge::new();
+                let trace = "550e8400-e29b-41d4-a716-446655440000";
+                let ctx = ScanContext {
+                    trace_id: Some(trace.into()),
+                    ..ScanContext::default()
+                };
+                let in_result = edge
+                    .desensitize_in_with(ctx.clone(), "tel 13912345678")
+                    .expect("desensitize_in");
+                assert!(in_result.masked);
+                assert!(in_result.text.contains("{{VIRBIUS_PHONE_CN_0}}"));
+
+                let out_result = edge.desensitize_out_with(trace, &in_result.text, ctx);
+                assert!(out_result.text.contains("13912345678"));
+            },
+        );
     }
 }

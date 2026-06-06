@@ -323,7 +323,7 @@
 
   <div id="panel-rules" class="panel card">
     <h2 style="margin:0 0 0.5rem;font-size:1rem">规则（Registry）</h2>
-    <p class="hint">新建规则默认为 <code>draft</code>（不进执行面）；保存后请到左侧「<strong>策略上线</strong>」点 <code>上线</code> 进入 <code>dry_run</code> 观测。停用后可 <code>恢复草稿</code> 再编辑。<code>prompt</code> / <code>lua</code> / <code>groovy</code> 可配置 <code>bind_scope</code>（Global 租户全流量；Route 按 URI 优先匹配）。</p>
+    <p class="hint">新建规则默认为 <code>draft</code>（不进执行面）；保存后请到左侧「<strong>策略上线</strong>」点 <code>上线</code> 进入 <code>dry_run</code> 观测。停用后可 <code>恢复草稿</code> 再编辑。管/云 <code>prompt</code> / <code>lua</code> / <code>groovy</code> 可配 <code>bind_scope</code>（含 Route）；<strong>端 edge</strong> 用关键词表单 + <code>global</code> / <code>service(app_ids)</code>。</p>
     <div class="row">
       <span class="hint" style="margin:0">当前层：<strong id="rulesLayerLabel">cloud</strong>（在左侧菜单「规则」下切换）</span>
       <button type="button" id="btnNewRule">新建规则</button>
@@ -406,13 +406,13 @@
         <label>app_ids <input id="fBindAppIds" placeholder="beta, medical-prod" style="min-width:18rem" /></label>
       </div>
       <p id="bindScopeHint" class="hint" style="display:none;margin:0 0 0.5rem">
-        Route：配置了 <code>uris</code> 时<strong>仅按 URI</strong>匹配（须已在「网关路由」注册且被其覆盖；支持 <code>/path/*</code>）。Service 绑 <code>app_ids</code>（来自 context_bindings 的 <code>app_id</code>）。
+        Route：配置了 <code>uris</code> 时<strong>仅按 URI</strong>匹配（须已在「网关路由」注册且被其覆盖；支持 <code>/path/*</code>）。Service 绑 <code>app_ids</code>（来自 context_bindings 的 <code>app_id</code>）。<strong>端 edge</strong>：仅 <code>global</code> / <code>service(app_ids)</code>；发布时按 App 拆 manifest，SDK 不做运行时 bind。
       </p>
       <div id="conditionAuthoringRow" class="row" style="display:none;flex-wrap:wrap;align-items:center;gap:0.75rem">
         <label>编辑模式
-          <select id="fEditorMode"><option value="simple">简单（表单）</option><option value="advanced">高级（脚本）</option></select>
+          <select id="fEditorMode"><option value="simple">简单（表单）</option><option value="advanced">高级（JSON / 脚本）</option></select>
         </label>
-        <label>模板
+        <label id="fRecipeWrap">模板
           <select id="fRecipe"><option value="">— 选择 —</option></select>
         </label>
         <button type="button" class="secondary" id="btnApplyRecipe">应用</button>
@@ -464,6 +464,45 @@
         填写<strong>自然语言描述</strong>（保存后进入 engine【安全规则矩阵】，由 1B 模型判定 <code>triggered_id</code>）。
         仅需配置 <code>bind_scope</code>；无需名单/累计等触发条件表单。
       </p>
+      <p id="edgeDslHint" class="hint" style="display:none;margin:0 0 0.5rem">
+        端 L0 关键词规则：<code>list_type</code> + <code>keywords</code>。简单模式用表单；高级模式直接编辑 JSON body。
+      </p>
+      <p id="dlpDslHint" class="hint" style="display:none;margin:0 0 0.5rem">
+        端 DLP 脱敏规则：检测 PII 实体并替换占位符（<code>dry_run</code> 仅检测不脱敏）。<code>intent_action</code> 固定 <code>allow</code>，不参与 ActionMerge。
+      </p>
+      <div id="edgeDslPanel" style="display:none;margin-bottom:0.5rem">
+        <div class="row">
+          <label>list_type
+            <select id="fEdgeListType">
+              <option value="deny">deny（违禁词）</option>
+              <option value="allow">allow（放行词）</option>
+            </select>
+          </label>
+        </div>
+        <label style="display:block;margin-top:0.35rem">keywords（每行一词，或英文逗号分隔）
+          <textarea id="fEdgeKeywords" rows="6" style="width:100%;font-family:inherit;margin-top:0.25rem" spellcheck="false"></textarea>
+        </label>
+      </div>
+      <div id="dlpDslPanel" style="display:none;margin-bottom:0.5rem">
+        <div class="row" style="flex-wrap:wrap">
+          <label>entity_type
+            <select id="fDlpEntityType">
+              <option value="phone_cn">phone_cn（手机号）</option>
+              <option value="idcard_cn">idcard_cn（身份证）</option>
+              <option value="email">email</option>
+              <option value="bank_card_cn">bank_card_cn（银行卡）</option>
+              <option value="custom_regex">custom_regex</option>
+            </select>
+          </label>
+          <label>priority <input id="fDlpPriority" type="number" value="0" style="width:4rem" /></label>
+        </div>
+        <label id="fDlpPatternWrap" style="display:none;margin-top:0.35rem">pattern（custom_regex 必填）
+          <input id="fDlpPattern" style="width:100%;margin-top:0.25rem;font-family:inherit" spellcheck="false" />
+        </label>
+        <label style="display:block;margin-top:0.35rem">mask_template（可选，含 <code>{seq}</code>）
+          <input id="fDlpMaskTemplate" placeholder="{{VIRBIUS_PHONE_CN_{seq}}}" style="width:100%;margin-top:0.25rem;font-family:inherit" spellcheck="false" />
+        </label>
+      </div>
       <div class="script-editor-wrap">
         <textarea id="fBody"></textarea>
         <ul id="scriptAcPopup" class="script-ac" style="display:none"></ul>
@@ -669,7 +708,7 @@
     const LAYER_RUNTIMES = {
       cloud: ['prompt', 'groovy'],
       gateway: ['lua'],
-      edge: ['lua-dsl']
+      edge: ['lua-dsl', 'dlp-dsl']
     };
 
     function field(obj, ...keys) {
@@ -694,6 +733,12 @@ end`;
       if (runtime === 'prompt') {
         return '阻断越狱、DAN、ignore previous 等提示词注入与指令劫持。';
       }
+      if (runtime === 'lua-dsl') {
+        return JSON.stringify(defaultEdgeBody(), null, 2);
+      }
+      if (runtime === 'dlp-dsl') {
+        return JSON.stringify(defaultDlpBody(), null, 2);
+      }
       return JSON.stringify({ list_type: 'deny', keywords: [] }, null, 2);
     }
 
@@ -717,7 +762,9 @@ end`;
     function setRuleEditorReadOnly(disabled) {
       const ro = !!disabled;
       ['fReason', 'fRisk', 'fIntent', 'fEnforce', 'fCanary', 'fBody', 'fRuleId', 'fRuntime',
-        'fBindScope', 'fBindUris', 'fBindScenes', 'fBindUpstream', 'fBindConsumer', 'fBindApiKeyGroup',
+        'fBindScope', 'fBindUris', 'fBindScenes', 'fBindAppIds', 'fEdgeListType', 'fEdgeKeywords',
+        'fDlpEntityType', 'fDlpPattern', 'fDlpMaskTemplate', 'fDlpPriority',
+        'fBindUpstream', 'fBindConsumer', 'fBindApiKeyGroup',
         'wPattern', 'wListName', 'wCumName', 'wCompare', 'wThreshold', 'btnGenScript'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.disabled = ro;
@@ -730,6 +777,7 @@ end`;
       const isDraft = st === 'draft';
       const exec = inExecutionPlane(st);
       setRuleEditorReadOnly(isDisabled);
+      syncDlpIntentReadonly();
       document.getElementById('btnSaveRule').style.display = isDisabled ? 'none' : '';
       document.getElementById('btnSaveRule').textContent =
         isNewRule ? '创建规则' : '保存规则（新 revision）';
@@ -761,6 +809,99 @@ end`;
       return runtime === 'prompt';
     }
 
+    function isEdgeDslRuntime(runtime) {
+      return runtime === 'lua-dsl';
+    }
+
+    function isDlpRuntime(runtime) {
+      return runtime === 'dlp-dsl';
+    }
+
+    function isEdgeFormRuntime(runtime) {
+      return isEdgeDslRuntime(runtime) || isDlpRuntime(runtime);
+    }
+
+    function parseEdgeKeywords(text) {
+      return String(text || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+    }
+
+    function formatEdgeKeywords(keywords) {
+      return Array.isArray(keywords) ? keywords.join('\n') : '';
+    }
+
+    function defaultEdgeBody() {
+      return { list_type: 'deny', keywords: [] };
+    }
+
+    function loadEdgeBodyIntoForm(body) {
+      const obj = body && typeof body === 'object' ? body : defaultEdgeBody();
+      document.getElementById('fEdgeListType').value = obj.list_type === 'allow' ? 'allow' : 'deny';
+      document.getElementById('fEdgeKeywords').value = formatEdgeKeywords(obj.keywords);
+    }
+
+    function edgeBodyFromForm() {
+      return {
+        list_type: document.getElementById('fEdgeListType').value || 'deny',
+        keywords: parseEdgeKeywords(document.getElementById('fEdgeKeywords').value)
+      };
+    }
+
+    function defaultDlpBody() {
+      return { entity_type: 'phone_cn', priority: 0 };
+    }
+
+    function loadDlpBodyIntoForm(body) {
+      const obj = body && typeof body === 'object' ? body : defaultDlpBody();
+      document.getElementById('fDlpEntityType').value = obj.entity_type || 'phone_cn';
+      document.getElementById('fDlpPattern').value = obj.pattern || '';
+      document.getElementById('fDlpMaskTemplate').value = obj.mask_template || '';
+      document.getElementById('fDlpPriority').value = obj.priority != null ? obj.priority : 0;
+      syncDlpPatternUi();
+    }
+
+    function dlpBodyFromForm() {
+      const entityType = document.getElementById('fDlpEntityType').value || 'phone_cn';
+      const body = { entity_type: entityType };
+      const pattern = document.getElementById('fDlpPattern').value.trim();
+      const mask = document.getElementById('fDlpMaskTemplate').value.trim();
+      const priority = Number(document.getElementById('fDlpPriority').value);
+      if (entityType === 'custom_regex') body.pattern = pattern;
+      else if (pattern) body.pattern = pattern;
+      if (mask) body.mask_template = mask;
+      if (!Number.isNaN(priority) && priority !== 0) body.priority = priority;
+      return body;
+    }
+
+    function isDlpBody(body) {
+      if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+      return typeof body.entity_type === 'string'
+        && ['idcard_cn', 'phone_cn', 'email', 'bank_card_cn', 'custom_regex'].includes(body.entity_type);
+    }
+
+    function syncDlpPatternUi() {
+      const show = document.getElementById('fDlpEntityType').value === 'custom_regex';
+      document.getElementById('fDlpPatternWrap').style.display = show ? '' : 'none';
+    }
+
+    function syncDlpIntentReadonly() {
+      const dlp = isDlpRuntime(currentEditorRuntime());
+      const disabledRule = editRuleMeta && editRuleMeta.rollout_state === 'disabled';
+      if (dlp) {
+        document.getElementById('fRisk').value = 0;
+        document.getElementById('fIntent').value = 'allow';
+      }
+      if (!disabledRule) {
+        document.getElementById('fRisk').readOnly = dlp;
+        document.getElementById('fIntent').disabled = dlp;
+      }
+    }
+
+    function isEdgeKeywordBody(body) {
+      if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+      const lt = body.list_type;
+      return (lt === 'deny' || lt === 'allow') && (body.keywords == null || Array.isArray(body.keywords));
+    }
+
     function currentEditorRuntime() {
       return isNewRule ? document.getElementById('fRuntime').value : (editRuleMeta && editRuleMeta.runtime) || '';
     }
@@ -787,6 +928,17 @@ end`;
         document.getElementById('fEditorMode').value = 'simple';
         renderConditionLeaves();
         syncEditorModeUi();
+      } else if (isEdgeDslRuntime(rt)) {
+        conditionLeaves = [];
+        document.getElementById('fEditorMode').value = 'simple';
+        loadEdgeBodyIntoForm(defaultEdgeBody());
+        syncEditorModeUi();
+      } else if (isDlpRuntime(rt)) {
+        conditionLeaves = [];
+        document.getElementById('fEditorMode').value = 'simple';
+        loadDlpBodyIntoForm(defaultDlpBody());
+        syncEditorModeUi();
+        syncDlpIntentReadonly();
       } else {
         conditionLeaves = [];
         document.getElementById('fEditorMode').value = 'advanced';
@@ -803,8 +955,20 @@ end`;
           document.getElementById('fEditorMode').value = 'simple';
           renderConditionLeaves();
           syncEditorModeUi();
+        } else if (isEdgeDslRuntime(nextRt)) {
+          conditionLeaves = [];
+          document.getElementById('fEditorMode').value = 'simple';
+          loadEdgeBodyIntoForm(defaultEdgeBody());
+          syncEditorModeUi();
+        } else if (isDlpRuntime(nextRt)) {
+          conditionLeaves = [];
+          document.getElementById('fEditorMode').value = 'simple';
+          loadDlpBodyIntoForm(defaultDlpBody());
+          syncEditorModeUi();
+          syncDlpIntentReadonly();
         } else {
           conditionLeaves = [];
+          syncDlpIntentReadonly();
         }
         syncScriptAssistUi(nextRt);
         clearScriptValidateMsg();
@@ -1019,6 +1183,22 @@ end`;
       if (isPromptRuntime(runtime)) {
         try { return JSON.parse(document.getElementById('fBody').value); } catch { return document.getElementById('fBody').value; }
       }
+      if (isEdgeDslRuntime(runtime)) {
+        if (isSimpleEditorMode()) {
+          return edgeBodyFromForm();
+        }
+        try { return JSON.parse(document.getElementById('fBody').value); } catch {
+          throw new Error('body JSON 无效');
+        }
+      }
+      if (isDlpRuntime(runtime)) {
+        if (isSimpleEditorMode()) {
+          return dlpBodyFromForm();
+        }
+        try { return JSON.parse(document.getElementById('fBody').value); } catch {
+          throw new Error('body JSON 无效');
+        }
+      }
       if (isSimpleEditorMode() && conditionLeaves.length) {
         const data = await admin('/rules/compile-condition', {
           method: 'POST',
@@ -1033,10 +1213,36 @@ end`;
       const runtime = currentEditorRuntime();
       if (isPromptRuntime(runtime)) {
         document.getElementById('simpleConditionPanel').style.display = 'none';
+        document.getElementById('edgeDslPanel').style.display = 'none';
         document.getElementById('fBody').style.display = '';
         updateRuleSummaryCard();
         return;
       }
+      if (isEdgeDslRuntime(runtime)) {
+        const simple = isSimpleEditorMode();
+        document.getElementById('simpleConditionPanel').style.display = 'none';
+        document.getElementById('edgeDslPanel').style.display = simple ? '' : 'none';
+        document.getElementById('dlpDslPanel').style.display = 'none';
+        document.getElementById('fBody').style.display = simple ? 'none' : '';
+        document.getElementById('ruleSummaryCard').style.display = simple ? '' : 'none';
+        if (simple) updateRuleSummaryCard();
+        syncDlpIntentReadonly();
+        return;
+      }
+      if (isDlpRuntime(runtime)) {
+        const simple = isSimpleEditorMode();
+        document.getElementById('simpleConditionPanel').style.display = 'none';
+        document.getElementById('edgeDslPanel').style.display = 'none';
+        document.getElementById('dlpDslPanel').style.display = simple ? '' : 'none';
+        document.getElementById('fBody').style.display = simple ? 'none' : '';
+        document.getElementById('ruleSummaryCard').style.display = simple ? '' : 'none';
+        if (simple) updateRuleSummaryCard();
+        syncDlpIntentReadonly();
+        return;
+      }
+      document.getElementById('edgeDslPanel').style.display = 'none';
+      document.getElementById('dlpDslPanel').style.display = 'none';
+      syncDlpIntentReadonly();
       const simple = isSimpleEditorMode();
       document.getElementById('simpleConditionPanel').style.display = simple ? '' : 'none';
       document.getElementById('fBody').style.display = simple ? 'none' : '';
@@ -1168,6 +1374,19 @@ end`;
         const preview = body.length > 48 ? body.slice(0, 48) + '…' : body;
         card.style.display = preview || bs ? '' : 'none';
         card.textContent = `bind=${bs} → 矩阵描述「${preview || '未填写'}」→ ${intent}@${risk}`;
+        return;
+      }
+      if (isEdgeDslRuntime(runtime) && isSimpleEditorMode()) {
+        const body = edgeBodyFromForm();
+        const kw = body.keywords.length ? body.keywords.slice(0, 5).join('、') + (body.keywords.length > 5 ? '…' : '') : '（空）';
+        card.style.display = '';
+        card.textContent = `bind=${bs} → ${body.list_type} 关键词「${kw}」→ ${intent}@${risk}`;
+        return;
+      }
+      if (isDlpRuntime(runtime) && isSimpleEditorMode()) {
+        const body = dlpBodyFromForm();
+        card.style.display = '';
+        card.textContent = `bind=${bs} → DLP ${body.entity_type} → allow@0`;
         return;
       }
       const parts = conditionLeaves.map(l => {
@@ -1349,7 +1568,9 @@ end`;
     function syncScriptAssistUi(runtime) {
       const scriptRt = isScriptRuntime(runtime);
       const promptRt = isPromptRuntime(runtime);
-      document.getElementById('conditionAuthoringRow').style.display = scriptRt ? '' : 'none';
+      const edgeRt = isEdgeDslRuntime(runtime);
+      const dlpRt = isDlpRuntime(runtime);
+      document.getElementById('conditionAuthoringRow').style.display = (scriptRt || edgeRt || dlpRt) ? '' : 'none';
       document.getElementById('simulateFixtureRow').style.display = (scriptRt || promptRt) ? '' : 'none';
       document.getElementById('scriptWizardRow').style.display = scriptRt && !isSimpleEditorMode() ? '' : 'none';
       document.getElementById('scriptSnippetRow').style.display = scriptRt && !isSimpleEditorMode() ? '' : 'none';
@@ -1357,7 +1578,14 @@ end`;
       document.getElementById('groovyHint').style.display = runtime === 'groovy' ? '' : 'none';
       document.getElementById('luaHint').style.display = runtime === 'lua' ? '' : 'none';
       document.getElementById('promptHint').style.display = promptRt ? '' : 'none';
-      document.getElementById('fBody').style.display = '';
+      document.getElementById('edgeDslHint').style.display = edgeRt ? '' : 'none';
+      document.getElementById('dlpDslHint').style.display = dlpRt ? '' : 'none';
+      document.getElementById('fRecipeWrap').style.display = scriptRt ? '' : 'none';
+      document.getElementById('btnApplyRecipe').style.display = scriptRt ? '' : 'none';
+      document.getElementById('btnPreviewScript').style.display = scriptRt ? '' : 'none';
+      if (!edgeRt && !dlpRt && !scriptRt && !promptRt) {
+        document.getElementById('fBody').style.display = '';
+      }
       syncBindScopeUi(runtime);
       if (scriptRt) {
         fillWizardListSelect();
@@ -1367,6 +1595,17 @@ end`;
         loadRecipesForLayer(layer).catch(() => {});
         syncEditorModeUi();
         ensureSimFixtureEditor();
+      } else if (edgeRt) {
+        conditionLeaves = [];
+        syncEditorModeUi();
+        clearScriptValidateMsg();
+        document.getElementById('simulatePanel').style.display = 'none';
+      } else if (dlpRt) {
+        conditionLeaves = [];
+        syncEditorModeUi();
+        syncDlpIntentReadonly();
+        clearScriptValidateMsg();
+        document.getElementById('simulatePanel').style.display = 'none';
       } else if (promptRt) {
         conditionLeaves = [];
         document.getElementById('simpleConditionPanel').style.display = 'none';
@@ -1401,9 +1640,23 @@ end`;
       return 'global';
     }
 
+    function syncBindScopeOptions(runtime) {
+      const sel = document.getElementById('fBindScope');
+      const current = sel.value || 'global';
+      const edge = isEdgeFormRuntime(runtime);
+      sel.innerHTML = edge
+        ? '<option value="global">global（全部 App manifest）</option>'
+          + '<option value="service">service（指定 app_ids）</option>'
+        : '<option value="global">global（租户内全流量）</option>'
+          + '<option value="route">route（URI 优先）</option>'
+          + '<option value="service">service（app_ids）</option>';
+      sel.value = [...sel.options].some(o => o.value === current) ? current : 'global';
+    }
+
     function syncBindScopeFieldsUi() {
       const bs = document.getElementById('fBindScope').value || 'global';
-      const route = bs === 'route';
+      const edge = isEdgeFormRuntime(currentEditorRuntime());
+      const route = !edge && bs === 'route';
       const service = bs === 'service';
       document.getElementById('bindUriWrap').style.display = route ? '' : 'none';
       document.getElementById('bindSceneWrap').style.display = route ? '' : 'none';
@@ -1411,14 +1664,21 @@ end`;
     }
 
     function syncBindScopeUi(runtime) {
-      const show = runtime === 'lua' || runtime === 'groovy' || runtime === 'prompt';
+      const show = runtime === 'lua' || runtime === 'groovy' || runtime === 'prompt' || isEdgeFormRuntime(runtime);
       document.getElementById('bindScopeRow').style.display = show ? '' : 'none';
       document.getElementById('bindScopeHint').style.display = show ? '' : 'none';
-      if (show) syncBindScopeFieldsUi();
+      if (show) {
+        syncBindScopeOptions(runtime);
+        syncBindScopeFieldsUi();
+      }
     }
 
     function buildRuleScope() {
+      const runtime = currentEditorRuntime();
       const bs = document.getElementById('fBindScope').value || 'global';
+      if (isEdgeFormRuntime(runtime) && bs === 'route') {
+        return { bind_scope: 'global' };
+      }
       const scope = { bind_scope: bs };
       const ref = {};
       if (bs === 'route') {
@@ -1436,7 +1696,13 @@ end`;
 
     function loadBindUiFromScope(scope) {
       const s = scope || {};
-      document.getElementById('fBindScope').value = s.bind_scope || 'global';
+      const runtime = currentEditorRuntime();
+      syncBindScopeOptions(runtime);
+      let bs = s.bind_scope || 'global';
+      if (isEdgeFormRuntime(runtime) && bs === 'route') {
+        bs = 'global';
+      }
+      document.getElementById('fBindScope').value = bs;
       const ref = s.bind_ref || {};
       document.getElementById('fBindUris').value = Array.isArray(ref.uris) ? ref.uris.join(', ') : '';
       document.getElementById('fBindScenes').value = Array.isArray(ref.scenes) ? ref.scenes.join(', ') : '';
@@ -1904,7 +2170,30 @@ end`;
       const script = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
       document.getElementById('fBody').value = script;
       syncScriptAssistUi(r.runtime);
-      if (!isPromptRuntime(r.runtime)) {
+      if (isEdgeDslRuntime(r.runtime)) {
+        const bodyObj = typeof body === 'object' && body !== null ? body : (() => {
+          try { return JSON.parse(script); } catch { return defaultEdgeBody(); }
+        })();
+        if (isEdgeKeywordBody(bodyObj)) {
+          document.getElementById('fEditorMode').value = 'simple';
+          loadEdgeBodyIntoForm(bodyObj);
+        } else {
+          document.getElementById('fEditorMode').value = 'advanced';
+        }
+        syncEditorModeUi();
+      } else if (isDlpRuntime(r.runtime)) {
+        const bodyObj = typeof body === 'object' && body !== null ? body : (() => {
+          try { return JSON.parse(script); } catch { return defaultDlpBody(); }
+        })();
+        if (isDlpBody(bodyObj)) {
+          document.getElementById('fEditorMode').value = 'simple';
+          loadDlpBodyIntoForm(bodyObj);
+        } else {
+          document.getElementById('fEditorMode').value = 'advanced';
+        }
+        syncEditorModeUi();
+        syncDlpIntentReadonly();
+      } else if (!isPromptRuntime(r.runtime)) {
         await parseBodyIntoForm(r.layer, r.runtime, script);
       } else {
         updateRuleSummaryCard();
@@ -2489,7 +2778,13 @@ end`;
     };
 
     document.getElementById('btnNewRule').onclick = () => openNewRuleEditor();
-    document.getElementById('fRisk').onchange = syncIntentFromRisk;
+    document.getElementById('fRisk').onchange = () => {
+      if (!isDlpRuntime(currentEditorRuntime())) syncIntentFromRisk();
+    };
+    document.getElementById('fDlpEntityType').onchange = () => { syncDlpPatternUi(); updateRuleSummaryCard(); };
+    document.getElementById('fDlpPattern').oninput = () => updateRuleSummaryCard();
+    document.getElementById('fDlpMaskTemplate').oninput = () => updateRuleSummaryCard();
+    document.getElementById('fDlpPriority').onchange = () => updateRuleSummaryCard();
     document.getElementById('wPattern').onchange = syncWizardFields;
     document.getElementById('btnGenScript').onclick = () => generateScriptFromWizard();
     document.getElementById('fEditorMode').onchange = () => syncEditorModeUi();
@@ -2522,7 +2817,13 @@ end`;
     });
       document.getElementById('fBindScope').onchange = () => {
       syncBindScopeFieldsUi();
-      if (isPromptRuntime(currentEditorRuntime())) updateRuleSummaryCard();
+      const rt = currentEditorRuntime();
+      if (isPromptRuntime(rt) || isEdgeFormRuntime(rt)) updateRuleSummaryCard();
+    };
+    document.getElementById('fEdgeListType').onchange = () => updateRuleSummaryCard();
+    document.getElementById('fEdgeKeywords').oninput = () => updateRuleSummaryCard();
+    document.getElementById('fBindAppIds').oninput = () => {
+      if (isEdgeFormRuntime(currentEditorRuntime())) updateRuleSummaryCard();
     };
 
     document.getElementById('btnSaveRule').onclick = async () => {
@@ -2539,7 +2840,21 @@ end`;
       }
       const layer = isNewRule ? currentLayer : editRuleMeta.layer;
       const runtime = isNewRule ? document.getElementById('fRuntime').value : editRuleMeta.runtime;
+      const scope = buildRuleScope();
+      if (isEdgeFormRuntime(runtime) && scope.bind_scope === 'service') {
+        const ids = scope.bind_ref && scope.bind_ref.app_ids;
+        if (!ids || !ids.length) {
+          log('端 edge service bind 须填写 app_ids');
+          return;
+        }
+      }
       const body = await resolveBodyForSave();
+      if (isDlpRuntime(runtime)) {
+        if (body.entity_type === 'custom_regex' && !(body.pattern || '').trim()) {
+          log('custom_regex 须填写 pattern');
+          return;
+        }
+      }
       if (runtime === 'lua' || runtime === 'groovy') {
         const vr = await admin('/rules/validate-script', {
           method: 'POST',
@@ -2559,12 +2874,12 @@ end`;
           layer,
           runtime,
           reason_code: document.getElementById('fReason').value,
-          risk_score: Number(document.getElementById('fRisk').value),
-          intent_action: document.getElementById('fIntent').value,
-          scope: buildRuleScope(),
+          risk_score: isDlpRuntime(runtime) ? 0 : Number(document.getElementById('fRisk').value),
+          intent_action: isDlpRuntime(runtime) ? 'allow' : document.getElementById('fIntent').value,
+          scope,
           body,
           editor_mode: isPromptRuntime(runtime) ? null : (isSimpleEditorMode() ? 'simple' : 'advanced'),
-          condition: isPromptRuntime(runtime) || !isSimpleEditorMode() ? null : readConditionPayload()
+          condition: (isPromptRuntime(runtime) || isEdgeFormRuntime(runtime) || !isSimpleEditorMode()) ? null : readConditionPayload()
         })
       });
       log(isNewRule ? '规则已创建' : '规则已保存');

@@ -29,7 +29,7 @@ class GatewayRoutesHelperTest {
                 "gateway",
                 Map.of(
                         "routes",
-                        List.of(Map.of("uri", "/v1/chat/completions", "dynamic_scene", true)))));
+                        List.of(Map.of("uri", "/v1/chat/completions", "dynamic_scene", true))));
         assertThrows(IllegalArgumentException.class, () -> GatewayRoutesHelper.parseRoutes(metadata));
     }
 

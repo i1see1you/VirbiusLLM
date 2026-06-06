@@ -2,6 +2,8 @@
 
 端侧 L0 Native SDK（Rust + C ABI）。契约：[MVP-OPENSPEC §4](../docs/openspec/MVP-OPENSPEC.md)。
 
+**用户使用文档**：[docs/user-guide.md](../docs/user-guide.md)（端 SDK、网关 Header、DLP、示例与排障）
+
 ## Rust 快速开始（推荐）
 
 ```toml
@@ -34,6 +36,20 @@ fn main() -> Result<(), virbius_core::VirbiusError> {
 }
 ```
 
+运行仓库内完整示例（含 scan + DLP 回填）：
+
+```bash
+cd virbius-core
+cargo run --example rust_client_demo
+```
+
+经网关调用 LLM（端 scan + Virbius Header，需本地 APISIX PoC）：
+
+```bash
+export VIRBIUS_GATEWAY_URL=http://127.0.0.1:9080/v1/chat/completions
+cargo run --example gateway_http_client
+```
+
 - `trace_id`：**无需传入**，SDK 自动生成 UUID v4（`trace_id_source=sdk`）。
 - 显式传入时须为 **UUID v4 或 ULID**。
 
@@ -45,11 +61,23 @@ fn main() -> Result<(), virbius_core::VirbiusError> {
 
 ## 规则文件
 
+按 App 拆分 manifest（方案 A：发布时按 `bind_scope` + `app_ids` 过滤）：
+
 ```bash
-export VIRBIUS_EDGE_MANIFEST_PATH=./data/edge/default-edge-manifest.json
-# 或 legacy 词表：
-export VIRBIUS_EDGE_LISTS_PATH=./data/edge/default-content-lists.json
+export VIRBIUS_TENANT_ID=default
+export VIRBIUS_APP_ID=medical-prod
+# 默认路径：./data/edge/{tenant}/{app_id}/edge-manifest.json
 ```
+
+或显式指定：
+
+```bash
+export VIRBIUS_EDGE_MANIFEST_PATH=./data/edge/default/medical-prod/edge-manifest.json
+# legacy 词表（同目录）：
+export VIRBIUS_EDGE_LISTS_PATH=./data/edge/default/medical-prod/default-content-lists.json
+```
+
+无 `scene_registry` 时仍生成租户级 `./data/edge/{tenant}-edge-manifest.json`（兼容旧 PoC）。
 
 ## 与 virbius-client 的分工
 

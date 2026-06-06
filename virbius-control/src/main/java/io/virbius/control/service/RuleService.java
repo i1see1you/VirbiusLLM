@@ -9,6 +9,7 @@ import io.virbius.control.domain.dto.response.RuleResponseMapper;
 import io.virbius.control.domain.enums.IntentAction;
 import io.virbius.control.domain.enums.RolloutState;
 import io.virbius.control.script.ScriptRuleValidator;
+import io.virbius.control.gateway.DlpRuleValidator;
 import io.virbius.control.gateway.RuleBindScopeValidator;
 import io.virbius.control.groovy.GroovyRuleBodies;
 import io.virbius.control.ruleauthoring.ConditionCompiler;
@@ -70,6 +71,12 @@ public class RuleService {
                 ? IntentAction.parse(req.intentAction()).value()
                 : existing.map(RuleRevision::intentAction)
                         .orElse(IntentAction.defaultForRisk(normalizedRisk).value());
+
+        if (DlpRuleValidator.isDlpRuntime(req.runtime())) {
+            DlpRuleValidator.validateUpsert(req);
+            normalizedRisk = 0;
+            intentAction = IntentAction.ALLOW.value();
+        }
 
         if (existing.isPresent() && contentChanged(existing.get(), req, normalizedRisk, intentAction)) {
             if (RolloutStateHelper.inExecutionPlane(existing.get())) {

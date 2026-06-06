@@ -2,6 +2,33 @@ use serde::Deserialize;
 use std::{env, fs, path::PathBuf, sync::{OnceLock, RwLock}};
 
 #[derive(Debug, Clone, Default, Deserialize)]
+pub struct DlpRuleBody {
+    #[serde(default, rename = "entity_type")]
+    pub entity_type: String,
+    #[serde(default)]
+    pub pattern: Option<String>,
+    #[serde(default, rename = "mask_template")]
+    pub mask_template: Option<String>,
+    #[serde(default)]
+    pub priority: Option<i32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DlpRule {
+    pub rule_id: String,
+    pub rule_revision: i32,
+    pub reason_code: String,
+    pub risk_score: i32,
+    pub intent_action: String,
+    pub enforce_mode: String,
+    #[serde(default)]
+    pub rollout_state: String,
+    pub canary_percent: Option<i32>,
+    #[serde(default)]
+    pub body: DlpRuleBody,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct RuleBody {
     #[serde(default)]
     pub keywords: Vec<String>,
@@ -40,6 +67,12 @@ pub struct SdkConfig {
     pub audit_queue_max: usize,
     #[serde(default = "default_session_key")]
     pub canary_session_key: String,
+    #[serde(default = "default_dlp_vault_ttl")]
+    pub dlp_vault_ttl_ms: u64,
+}
+
+fn default_dlp_vault_ttl() -> u64 {
+    1_800_000
 }
 
 fn default_sample_allow() -> f64 {
@@ -77,7 +110,11 @@ struct EdgeManifestFile {
     #[serde(default)]
     tenant_id: String,
     #[serde(default)]
+    app_id: String,
+    #[serde(default)]
     rules: Vec<EdgeRule>,
+    #[serde(default)]
+    dlp_rules: Vec<DlpRule>,
     #[serde(default)]
     sdk_config: SdkConfig,
     #[serde(default)]
@@ -87,7 +124,9 @@ struct EdgeManifestFile {
 #[derive(Debug, Clone)]
 pub struct EdgeManifest {
     pub tenant_id: String,
+    pub app_id: String,
     pub rules: Vec<EdgeRule>,
+    pub dlp_rules: Vec<DlpRule>,
     pub sdk_config: SdkConfig,
 }
 
@@ -110,7 +149,12 @@ fn read_manifest() -> EdgeManifest {
     if let Ok(raw) = fs::read_to_string(&path) {
         if let Ok(parsed) = serde_json::from_str::<EdgeManifestFile>(&raw) {
             let mut rules = parsed.rules;
-            if rules.is_empty() {
+            let mut dlp_rules = parsed.dlp_rules;
+            if !app_id_matches(&parsed.app_id) {
+                eprintln!("virbius-core: manifest app_id mismatch; refusing load");
+                rules = Vec::new();
+                dlp_rules = Vec::new();
+            } else if rules.is_empty() {
                 rules = legacy_rules(&parsed.lists);
             }
             return EdgeManifest {
@@ -119,23 +163,44 @@ fn read_manifest() -> EdgeManifest {
                 } else {
                     parsed.tenant_id
                 },
+                app_id: resolve_app_id(&parsed.app_id),
                 rules,
+                dlp_rules,
                 sdk_config: parsed.sdk_config,
             };
         }
         if let Ok(legacy) = serde_json::from_str::<LegacyLists>(&raw) {
             return EdgeManifest {
                 tenant_id: env::var("VIRBIUS_TENANT_ID").unwrap_or_else(|_| "default".into()),
+                app_id: resolve_app_id(""),
                 rules: legacy_rules(&legacy),
+                dlp_rules: Vec::new(),
                 sdk_config: SdkConfig::default(),
             };
         }
     }
     EdgeManifest {
         tenant_id: env::var("VIRBIUS_TENANT_ID").unwrap_or_else(|_| "default".into()),
+        app_id: resolve_app_id(""),
         rules: Vec::new(),
+        dlp_rules: Vec::new(),
         sdk_config: SdkConfig::default(),
     }
+}
+
+fn resolve_app_id(manifest_app_id: &str) -> String {
+    if !manifest_app_id.is_empty() {
+        return manifest_app_id.to_string();
+    }
+    env::var("VIRBIUS_APP_ID").unwrap_or_default()
+}
+
+fn app_id_matches(manifest_app_id: &str) -> bool {
+    let expected = env::var("VIRBIUS_APP_ID").unwrap_or_default();
+    if expected.is_empty() || manifest_app_id.is_empty() {
+        return true;
+    }
+    expected == manifest_app_id
 }
 
 fn legacy_rules(lists: &LegacyLists) -> Vec<EdgeRule> {
@@ -181,6 +246,18 @@ pub fn manifest_path() -> PathBuf {
     }
     let data = env::var("VIRBIUS_DATA_DIR").unwrap_or_else(|_| "./data".into());
     let tenant = env::var("VIRBIUS_TENANT_ID").unwrap_or_else(|_| "default".into());
+    if let Ok(app_id) = env::var("VIRBIUS_APP_ID") {
+        if !app_id.is_empty() {
+            let per_app = PathBuf::from(&data)
+                .join("edge")
+                .join(&tenant)
+                .join(&app_id)
+                .join("edge-manifest.json");
+            if per_app.exists() {
+                return per_app;
+            }
+        }
+    }
     let manifest = PathBuf::from(&data)
         .join("edge")
         .join(format!("{tenant}-edge-manifest.json"));
@@ -232,4 +309,9 @@ pub fn session_key_value<'a>(
 #[allow(dead_code)]
 pub fn tenant_id() -> String {
     load().tenant_id
+}
+
+#[allow(dead_code)]
+pub fn app_id() -> String {
+    load().app_id
 }

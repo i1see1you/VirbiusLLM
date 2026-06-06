@@ -171,6 +171,115 @@ class ArtifactServiceTest {
         assertEquals("default", targets.get(0).get("kind"));
     }
 
+    @Test
+    void edgeManifestBlocksFilteredPerApp() {
+        Map<String, Object> metadata = Map.of(
+                "scene_registry",
+                Map.of(
+                        "version",
+                        1,
+                        "scenes",
+                        Map.of(
+                                "beta_chat",
+                                Map.of("app_id", "beta", "default", true, "uris", List.of("/v1/chat")),
+                                "medical-prod_chat",
+                                Map.of(
+                                        "app_id",
+                                        "medical-prod",
+                                        "default",
+                                        true,
+                                        "uris",
+                                        List.of("/v1/chat")))));
+
+        RuleRevision globalDeny = edgeRule(
+                "edge_global_deny",
+                Map.of(),
+                Map.of("list_type", "deny", "keywords", List.of("bad")));
+        RuleRevision medicalOnly = edgeRule(
+                "edge_medical_only",
+                Map.of("bind_scope", "service", "bind_ref", Map.of("app_ids", List.of("medical-prod"))),
+                Map.of("list_type", "deny", "keywords", List.of("clinical-secret")));
+
+        when(registryRepo.listCurrentRules(TENANT, "edge")).thenReturn(List.of(globalDeny, medicalOnly));
+
+        List<Map<String, Object>> betaBlocks =
+                artifactService.buildEdgeRuleBlocksForApp(TENANT, "beta", metadata);
+        assertEquals(1, betaBlocks.size());
+        assertEquals("edge_global_deny", betaBlocks.get(0).get("rule_id"));
+
+        List<Map<String, Object>> medBlocks =
+                artifactService.buildEdgeRuleBlocksForApp(TENANT, "medical-prod", metadata);
+        assertEquals(2, medBlocks.size());
+    }
+
+    @Test
+    void dlpRulesSeparatedFromKeywordRules() {
+        Map<String, Object> metadata = Map.of(
+                "scene_registry",
+                Map.of("version", 1, "scenes", Map.of()));
+
+        RuleRevision keyword = edgeRule(
+                "edge_kw",
+                Map.of(),
+                Map.of("list_type", "deny", "keywords", List.of("bad")));
+        RuleRevision dlp = dlpRule("edge_dlp_phone", Map.of("entity_type", "phone_cn"));
+
+        when(registryRepo.listCurrentRules(TENANT, "edge")).thenReturn(List.of(keyword, dlp));
+
+        List<Map<String, Object>> kwBlocks =
+                artifactService.buildEdgeRuleBlocksForApp(TENANT, "beta", metadata);
+        List<Map<String, Object>> dlpBlocks =
+                artifactService.buildDlpRuleBlocksForApp(TENANT, "beta", metadata);
+
+        assertEquals(1, kwBlocks.size());
+        assertEquals("edge_kw", kwBlocks.get(0).get("rule_id"));
+        assertEquals(1, dlpBlocks.size());
+        assertEquals("edge_dlp_phone", dlpBlocks.get(0).get("rule_id"));
+        assertEquals("allow", dlpBlocks.get(0).get("intent_action"));
+        assertEquals(0, dlpBlocks.get(0).get("risk_score"));
+    }
+
+    private static RuleRevision dlpRule(String ruleId, Map<String, Object> body) {
+        return new RuleRevision(
+                TENANT,
+                ruleId,
+                1,
+                "poc-default",
+                "edge",
+                "dlp-dsl",
+                "DLP_PHONE",
+                0,
+                "allow",
+                Map.of(),
+                body,
+                "dry_run",
+                null,
+                Instant.now(),
+                Instant.now(),
+                null);
+    }
+
+    private static RuleRevision edgeRule(
+            String ruleId, Map<String, Object> scope, Map<String, Object> body) {
+        return new RuleRevision(
+                TENANT,
+                ruleId,
+                1,
+                "poc-default",
+                "edge",
+                "lua-dsl",
+                "REASON",
+                100,
+                "deny",
+                scope,
+                body,
+                "dry_run",
+                null,
+                Instant.now(),
+                Instant.now(),
+                null);
+    }
+
     private static RuleRevision scriptRule(
             String ruleId, String layer, String body, Map<String, Object> scope, int riskScore) {
         return new RuleRevision(

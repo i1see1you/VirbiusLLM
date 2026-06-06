@@ -2,6 +2,7 @@ package io.virbius.control.domain.enums;
 
 public enum RuleRuntime {
     LUA_DSL("lua-dsl"),
+    DLP_DSL("dlp-dsl"),
     LUA("lua"),
     PROMPT("prompt"),
     GROOVY("groovy");

@@ -16,6 +16,11 @@
   <dependencies>
     <dependency>
       <groupId>io.virbius</groupId>
+      <artifactId>virbius-policy</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.virbius</groupId>
       <artifactId>virbius-groovy-l3</artifactId>
       <version>${project.version}</version>
     </dependency>

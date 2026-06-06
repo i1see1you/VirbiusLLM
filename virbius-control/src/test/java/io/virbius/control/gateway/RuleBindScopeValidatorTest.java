@@ -25,7 +25,9 @@ class RuleBindScopeValidatorTest {
                 100,
                 "deny",
                 Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/chat/completions"))),
-                Map.of());
+                Map.of(),
+                null,
+                null);
         assertDoesNotThrow(() -> RuleBindScopeValidator.validateRouteUris(req, METADATA));
     }
 
@@ -40,7 +42,9 @@ class RuleBindScopeValidatorTest {
                 100,
                 "deny",
                 Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/embeddings"))),
-                Map.of());
+                Map.of(),
+                null,
+                null);
         assertThrows(IllegalArgumentException.class, () -> RuleBindScopeValidator.validateRouteUris(req, METADATA));
     }
 
@@ -55,7 +59,55 @@ class RuleBindScopeValidatorTest {
                 100,
                 "deny",
                 Map.of("bind_scope", "route", "bind_ref", Map.of("scenes", List.of("beta_chat"))),
-                Map.of());
+                Map.of(),
+                null,
+                null);
         assertDoesNotThrow(() -> RuleBindScopeValidator.validateRouteUris(req, Map.of()));
+    }
+
+    private static final Map<String, Object> SCENE_METADATA = Map.of(
+            "scene_registry",
+            Map.of(
+                    "version",
+                    1,
+                    "scenes",
+                    Map.of("beta_chat", Map.of("app_id", "beta", "default", true))));
+
+    @Test
+    void edgeServiceBindRequiresKnownAppId() {
+        UpsertRuleRequest req = new UpsertRuleRequest(
+                "edge_r1",
+                "poc-default",
+                "edge",
+                "lua-dsl",
+                "X",
+                100,
+                "deny",
+                Map.of("bind_scope", "service", "bind_ref", Map.of("app_ids", List.of("unknown-app"))),
+                Map.of("list_type", "deny", "keywords", List.of("x")),
+                null,
+                null);
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> RuleBindScopeValidator.validateRouteUris(req, SCENE_METADATA));
+    }
+
+    @Test
+    void edgeRouteBindRejected() {
+        UpsertRuleRequest req = new UpsertRuleRequest(
+                "edge_r2",
+                "poc-default",
+                "edge",
+                "lua-dsl",
+                "X",
+                100,
+                "deny",
+                Map.of("bind_scope", "route", "bind_ref", Map.of("scenes", List.of("beta_chat"))),
+                Map.of("list_type", "deny", "keywords", List.of("x")),
+                null,
+                null);
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> RuleBindScopeValidator.validateRouteUris(req, SCENE_METADATA));
     }
 }

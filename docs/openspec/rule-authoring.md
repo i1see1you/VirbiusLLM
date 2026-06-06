@@ -18,14 +18,17 @@
 |------|------|------|
 | 生效范围 | `scope.bind_scope` + `scope.bind_ref` | prompt / lua / groovy 共用 |
 | 触发条件 | 简单：条件构建器；高级：`body` 脚本 | **仅 lua / groovy** |
+| 端 L0 词表 | 简单：`list_type` + `keywords` 表单；高级：JSON body | **仅 lua-dsl（edge）** |
 | prompt 描述 | `body` 多行文本 | **仅 prompt**；进入 1B 矩阵 |
 | 脚本预览 | `compile-condition` | lua / groovy 简单模式只读 |
 | 模拟 | `simulate` | lua / groovy：vars → scene → bind → decide → signal；**prompt**：vars → scene → bind → **1B draft 命中** → signal |
 
-**编辑模式**（lua / groovy）
+**编辑模式**
 
-- `simple`：名单 / 累计条件行 + 模板；保存时 compile。
-- `advanced`：直接编辑 `body`；加载时 parse 失败则保持 advanced。
+- `simple`：名单 / 累计条件行 + 模板（lua / groovy）；或 **edge 关键词表单**（lua-dsl）。
+- `advanced`：直接编辑 `body`（脚本或 edge JSON）；加载时 parse 失败则保持 advanced。
+
+**edge `bind_scope`**：仅 `global` / `service` + `app_ids`（发布时拆 per-app manifest）；不支持 `route`。
 
 **prompt**：无 simple/advanced；运营台仅 **bind + body 文本框**。
 

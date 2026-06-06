@@ -4,7 +4,7 @@ VirbiusLLM 是一款为大模型定制的安全防护工具，支持实时 Skill
 
 整体技术方案基于 **「端-管-云」协同架构** 与 **统一安全编排与策略控制面、分层执行面**：**`virbius-control`（单 Java 进程）** 承载 Registry API 与 Admin 运营台，**对外一套 HTTP**，为规则唯一真源；**`virbius-engine`** 负责云侧 Prompt/Groovy 执行与终判（**不用 OPA/Rego**）。发布时由 **Compiler + PublishOrchestrator** 同步：端/管为文件推送（CDN、etcd/Kong）；**virbius-engine** 为 **Registry DB→RuleCache**（§8.8.8）。规则版本真源为 **`rule_history` / `rule_revision`**；MVP 审计为本地 jsonl（§13.1）。`manifest.yaml` 仅作可选导出/审计格式。**MVP 端-管-云**（**已冻结**，[§11.6.0](docs/DESIGN.md)）：端 L0 + **APISIX 必达** + engine（L1 Prompt + Groovy）；Kong decK 为 stretch；`rule_history` + 本地审计 jsonl。
 
-**详细设计**：[docs/DESIGN.md](docs/DESIGN.md) · **策略放量**：[docs/openspec/rule-rollout.md](docs/openspec/rule-rollout.md) · **PoC 种子与运营 API**：[docs/POC-SEED-API.md](docs/POC-SEED-API.md) · **MVP 接口契约**：[docs/openspec/](docs/openspec/) · **PoC 代码布局**：[docs/POC-REPO.md](docs/POC-REPO.md)
+**详细设计**：[docs/DESIGN.md](docs/DESIGN.md) · **客户端集成**：[docs/user-guide.md](docs/user-guide.md) · **策略放量**：[docs/openspec/rule-rollout.md](docs/openspec/rule-rollout.md) · **PoC 种子与运营 API**：[docs/POC-SEED-API.md](docs/POC-SEED-API.md) · **MVP 接口契约**：[docs/openspec/](docs/openspec/) · **PoC 代码布局**：[docs/POC-REPO.md](docs/POC-REPO.md)
 
 **本地构建**：JDK **17**、Maven 3.9+、Rust（gateway-agent / virbius-core）；详见 [POC-REPO.md §环境要求](docs/POC-REPO.md)。
 

@@ -7,12 +7,20 @@
   "required": ["tenant_id", "manifest_version", "rules", "sdk_config"],
   "properties": {
     "tenant_id": { "type": "string" },
+    "app_id": {
+      "type": "string",
+      "description": "Per-app manifest owner; SDK validates against VIRBIUS_APP_ID"
+    },
     "manifest_version": { "type": "string", "const": "1" },
     "bundle_id": { "type": "string" },
     "bundle_version": { "type": "string" },
     "rules": {
       "type": "array",
       "items": { "$ref": "#/$defs/edgeRule" }
+    },
+    "dlp_rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dlpRule" }
     },
     "sdk_config": { "$ref": "#/$defs/sdkConfig" },
     "lists": {
@@ -73,6 +81,51 @@
         }
       }
     },
+    "dlpRule": {
+      "type": "object",
+      "required": [
+        "rule_id",
+        "rule_revision",
+        "reason_code",
+        "risk_score",
+        "intent_action",
+        "enforce_mode",
+        "rollout_state"
+      ],
+      "properties": {
+        "rule_id": { "type": "string" },
+        "rule_revision": { "type": "integer", "minimum": 1 },
+        "reason_code": { "type": "string" },
+        "risk_score": { "type": "integer", "const": 0 },
+        "intent_action": { "type": "string", "const": "allow" },
+        "enforce_mode": {
+          "type": "string",
+          "enum": ["dry_run", "canary", "full"]
+        },
+        "rollout_state": {
+          "type": "string",
+          "enum": ["draft", "disabled", "dry_run", "canary", "full"]
+        },
+        "canary_percent": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "body": {
+          "type": "object",
+          "required": ["entity_type"],
+          "properties": {
+            "entity_type": {
+              "type": "string",
+              "enum": ["idcard_cn", "phone_cn", "email", "bank_card_cn", "custom_regex"]
+            },
+            "pattern": { "type": "string" },
+            "mask_template": { "type": "string" },
+            "priority": { "type": "integer" }
+          }
+        }
+      }
+    },
     "sdkConfig": {
       "type": "object",
       "properties": {
@@ -96,6 +149,11 @@
           "type": "string",
           "enum": ["device_id", "install_id", "user_id"],
           "default": "device_id"
+        },
+        "dlp_vault_ttl_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "default": 1800000
         }
       }
     },
