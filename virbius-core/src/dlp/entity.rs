@@ -2,19 +2,19 @@ use regex::Regex;
 
 pub fn built_in_pattern(entity_type: &str) -> Option<&'static str> {
     match entity_type {
+        // Inner patterns only — boundaries validated in `match_has_valid_boundaries`
+        // (Rust `regex` crate does not support look-behind / look-ahead).
         "idcard_cn" => Some(
             r"(?x)
-            \b
             [1-9]\d{5}
             (?:19|20)\d{2}
             (?:0[1-9]|1[0-2])
             (?:0[1-9]|[12]\d|3[01])
-            \d{3}[\dXx]
-            \b",
+            \d{3}[\dXx]",
         ),
-        "phone_cn" => Some(r"\b1[3-9]\d{9}\b"),
-        "email" => Some(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
-        "bank_card_cn" => Some(r"\b(?:\d[ -]*?){13,19}\b"),
+        "phone_cn" => Some(r"1[3-9]\d{9}"),
+        "email" => Some(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
+        "bank_card_cn" => Some(r"(?:\d[ -]*?){13,19}"),
         _ => None,
     }
 }
@@ -26,6 +26,48 @@ pub fn compile_entity_regex(entity_type: &str, custom_pattern: Option<&str>) -> 
         built_in_pattern(entity_type)?
     };
     Regex::new(pat).ok()
+}
+
+fn char_before(content: &str, start: usize) -> Option<char> {
+    if start == 0 {
+        return None;
+    }
+    content[..start].chars().next_back()
+}
+
+fn char_after(content: &str, end: usize) -> Option<char> {
+    content[end..].chars().next()
+}
+
+fn not_adjacent_ascii_digit(content: &str, start: usize, end: usize) -> bool {
+    !char_before(content, start).is_some_and(|c| c.is_ascii_digit())
+        && !char_after(content, end).is_some_and(|c| c.is_ascii_digit())
+}
+
+fn email_local_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '%' | '+' | '-')
+}
+
+fn email_tail_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '.' | '-')
+}
+
+/// ASCII/CJK-friendly boundaries for built-in entity types (replaces `\b` in prior patterns).
+pub fn match_has_valid_boundaries(entity_type: &str, content: &str, start: usize, end: usize) -> bool {
+    match entity_type {
+        "phone_cn" | "bank_card_cn" => not_adjacent_ascii_digit(content, start, end),
+        "idcard_cn" => {
+            not_adjacent_ascii_digit(content, start, end)
+                && !char_after(content, end).is_some_and(|c| {
+                    c.is_ascii_digit() || matches!(c, 'X' | 'x')
+                })
+        }
+        "email" => {
+            !char_before(content, start).is_some_and(email_local_char)
+                && !char_after(content, end).is_some_and(email_tail_char)
+        }
+        _ => true,
+    }
 }
 
 pub fn normalize_bank_card(raw: &str) -> String {
@@ -70,4 +112,56 @@ pub fn mask_template_for(entity_type: &str, custom: Option<&str>) -> String {
         return t.to_string();
     }
     format!("{{{{{}_{{seq}}}}}}", default_mask_prefix(entity_type))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn first_valid_match(entity_type: &str, text: &str) -> Option<String> {
+        let re = compile_entity_regex(entity_type, None)?;
+        for m in re.find_iter(text) {
+            if match_has_valid_boundaries(entity_type, text, m.start(), m.end()) {
+                return Some(m.as_str().to_string());
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn phone_cn_matches_after_cjk_without_space() {
+        assert_eq!(
+            first_valid_match("phone_cn", "请致电13912345678办理"),
+            Some("13912345678".into())
+        );
+    }
+
+    #[test]
+    fn phone_cn_still_matches_with_spaces() {
+        assert_eq!(
+            first_valid_match("phone_cn", "call 13800138000 please"),
+            Some("13800138000".into())
+        );
+    }
+
+    #[test]
+    fn idcard_cn_matches_after_cjk() {
+        assert_eq!(
+            first_valid_match("idcard_cn", "身份证号110101199003077934"),
+            Some("110101199003077934".into())
+        );
+    }
+
+    #[test]
+    fn email_matches_after_cjk() {
+        assert_eq!(
+            first_valid_match("email", "联系admin@example.com谢谢"),
+            Some("admin@example.com".into())
+        );
+    }
+
+    #[test]
+    fn phone_cn_does_not_match_substring_inside_long_digits() {
+        assert_eq!(first_valid_match("phone_cn", "20240101139123456789012"), None);
+    }
 }

@@ -42,6 +42,18 @@
       "body": {
         "entity_type": "phone_cn"
       }
+    },
+    {
+      "rule_id": "demo_dlp_idcard",
+      "rule_revision": 1,
+      "reason_code": "DLP_IDCARD_CN",
+      "risk_score": 0,
+      "intent_action": "allow",
+      "enforce_mode": "full",
+      "rollout_state": "full",
+      "body": {
+        "entity_type": "idcard_cn"
+      }
     }
   ],
   "sdk_config": {

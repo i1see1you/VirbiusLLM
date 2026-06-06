@@ -172,6 +172,14 @@ fn find_spans(content: &str, rules: &[CompiledRule], session_id: Option<&str>) -
     for compiled in rules {
         for m in compiled.regex.find_iter(content) {
             let plaintext = m.as_str().to_string();
+            if !entity::match_has_valid_boundaries(
+                &compiled.rule.body.entity_type,
+                content,
+                m.start(),
+                m.end(),
+            ) {
+                continue;
+            }
             if !entity_match_valid(&compiled.rule.body.entity_type, &plaintext) {
                 continue;
             }

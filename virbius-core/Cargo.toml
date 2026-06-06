@@ -2,6 +2,9 @@
 name = "virbius-core"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Virbius edge L0 SDK (Rust + C ABI): local scan, blacklist, DLP desensitization"
+readme = "README.md"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

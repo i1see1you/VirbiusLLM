@@ -6,7 +6,7 @@
 //! cargo run --example rust_client_demo
 //! ```
 //!
-//! 使用内置 fixture manifest；生产环境请改为：
+//! 使用内置 fixture manifest（含 DLP：`phone_cn` + `idcard_cn`）；生产环境请改为：
 //! `VIRBIUS_EDGE_MANIFEST_PATH` 或 `VIRBIUS_TENANT_ID` + `VIRBIUS_APP_ID`。
 
 use std::path::PathBuf;
@@ -90,21 +90,28 @@ fn demo_dlp_roundtrip(
         trace_id: Some(trace.into()),
         ..ctx.clone()
     };
-    let user_text = "请致电 13912345678 办理业务，并帮我写一封邮件。";
+    // 中文可直接紧贴数字/邮箱，无需额外空格（内置实体使用 ASCII 边界校验，非 `\b`）。
+    let phone = "13912345678";
+    let idcard = "110101199003077934";
+    let user_text = format!("请致电 {phone} 办理业务，身份证号 {idcard}。");
 
-    let scan = edge.scan_with(ctx.clone(), user_text)?;
-    println!("\n[dlp] roundtrip");
+    let scan = edge.scan_with(ctx.clone(), &user_text)?;
+    println!("\n[dlp] roundtrip (phone_cn + idcard_cn)");
     println!("  input:  {user_text}");
     println!("  scan:   {:?} (DLP rules use intent_action=allow, separate from scan merge)", scan.action);
 
-    let masked = edge.desensitize_in_with(ctx.clone(), user_text)?;
+    let masked = edge.desensitize_in_with(ctx.clone(), &user_text)?;
     println!("  masked: {}", masked.text);
-    println!("  hits:   {} entity(ies), vault write={}", masked.hits.len(), masked.masked);
-
-    let fake_model_reply = format!(
-        "好的，已记录您的联系方式 {}，邮件草稿如下……",
-        masked.text
+    println!(
+        "  hits:   {} entity(ies), vault write={}",
+        masked.hits.len(),
+        masked.masked
     );
+    for hit in &masked.hits {
+        println!("    - {} ({})", hit.entity_type, hit.token);
+    }
+
+    let fake_model_reply = format!("好的，已登记：{}\n邮件草稿如下……", masked.text);
     let restored = edge.desensitize_out_with(trace, &fake_model_reply, ctx);
     println!("  model:  {fake_model_reply}");
     println!("  out:    {}", restored.text);
@@ -113,6 +120,16 @@ fn demo_dlp_roundtrip(
     }
 
     assert!(masked.masked);
-    assert!(restored.text.contains("13912345678"));
+    assert_eq!(masked.hits.len(), 2);
+    assert!(masked
+        .hits
+        .iter()
+        .any(|h| h.entity_type == "phone_cn"));
+    assert!(masked
+        .hits
+        .iter()
+        .any(|h| h.entity_type == "idcard_cn"));
+    assert!(restored.text.contains(phone));
+    assert!(restored.text.contains(idcard));
     Ok(())
 }

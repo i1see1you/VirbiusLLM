@@ -1,10 +1,12 @@
 # virbius-core
 
-端侧 L0 Native SDK（Rust + C ABI）。契约：[MVP-OPENSPEC §4](../docs/openspec/MVP-OPENSPEC.md)。
+Edge L0 native SDK (Rust + C ABI). Contract: [MVP-OPENSPEC §4](../docs/openspec/MVP-OPENSPEC.md).
 
-**用户使用文档**：[docs/user-guide.md](../docs/user-guide.md)（端 SDK、网关 Header、DLP、示例与排障）
+License: [MIT](../LICENSE) · 中文：[README.zh.md](README.zh.md)
 
-## Rust 快速开始（推荐）
+Integration guide: [docs/user-guide.md](../docs/user-guide.md) (edge SDK, gateway headers, DLP, troubleshooting).
+
+## Rust quick start
 
 ```toml
 [dependencies]
@@ -15,7 +17,10 @@ virbius-core = { path = "../VirbiusLLM/virbius-core" }
 use virbius_core::{EffectiveAction, ScanContext, VirbiusEdge};
 
 fn main() -> Result<(), virbius_core::VirbiusError> {
-    std::env::set_var("VIRBIUS_EDGE_LISTS_PATH", "./data/edge/default-content-lists.json");
+    std::env::set_var(
+        "VIRBIUS_EDGE_MANIFEST_PATH",
+        "./virbius-core/examples/fixtures/demo-edge-manifest.json",
+    );
 
     let edge = VirbiusEdge::new();
     let outcome = edge.scan_with(
@@ -23,65 +28,74 @@ fn main() -> Result<(), virbius_core::VirbiusError> {
             scene: Some("chat".into()),
             ..Default::default()
         },
-        "用户输入的 prompt",
+        "User prompt text",
     )?;
 
     match outcome.action {
-        EffectiveAction::Allow => { /* 继续调 LLM；outcome.trace_id 可写入 X-Virbius-Trace-Id */ }
-        EffectiveAction::Block => { /* 本地拦截 */ }
-        EffectiveAction::Review => { /* dry_run 命中，可放行并上报 */ }
-        EffectiveAction::Captcha => { /* 触发验证码 */ }
+        EffectiveAction::Allow => { /* call LLM; use outcome.trace_id as X-Virbius-Trace-Id */ }
+        EffectiveAction::Block => { /* block locally */ }
+        EffectiveAction::Review => { /* dry_run hit; may allow and audit */ }
+        EffectiveAction::Captcha => { /* captcha flow */ }
     }
     Ok(())
 }
 ```
 
-运行仓库内完整示例（含 scan + DLP 回填）：
+Run the full example (scan + DLP round-trip with **phone_cn** and **idcard_cn**):
 
 ```bash
 cd virbius-core
 cargo run --example rust_client_demo
 ```
 
-经网关调用 LLM（端 scan + Virbius Header，需本地 APISIX PoC）：
+Gateway example (edge scan + Virbius headers; requires local APISIX PoC):
 
 ```bash
 export VIRBIUS_GATEWAY_URL=http://127.0.0.1:9080/v1/chat/completions
 cargo run --example gateway_http_client
 ```
 
-- `trace_id`：**无需传入**，SDK 自动生成 UUID v4（`trace_id_source=sdk`）。
-- 显式传入时须为 **UUID v4 或 ULID**。
+- **`trace_id`**: auto-generated UUID v4 if omitted (`trace_id_source=sdk`).
+- If you set it explicitly, use **UUID v4 or ULID**.
 
-## C ABI（跨语言）
+## DLP (desensitize in / out)
 
-见 [include/virbius.h](include/virbius.h)：`virbius_init` / `virbius_scan` / `virbius_reload` / `virbius_free_string`。
+DLP rules live in manifest **`dlp_rules[]`** (separate from keyword **`rules[]`**). `intent_action` is always **`allow`**; DLP does not change scan merge actions.
 
-`virbius_scan` 会在 `virbius_scan_result.trace_id` 返回最终 trace（未传 ctx.trace_id 时由 SDK 生成 UUID v4）。调用方须对 `trace_id` 及 block 时的 `rule_id` / `reason_code` / `layer` 调用 `virbius_free_string` 释放。
+```rust
+let scan = edge.scan_with(ctx.clone(), user_text)?;
+let masked = edge.desensitize_in_with(ctx.clone(), user_text)?;
+let to_llm = masked.text;
+// ... call LLM ...
+let restored = edge.desensitize_out_with(&scan.trace_id, &model_reply, ctx);
+```
 
-## 规则文件
+Built-in entity types: `phone_cn`, `idcard_cn`, `email`, `bank_card_cn`, `custom_regex`.  
+Place a space before digits when possible — built-in patterns use `\b` word boundaries.
 
-按 App 拆分 manifest（方案 A：发布时按 `bind_scope` + `app_ids` 过滤）：
+Demo manifest: [examples/fixtures/demo-edge-manifest.json](examples/fixtures/demo-edge-manifest.json).
+
+## Manifest paths
+
+Per-app layout (recommended after publish):
 
 ```bash
 export VIRBIUS_TENANT_ID=default
-export VIRBIUS_APP_ID=medical-prod
-# 默认路径：./data/edge/{tenant}/{app_id}/edge-manifest.json
+export VIRBIUS_APP_ID=demo-app
+export VIRBIUS_DATA_DIR=./data
+# loads ./data/edge/{tenant}/{app_id}/edge-manifest.json
 ```
 
-或显式指定：
+Or set explicitly:
 
 ```bash
-export VIRBIUS_EDGE_MANIFEST_PATH=./data/edge/default/medical-prod/edge-manifest.json
-# legacy 词表（同目录）：
-export VIRBIUS_EDGE_LISTS_PATH=./data/edge/default/medical-prod/default-content-lists.json
+export VIRBIUS_EDGE_MANIFEST_PATH=./data/edge/default/demo-app/edge-manifest.json
 ```
 
-无 `scene_registry` 时仍生成租户级 `./data/edge/{tenant}-edge-manifest.json`（兼容旧 PoC）。
+## C ABI
 
-## 与 virbius-client 的分工
+See [include/virbius.h](include/virbius.h): `virbius_init`, `virbius_scan`, `virbius_reload`, `virbius_free_string`.
 
-| Crate | 层级 |
-|-------|------|
-| `virbius-core` | 端 L0，本地关键词，同步 |
-| `virbius-client`（规划中） | 管+云 HTTP Evaluate |
+## License
+
+[MIT License](../LICENSE)
