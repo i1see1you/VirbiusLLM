@@ -9,7 +9,7 @@ import io.virbius.policy.ListStorageKind;
 import io.virbius.control.domain.RuleRevision;
 import io.virbius.control.domain.RolloutStateHelper;
 import io.virbius.control.domain.TenantRolloutPolicy;
-import io.virbius.control.groovy.GroovyRuleBodies;
+import io.virbius.control.script.ScriptRuleBodies;
 import io.virbius.control.policy.BindScopeExport;
 import io.virbius.control.gateway.DlpRuleValidator;
 import io.virbius.policy.EdgeManifestFilter;
@@ -204,7 +204,11 @@ public class ArtifactService {
             } else if (rule.exportedCanaryPercent() != null) {
                 block.put("canary_percent", rule.exportedCanaryPercent());
             }
-            block.put("body", GroovyRuleBodies.asScript(rule.body()));
+            String scriptBody = ScriptRuleBodies.asArtifactScript(rule.body(), rule.runtime());
+            if (scriptBody.isBlank()) {
+                continue;
+            }
+            block.put("body", scriptBody);
             BindScopeExport.putBindFields(block, rule.scope());
             blocks.add(block);
         }
@@ -221,8 +225,8 @@ public class ArtifactService {
             if (!"lua".equals(rule.runtime()) && !"groovy".equals(rule.runtime())) {
                 continue;
             }
-            String body = GroovyRuleBodies.asScript(rule.body());
-            if (!referencesCumulative(body, cumulativeName)) {
+            String body = ScriptRuleBodies.asArtifactScript(rule.body(), rule.runtime());
+            if (body.isBlank() || !referencesCumulative(body, cumulativeName)) {
                 continue;
             }
             out.add(rule);

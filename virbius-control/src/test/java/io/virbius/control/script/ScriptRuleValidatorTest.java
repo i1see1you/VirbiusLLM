@@ -38,6 +38,13 @@ class ScriptRuleValidatorTest {
     }
 
     @Test
+    void luaRejectsJsonDslBody() {
+        String body = "{\"list_type\":\"deny\",\"keywords\":[\"x\"]}";
+        Map<String, Object> r = validator.validate(TENANT, "lua", body);
+        assertFalse((Boolean) r.get("valid"));
+    }
+
+    @Test
     void groovyValidWithExistingRefs() {
         when(listMetaRepo.getMeta(TENANT, "deny_keyword"))
                 .thenReturn(Optional.of(new AccessListMeta(TENANT, "deny_keyword", "keyword", null)));

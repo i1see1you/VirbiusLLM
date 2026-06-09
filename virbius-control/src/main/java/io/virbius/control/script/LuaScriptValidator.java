@@ -18,6 +18,10 @@ public final class LuaScriptValidator {
         if (scriptBody == null || scriptBody.isBlank()) {
             throw new IllegalArgumentException("lua body is empty");
         }
+        if (ScriptRuleBodies.isLegacyJsonDsl(scriptBody)) {
+            throw new IllegalArgumentException(
+                    "lua runtime requires decide(ctx) script body, not JSON list/cumulative DSL");
+        }
         if (scriptBody.getBytes(StandardCharsets.UTF_8).length > MAX_BODY_BYTES) {
             throw new IllegalArgumentException("lua body exceeds " + MAX_BODY_BYTES + " bytes");
         }

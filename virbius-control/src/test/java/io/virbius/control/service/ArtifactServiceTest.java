@@ -22,8 +22,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class ArtifactServiceTest {
 
     private static final String TENANT = "default";
@@ -61,6 +64,53 @@ class ArtifactServiceTest {
                 "",
                 gatewayListRedisService,
                 edgeArtifactMetaRepository);
+    }
+
+    @Test
+    void gatewaySnapshotSkipsLegacyJsonGatewayRules() {
+        when(cumulativeRepo.list(TENANT, "active")).thenReturn(List.of());
+        when(listMetaRepo.listMeta(TENANT)).thenReturn(List.of());
+
+        RuleRevision legacyJson =
+                new RuleRevision(
+                        TENANT,
+                        "gw_content_deny",
+                        1,
+                        "poc-default",
+                        "gateway",
+                        "lua",
+                        "GW_CONTENT_KEYWORD_DENY",
+                        100,
+                        "deny",
+                        Map.of("bind_scope", "global"),
+                        Map.of("list_type", "deny", "keywords", List.of("bad")),
+                        "dry_run",
+                        null,
+                        Instant.now(),
+                        Instant.now(),
+                        null);
+        RuleRevision luaRule = scriptRule(
+                "rl_deny_keywords",
+                "gateway",
+                """
+                -- virbius:generated v1
+                function decide(ctx)
+                  return listMatch('deny_keyword', ctx.content)
+                end""",
+                Map.of("bind_scope", "global"),
+                100);
+
+        when(registryRepo.listCurrentRules(eq(TENANT), eq("gateway")))
+                .thenReturn(List.of(legacyJson, luaRule));
+
+        Map<String, Object> snap = artifactService.buildGatewaySnapshot(TENANT);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rules = (List<Map<String, Object>>) snap.get("script_rules");
+        assertEquals(1, rules.size());
+        assertEquals("rl_deny_keywords", rules.get(0).get("rule_id"));
+        String body = (String) rules.get(0).get("body");
+        assertTrue(body.contains("listMatch('deny_keyword'"));
+        assertFalse(body.startsWith("{"));
     }
 
     @Test

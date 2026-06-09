@@ -33,8 +33,23 @@ public class ScriptRuleValidator {
     public Map<String, Object> validate(String tenantId, String runtime, Object body) {
         List<String> errors = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
-        String script = GroovyRuleBodies.asScript(body);
         String rt = runtime != null ? runtime.trim().toLowerCase() : "";
+        String script = "";
+        try {
+            if ("lua".equals(rt) || "groovy".equals(rt)) {
+                script = ScriptRuleBodies.asExecutableScript(body, rt);
+            } else {
+                script = GroovyRuleBodies.asScript(body);
+            }
+        } catch (IllegalArgumentException e) {
+            errors.add(e.getMessage());
+            return Map.of(
+                    "valid", false,
+                    "errors", errors,
+                    "warnings", warnings,
+                    "referenced_lists", List.of(),
+                    "referenced_cumulatives", List.of());
+        }
 
         if (script.isBlank()) {
             errors.add("script body is empty");

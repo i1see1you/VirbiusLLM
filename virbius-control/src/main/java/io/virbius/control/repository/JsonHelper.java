@@ -15,9 +15,6 @@ final class JsonHelper {
             return null;
         }
         try {
-            if (value instanceof String s) {
-                return s;
-            }
             return MAPPER.writeValueAsString(value);
         } catch (Exception e) {
             throw new IllegalStateException("json encode failed", e);
@@ -40,9 +37,13 @@ final class JsonHelper {
         if (json == null) {
             return null;
         }
+        String trimmed = json.trim();
+        if (trimmed.isEmpty()) {
+            return json;
+        }
         try {
-            if (json.startsWith("{") || json.startsWith("[")) {
-                return MAPPER.readValue(json, Object.class);
+            if (trimmed.startsWith("\"") || trimmed.startsWith("{") || trimmed.startsWith("[")) {
+                return MAPPER.readValue(trimmed, Object.class);
             }
             return json;
         } catch (Exception e) {

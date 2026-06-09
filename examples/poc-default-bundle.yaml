@@ -84,32 +84,64 @@ rules:
       list_type: deny
       keywords:
         - clinical-secret
-  - rule_id: gw_subject_network_deny
-    layer: gateway
-    runtime: lua
-    reason_code: GW_SUBJECT_USER_DENY
-    risk_score: 100
-    body:
-      list_type: deny
-      subjects:
-        user_ids: [u-banned-poc]
-        device_ids: [dev-blocked-poc]
-        ip_cidrs: []
-  - rule_id: gw_content_deny
+  - rule_id: rl_deny_keywords
     layer: gateway
     runtime: lua
     reason_code: GW_CONTENT_KEYWORD_DENY
     risk_score: 100
-    body:
-      list_type: deny
-      keywords:
-        - 招嫖
-        - 办证
-        - 暴恐
-        - 枪支刀具
-        - 炸弹制作
-        - jailbreak
-        - 绕过
+    body: |
+      -- virbius:generated v1
+      function decide(ctx)
+        return listMatch('deny_keyword', ctx.content)
+      end
+  - rule_id: rl_deny_users
+    layer: gateway
+    runtime: lua
+    reason_code: GW_SUBJECT_USER_DENY
+    risk_score: 100
+    body: |
+      -- virbius:generated v1
+      function decide(ctx)
+        return listMatch('deny_user_id', ctx.user_id)
+      end
+  - rule_id: rl_deny_devices
+    layer: gateway
+    runtime: lua
+    reason_code: GW_SUBJECT_DEVICE_DENY
+    risk_score: 100
+    body: |
+      -- virbius:generated v1
+      function decide(ctx)
+        return listMatch('deny_device_id', ctx.device_id)
+      end
+  - rule_id: rl_rate_user_1h
+    layer: gateway
+    runtime: lua
+    reason_code: GW_USER_RATE_1H
+    risk_score: 80
+    intent_action: captcha
+    scope:
+      bind_scope: global
+    body: |
+      -- virbius:generated v1
+      function decide(ctx)
+        return getCumulative('user_req_1h') >= 120
+      end
+  - rule_id: rl_rate_app_1h
+    layer: gateway
+    runtime: lua
+    reason_code: GW_APP_RATE_1H
+    risk_score: 85
+    intent_action: captcha
+    scope:
+      bind_scope: service
+      bind_ref:
+        app_ids: [beta, medical-prod]
+    body: |
+      -- virbius:generated v1
+      function decide(ctx)
+        return getCumulative('app_req_1h') >= 500
+      end
   - rule_id: cloud_rl_deny_keywords
     layer: cloud
     runtime: groovy

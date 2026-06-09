@@ -8,6 +8,13 @@ import org.junit.jupiter.api.Test;
 class LuaScriptValidatorTest {
 
     @Test
+    void rejectsLegacyJsonDsl() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> LuaScriptValidator.validate("{\"list_type\":\"deny\",\"keywords\":[\"x\"]}"));
+    }
+
+    @Test
     void acceptsValidDecide() {
         String body = "function decide(ctx)\n  return getCumulative('x') >= 1\nend";
         assertDoesNotThrow(() -> LuaScriptValidator.validate(body));

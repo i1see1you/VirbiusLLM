@@ -53,6 +53,51 @@ INSERT INTO tb_access_list (tenant_id, polarity, dimension, value)
 SELECT 'default', 'deny', 'var', 'app_id=evil' FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_access_list WHERE tenant_id = 'default' AND polarity = 'deny' AND dimension = 'var' AND value = 'app_id=evil');
 
+-- Named access lists (ListStore → gateway memory_lists / engine PolicyDataCache)
+INSERT INTO tb_access_list_meta (tenant_id, list_name, dimension, remark)
+SELECT 'default', 'deny_keyword', 'keyword', 'PoC content deny keywords' FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_access_list_meta WHERE tenant_id = 'default' AND list_name = 'deny_keyword');
+INSERT INTO tb_access_list_meta (tenant_id, list_name, dimension, remark)
+SELECT 'default', 'deny_user_id', 'user_id', 'PoC banned users' FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_access_list_meta WHERE tenant_id = 'default' AND list_name = 'deny_user_id');
+INSERT INTO tb_access_list_meta (tenant_id, list_name, dimension, remark)
+SELECT 'default', 'deny_device_id', 'device_id', 'PoC blocked devices' FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_access_list_meta WHERE tenant_id = 'default' AND list_name = 'deny_device_id');
+INSERT INTO tb_access_list_meta (tenant_id, list_name, dimension, remark)
+SELECT 'default', 'deny_var', 'var:app_id', 'PoC deny app_id values' FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_access_list_meta WHERE tenant_id = 'default' AND list_name = 'deny_var');
+
+INSERT INTO tb_access_list_entry (tenant_id, list_name, value)
+SELECT 'default', 'deny_keyword', '招嫖' FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_access_list_entry WHERE tenant_id = 'default' AND list_name = 'deny_keyword' AND value = '招嫖');
+INSERT INTO tb_access_list_entry (tenant_id, list_name, value)
+SELECT 'default', 'deny_keyword', '办证' FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_access_list_entry WHERE tenant_id = 'default' AND list_name = 'deny_keyword' AND value = '办证');
+INSERT INTO tb_access_list_entry (tenant_id, list_name, value)
+SELECT 'default', 'deny_keyword', '暴恐' FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_access_list_entry WHERE tenant_id = 'default' AND list_name = 'deny_keyword' AND value = '暴恐');
+INSERT INTO tb_access_list_entry (tenant_id, list_name, value)
+SELECT 'default', 'deny_keyword', '枪支刀具' FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_access_list_entry WHERE tenant_id = 'default' AND list_name = 'deny_keyword' AND value = '枪支刀具');
+INSERT INTO tb_access_list_entry (tenant_id, list_name, value)
+SELECT 'default', 'deny_keyword', '炸弹制作' FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_access_list_entry WHERE tenant_id = 'default' AND list_name = 'deny_keyword' AND value = '炸弹制作');
+INSERT INTO tb_access_list_entry (tenant_id, list_name, value)
+SELECT 'default', 'deny_keyword', 'jailbreak' FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_access_list_entry WHERE tenant_id = 'default' AND list_name = 'deny_keyword' AND value = 'jailbreak');
+INSERT INTO tb_access_list_entry (tenant_id, list_name, value)
+SELECT 'default', 'deny_keyword', '绕过' FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_access_list_entry WHERE tenant_id = 'default' AND list_name = 'deny_keyword' AND value = '绕过');
+INSERT INTO tb_access_list_entry (tenant_id, list_name, value)
+SELECT 'default', 'deny_user_id', 'u-banned-poc' FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_access_list_entry WHERE tenant_id = 'default' AND list_name = 'deny_user_id' AND value = 'u-banned-poc');
+INSERT INTO tb_access_list_entry (tenant_id, list_name, value)
+SELECT 'default', 'deny_device_id', 'dev-blocked-poc' FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_access_list_entry WHERE tenant_id = 'default' AND list_name = 'deny_device_id' AND value = 'dev-blocked-poc');
+INSERT INTO tb_access_list_entry (tenant_id, list_name, value)
+SELECT 'default', 'deny_var', 'evil' FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_access_list_entry WHERE tenant_id = 'default' AND list_name = 'deny_var' AND value = 'evil');
+
 -- rule_history（revision=1）
 INSERT INTO tb_rule_history (
     tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
@@ -96,7 +141,7 @@ INSERT INTO tb_rule_history (
 SELECT 'default', 'gw_subject_network_deny', 1, 'poc-default', 'gateway', 'lua',
     'GW_SUBJECT_USER_DENY', 100, 'deny', '{}',
     '{"list_type":"deny","subjects":{"user_ids":["u-banned-poc"],"device_ids":["dev-blocked-poc"],"ip_cidrs":[]}}',
-    'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+    'disabled', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'gw_subject_network_deny' AND rule_revision = 1);
 
 INSERT INTO tb_rule_history (
@@ -107,7 +152,7 @@ INSERT INTO tb_rule_history (
 SELECT 'default', 'gw_subject_network_allow', 1, 'poc-default', 'gateway', 'lua',
     'EDGE_CONTENT_KEYWORD_ALLOW', 0, 'allow', '{}',
     '{"list_type":"allow","subjects":{"user_ids":[],"device_ids":[],"ip_cidrs":[]}}',
-    'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+    'disabled', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'gw_subject_network_allow' AND rule_revision = 1);
 
 INSERT INTO tb_rule_history (
@@ -118,7 +163,7 @@ INSERT INTO tb_rule_history (
 SELECT 'default', 'gw_content_deny', 1, 'poc-default', 'gateway', 'lua',
     'GW_CONTENT_KEYWORD_DENY', 100, 'deny', '{}',
     '{"keywords":["招嫖","办证","暴恐","枪支刀具","炸弹制作","jailbreak","绕过"],"list_type":"deny"}',
-    'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+    'disabled', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'gw_content_deny' AND rule_revision = 1);
 
 INSERT INTO tb_rule_history (
@@ -129,7 +174,7 @@ INSERT INTO tb_rule_history (
 SELECT 'default', 'gw_content_allow', 1, 'poc-default', 'gateway', 'lua',
     'EDGE_KEYWORD_WHITELIST', 0, 'allow', '{}',
     '{"keywords":[],"list_type":"allow"}',
-    'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+    'disabled', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'gw_content_allow' AND rule_revision = 1);
 
 INSERT INTO tb_rule_history (
@@ -183,18 +228,6 @@ INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, l
 SELECT 'default', 'edge_l0_content_allow', 1, 'poc-default', 'edge', 'lua-dsl', 'EDGE_CONTENT_KEYWORD_ALLOW', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'edge_l0_content_allow');
 INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
-SELECT 'default', 'gw_subject_network_deny', 1, 'poc-default', 'gateway', 'lua', 'GW_SUBJECT_USER_DENY', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
-WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'gw_subject_network_deny');
-INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
-SELECT 'default', 'gw_subject_network_allow', 1, 'poc-default', 'gateway', 'lua', 'EDGE_CONTENT_KEYWORD_ALLOW', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
-WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'gw_subject_network_allow');
-INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
-SELECT 'default', 'gw_content_deny', 1, 'poc-default', 'gateway', 'lua', 'GW_CONTENT_KEYWORD_DENY', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
-WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'gw_content_deny');
-INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
-SELECT 'default', 'gw_content_allow', 1, 'poc-default', 'gateway', 'lua', 'EDGE_KEYWORD_WHITELIST', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
-WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'gw_content_allow');
-INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
 SELECT 'default', 'cloud_prompt_l1', 1, 'poc-default', 'cloud', 'prompt', 'PROMPT_INJECTION', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'cloud_prompt_l1');
 INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
@@ -228,7 +261,10 @@ INSERT INTO tb_rule_history (
     rollout_state, canary_percent, effective_from, modified_at)
 SELECT 'default', 'rl_deny_keywords', 1, 'poc-default', 'gateway', 'lua',
     'GW_CONTENT_KEYWORD_DENY', 100, 'deny', '{}',
-    'function decide(ctx)\n  return listMatch(''deny_keyword'', ctx.content)\nend',
+    '-- virbius:generated v1
+function decide(ctx)
+  return listMatch(''deny_keyword'', ctx.content)
+end',
     'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'rl_deny_keywords');
 
@@ -238,7 +274,10 @@ INSERT INTO tb_rule_history (
     rollout_state, canary_percent, effective_from, modified_at)
 SELECT 'default', 'rl_deny_users', 1, 'poc-default', 'gateway', 'lua',
     'GW_SUBJECT_USER_DENY', 100, 'deny', '{}',
-    'function decide(ctx)\n  return listMatch(''deny_user_id'', ctx.user_id)\nend',
+    '-- virbius:generated v1
+function decide(ctx)
+  return listMatch(''deny_user_id'', ctx.user_id)
+end',
     'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'rl_deny_users');
 
@@ -246,9 +285,25 @@ INSERT INTO tb_rule_history (
     tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
                   reason_code, risk_score, intent_action, scope_json, body_json,
     rollout_state, canary_percent, effective_from, modified_at)
+SELECT 'default', 'rl_deny_devices', 1, 'poc-default', 'gateway', 'lua',
+    'GW_SUBJECT_DEVICE_DENY', 100, 'deny', '{}',
+    '-- virbius:generated v1
+function decide(ctx)
+  return listMatch(''deny_device_id'', ctx.device_id)
+end',
+    'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'rl_deny_devices');
+
+INSERT INTO tb_rule_history (
+    tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
+                  reason_code, risk_score, intent_action, scope_json, body_json,
+    rollout_state, canary_percent, effective_from, modified_at)
 SELECT 'default', 'rl_rate_user_1h', 1, 'poc-default', 'gateway', 'lua',
     'GW_USER_RATE_1H', 80, 'captcha', '{"bind_scope":"global"}',
-    'function decide(ctx)\n  return getCumulative(''user_req_1h'') >= 120\nend',
+    '-- virbius:generated v1
+function decide(ctx)
+  return getCumulative(''user_req_1h'') >= 120
+end',
     'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'rl_rate_user_1h');
 
@@ -258,7 +313,10 @@ INSERT INTO tb_rule_history (
     rollout_state, canary_percent, effective_from, modified_at)
 SELECT 'default', 'rl_rate_app_1h', 1, 'poc-default', 'gateway', 'lua',
     'GW_APP_RATE_1H', 85, 'captcha', '{"bind_scope":"service","bind_ref":{"app_ids":["beta","medical-prod"]}}',
-    'function decide(ctx)\n  return getCumulative(''app_req_1h'') >= 500\nend',
+    '-- virbius:generated v1
+function decide(ctx)
+  return getCumulative(''app_req_1h'') >= 500
+end',
     'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'rl_rate_app_1h');
 
@@ -268,6 +326,9 @@ WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND
 INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
 SELECT 'default', 'rl_deny_users', 1, 'poc-default', 'gateway', 'lua', 'GW_SUBJECT_USER_DENY', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'rl_deny_users');
+INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
+SELECT 'default', 'rl_deny_devices', 1, 'poc-default', 'gateway', 'lua', 'GW_SUBJECT_DEVICE_DENY', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'rl_deny_devices');
 INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
 SELECT 'default', 'rl_rate_user_1h', 1, 'poc-default', 'gateway', 'lua', 'GW_USER_RATE_1H', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'rl_rate_user_1h');
@@ -304,13 +365,25 @@ SELECT 'default', 'cloud_rl_deny_vars', 1, 'poc-default', 'cloud', 'groovy', 'CL
 WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'cloud_rl_deny_vars');
 
 -- Migrate legacy list_match / cumulative rows on existing DBs
-UPDATE tb_rule_history SET runtime = 'lua', body_json = 'function decide(ctx)\n  return listMatch(''deny_keyword'', ctx.content)\nend'
+UPDATE tb_rule_history SET runtime = 'lua', body_json = '-- virbius:generated v1
+function decide(ctx)
+  return listMatch(''deny_keyword'', ctx.content)
+end'
   WHERE tenant_id = 'default' AND rule_id = 'rl_deny_keywords' AND runtime = 'list_match';
-UPDATE tb_rule_history SET runtime = 'lua', body_json = 'function decide(ctx)\n  return listMatch(''deny_user_id'', ctx.user_id)\nend'
+UPDATE tb_rule_history SET runtime = 'lua', body_json = '-- virbius:generated v1
+function decide(ctx)
+  return listMatch(''deny_user_id'', ctx.user_id)
+end'
   WHERE tenant_id = 'default' AND rule_id = 'rl_deny_users' AND runtime = 'list_match';
-UPDATE tb_rule_history SET runtime = 'lua', body_json = 'function decide(ctx)\n  return getCumulative(''user_req_1h'') >= 120\nend'
+UPDATE tb_rule_history SET runtime = 'lua', body_json = '-- virbius:generated v1
+function decide(ctx)
+  return getCumulative(''user_req_1h'') >= 120
+end'
   WHERE tenant_id = 'default' AND rule_id = 'rl_rate_user_1h' AND runtime = 'cumulative';
-UPDATE tb_rule_history SET runtime = 'lua', body_json = 'function decide(ctx)\n  return getCumulative(''app_req_1h'') >= 500\nend'
+UPDATE tb_rule_history SET runtime = 'lua', body_json = '-- virbius:generated v1
+function decide(ctx)
+  return getCumulative(''app_req_1h'') >= 500
+end'
   WHERE tenant_id = 'default' AND rule_id = 'rl_rate_app_1h' AND runtime = 'cumulative';
 UPDATE tb_rule_history SET runtime = 'groovy', body_json = 'def decide(ctx) { return ctx.listMatch(''deny_keyword'') }'
   WHERE tenant_id = 'default' AND rule_id = 'cloud_rl_deny_keywords' AND runtime = 'list_match';
@@ -318,6 +391,58 @@ UPDATE tb_rule_history SET runtime = 'groovy', body_json = 'def decide(ctx) { re
   WHERE tenant_id = 'default' AND rule_id = 'cloud_rl_deny_vars' AND runtime = 'list_match';
 UPDATE tb_rules_current SET runtime = 'lua' WHERE tenant_id = 'default' AND rule_id IN ('rl_deny_keywords','rl_deny_users','rl_rate_user_1h','rl_rate_app_1h') AND runtime IN ('list_match','cumulative');
 UPDATE tb_rules_current SET runtime = 'groovy' WHERE tenant_id = 'default' AND rule_id IN ('cloud_rl_deny_keywords','cloud_rl_deny_vars') AND runtime = 'list_match';
+
+-- Script-rules migration: disable legacy gw_* JSON gateway rules; fix rl_* Lua bodies
+UPDATE tb_rules_current SET rollout_state = 'disabled', updated_at = CURRENT_TIMESTAMP
+  WHERE tenant_id = 'default' AND rule_id IN (
+    'gw_content_deny', 'gw_content_allow', 'gw_subject_network_deny', 'gw_subject_network_allow');
+UPDATE tb_rule_history SET rollout_state = 'disabled', modified_at = CURRENT_TIMESTAMP
+  WHERE tenant_id = 'default' AND rule_id IN (
+    'gw_content_deny', 'gw_content_allow', 'gw_subject_network_deny', 'gw_subject_network_allow')
+    AND effective_to IS NULL;
+
+UPDATE tb_rule_history SET body_json = '-- virbius:generated v1
+function decide(ctx)
+  return listMatch(''deny_keyword'', ctx.content)
+end', modified_at = CURRENT_TIMESTAMP
+  WHERE tenant_id = 'default' AND rule_id = 'rl_deny_keywords';
+UPDATE tb_rule_history SET body_json = '-- virbius:generated v1
+function decide(ctx)
+  return listMatch(''deny_user_id'', ctx.user_id)
+end', modified_at = CURRENT_TIMESTAMP
+  WHERE tenant_id = 'default' AND rule_id = 'rl_deny_users';
+UPDATE tb_rule_history SET body_json = '-- virbius:generated v1
+function decide(ctx)
+  return getCumulative(''user_req_1h'') >= 120
+end', modified_at = CURRENT_TIMESTAMP
+  WHERE tenant_id = 'default' AND rule_id = 'rl_rate_user_1h';
+UPDATE tb_rule_history SET body_json = '-- virbius:generated v1
+function decide(ctx)
+  return getCumulative(''app_req_1h'') >= 500
+end', modified_at = CURRENT_TIMESTAMP
+  WHERE tenant_id = 'default' AND rule_id = 'rl_rate_app_1h';
+
+UPDATE tb_rule_history SET body_json = '-- virbius:generated v1
+function decide(ctx)
+  return listMatch(''deny_device_id'', ctx.device_id)
+end', modified_at = CURRENT_TIMESTAMP
+  WHERE tenant_id = 'default' AND rule_id = 'rl_deny_devices';
+
+INSERT INTO tb_rule_history (
+    tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
+                  reason_code, risk_score, intent_action, scope_json, body_json,
+    rollout_state, canary_percent, effective_from, modified_at)
+SELECT 'default', 'rl_deny_devices', 1, 'poc-default', 'gateway', 'lua',
+    'GW_SUBJECT_DEVICE_DENY', 100, 'deny', '{}',
+    '-- virbius:generated v1
+function decide(ctx)
+  return listMatch(''deny_device_id'', ctx.device_id)
+end',
+    'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'rl_deny_devices');
+INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
+SELECT 'default', 'rl_deny_devices', 1, 'poc-default', 'gateway', 'lua', 'GW_SUBJECT_DEVICE_DENY', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'rl_deny_devices');
 
 INSERT INTO tb_tenant_rollout_policy (
     tenant_id, auto_mode, canary_ladder_json, min_dry_run_hours, min_review_count,
