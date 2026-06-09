@@ -5,6 +5,7 @@ mod bind_scope;
 mod cumulative;
 mod engine;
 mod enforce;
+mod logging;
 mod policy_engine;
 mod script;
 mod trace;
@@ -298,6 +299,10 @@ fn error_response(status: StatusCode, code: &'static str, message: &str) -> Resp
 
 #[tokio::main]
 async fn main() {
+    if let Err(e) = logging::init() {
+        eprintln!("virbius-gateway-agent: logging init failed: {e}");
+    }
+
     let listen = env::var("VIRBIUS_AGENT_LISTEN").unwrap_or_else(|_| "127.0.0.1:9070".into());
     let engine_url =
         env::var("VIRBIUS_ENGINE_URL").unwrap_or_else(|_| "http://127.0.0.1:8082".into());
@@ -313,9 +318,10 @@ async fn main() {
         .with_state(state);
 
     let addr: SocketAddr = listen.parse().expect("VIRBIUS_AGENT_LISTEN");
-    println!(
+    log::info!(
         "virbius-gateway-agent listening on {} (engine={})",
-        addr, engine_url
+        addr,
+        engine_url
     );
 
     let listener = tokio::net::TcpListener::bind(addr).await.expect("bind");

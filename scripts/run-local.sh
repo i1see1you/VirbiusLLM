@@ -12,6 +12,9 @@ export VIRBIUS_REDIS_URL="${VIRBIUS_REDIS_URL:-redis://127.0.0.1:${VIRBIUS_REDIS
 MVN="${MVN:-$HOME/.local/apache-maven-3.9.6/bin/mvn}"
 AGENT_BIN="$CARGO_TARGET_DIR/release/virbius-gateway-agent"
 LOG_DIR="${LOG_DIR:-/tmp/virbius/logs}"
+export VIRBIUS_LOG_DIR="${VIRBIUS_LOG_DIR:-$LOG_DIR}"
+export VIRBIUS_LOG_MAX_FILE_SIZE="${VIRBIUS_LOG_MAX_FILE_SIZE:-100MB}"
+export VIRBIUS_LOG_MAX_HISTORY_DAYS="${VIRBIUS_LOG_MAX_HISTORY_DAYS:-30}"
 REDIS_PID_FILE="${REDIS_PID_FILE:-/tmp/virbius/redis.pid}"
 mkdir -p "$LOG_DIR" "$VIRBIUS_DATA_DIR" "$(dirname "$REDIS_PID_FILE")"
 
@@ -104,17 +107,21 @@ done
 
 ensure_redis
 
-echo "Starting services (logs: $LOG_DIR)"
+echo "Starting services (logs: $LOG_DIR, rotate: ${VIRBIUS_LOG_MAX_FILE_SIZE}/day, keep ${VIRBIUS_LOG_MAX_HISTORY_DAYS}d)"
 PROMPT_LLM_MODEL="${VIRBIUS_PROMPT_LLM_MODEL:-virbius-prompt-1b}"
 PROMPT_LLM_BASE="${VIRBIUS_PROMPT_LLM_BASE_URL:-http://127.0.0.1:11434}"
 echo "prompt-llm: $PROMPT_LLM_BASE model=$PROMPT_LLM_MODEL"
 nohup env VIRBIUS_DATA_DIR="$VIRBIUS_DATA_DIR" VIRBIUS_REDIS_URL="$VIRBIUS_REDIS_URL" \
+  VIRBIUS_LOG_DIR="$VIRBIUS_LOG_DIR" VIRBIUS_LOG_MAX_FILE_SIZE="$VIRBIUS_LOG_MAX_FILE_SIZE" \
+  VIRBIUS_LOG_MAX_HISTORY_DAYS="$VIRBIUS_LOG_MAX_HISTORY_DAYS" \
   VIRBIUS_PROMPT_LLM_BASE_URL="$PROMPT_LLM_BASE" VIRBIUS_PROMPT_LLM_MODEL="$PROMPT_LLM_MODEL" \
   java -jar "$ROOT/virbius-engine/target/virbius-engine-0.1.0-SNAPSHOT.jar" \
-  >"$LOG_DIR/engine.log" 2>&1 &
+  >/dev/null 2>&1 &
 nohup env VIRBIUS_DATA_DIR="$VIRBIUS_DATA_DIR" VIRBIUS_REDIS_URL="$VIRBIUS_REDIS_URL" \
+  VIRBIUS_LOG_DIR="$VIRBIUS_LOG_DIR" VIRBIUS_LOG_MAX_FILE_SIZE="$VIRBIUS_LOG_MAX_FILE_SIZE" \
+  VIRBIUS_LOG_MAX_HISTORY_DAYS="$VIRBIUS_LOG_MAX_HISTORY_DAYS" \
   java -jar "$ROOT/virbius-control/target/virbius-control-0.1.0-SNAPSHOT.jar" \
-  >"$LOG_DIR/control.log" 2>&1 &
+  >/dev/null 2>&1 &
 
 if ! wait_http "http://127.0.0.1:8080/api/v1/health" "virbius-control"; then
   echo "--- control.log (tail) ---"
@@ -132,13 +139,19 @@ wait_http "http://127.0.0.1:8082/admin/health" "virbius-engine" || {
 }
 
 nohup env VIRBIUS_ENGINE_URL=http://127.0.0.1:8082 VIRBIUS_DATA_DIR="$VIRBIUS_DATA_DIR" \
-  "$AGENT_BIN" >"$LOG_DIR/agent.log" 2>&1 &
+  VIRBIUS_LOG_DIR="$VIRBIUS_LOG_DIR" VIRBIUS_LOG_MAX_FILE_SIZE="$VIRBIUS_LOG_MAX_FILE_SIZE" \
+  VIRBIUS_LOG_MAX_HISTORY_DAYS="$VIRBIUS_LOG_MAX_HISTORY_DAYS" \
+  "$AGENT_BIN" >/dev/null 2>&1 &
 wait_http "http://127.0.0.1:9070/health" "gateway-agent" || {
   echo "--- agent.log (tail) ---"
   tail -20 "$LOG_DIR/agent.log" || true
   exit 1
 }
 
+echo ""
+echo "Logs (rolling: max ${VIRBIUS_LOG_MAX_FILE_SIZE}, keep ${VIRBIUS_LOG_MAX_HISTORY_DAYS} days):"
+echo "  tail -f $LOG_DIR/control.log $LOG_DIR/engine.log $LOG_DIR/agent.log"
+echo "  Redis/OpenResty: install logrotate → bash $ROOT/scripts/install-logrotate.sh"
 echo ""
 echo "redis            $VIRBIUS_REDIS_URL  (log: $LOG_DIR/redis.log)"
 echo "virbius-engine   http://127.0.0.1:8082"

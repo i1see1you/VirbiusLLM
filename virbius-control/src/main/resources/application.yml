@@ -1,6 +1,14 @@
 server:
   port: 8080
 
+logging:
+  file:
+    name: ${VIRBIUS_LOG_DIR:/tmp/virbius/logs}/control.log
+  logback:
+    rollingpolicy:
+      max-file-size: ${VIRBIUS_LOG_MAX_FILE_SIZE:100MB}
+      max-history: ${VIRBIUS_LOG_MAX_HISTORY_DAYS:30}
+
 spring:
   application:
     name: virbius-control

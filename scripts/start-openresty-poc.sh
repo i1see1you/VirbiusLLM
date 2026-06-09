@@ -134,7 +134,7 @@ echo "  staging: $STAGING"
 "$NGINX" -p "$PREFIX" -c "$CONF" -t
 "$NGINX" -p "$PREFIX" -c "$CONF"
 
-echo ""
 echo "Virbius OpenResty ready: http://127.0.0.1:$PORT/v1/chat/completions"
+echo "Logs: $PREFIX/logs/access.log (rotate: bash $ROOT/scripts/install-logrotate.sh --install)"
 echo "Upstream Ollama: see $STAGING/gateway/openresty/upstreams.conf"
 echo "Stop: $NGINX -p $PREFIX -c $CONF -s stop"

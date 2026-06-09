@@ -216,7 +216,7 @@ fn publish_redis(cfg: &AuditConfig, payload: String) {
                 payload,
             };
             if tx.try_send(job).is_err() {
-                eprintln!("virbius-gateway-agent: audit publish queue full, dropping event");
+                log::warn!("virbius-gateway-agent: audit publish queue full, dropping event");
             }
             return;
         }
