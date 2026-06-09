@@ -48,7 +48,7 @@ pub fn scan_once(req: ScanRequest<'_>) -> ScanEngineResult {
 }
 
 fn sdk_config() -> SdkConfig {
-    manifest::sdk_config_from_env(&manifest::load().sdk_config)
+    manifest::effective_sdk_config()
 }
 
 pub fn primary_rule(merged: &EnforceResult) -> Option<&EdgeRule> {

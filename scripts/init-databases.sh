@@ -31,17 +31,5 @@ apply "$DATA_DIR/virbius-engine.db" \
   "$ROOT/virbius-engine/src/main/resources/db/schema.sql" \
   "$ROOT/virbius-engine/src/main/resources/db/seed.sql"
 
-apply "$DATA_DIR/virbius-compiler.db" \
-  "$ROOT/virbius-compiler/src/main/resources/db/schema.sql" \
-  "$ROOT/virbius-compiler/src/main/resources/db/seed.sql"
-
-apply "$DATA_DIR/virbius-core.db" \
-  "$ROOT/virbius-core/db/schema.sql" \
-  /dev/null
-
-apply "$DATA_DIR/virbius-gateway-agent.db" \
-  "$ROOT/virbius-gateway-agent/db/schema.sql" \
-  /dev/null
-
 echo "Databases initialized under $DATA_DIR"
 ls -la "$DATA_DIR"/*.db

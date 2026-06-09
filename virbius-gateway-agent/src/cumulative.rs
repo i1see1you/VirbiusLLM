@@ -369,6 +369,7 @@ mod tests {
             vars: req.vars,
             tenant_id: "t",
             lists: &[],
+            redis_list_index: &[],
             cumulatives: std::slice::from_ref(&def),
         };
         let body = "function decide(ctx)\n  return getCumulative('user_req_1h') >= 1\nend";
@@ -384,7 +385,7 @@ mod tests {
         let defs: Vec<CumulativeDefBlock> =
             serde_json::from_value(v.get("cumulatives").cloned().unwrap()).unwrap();
         let lists: Vec<crate::policy_engine::ListDefBlock> =
-            serde_json::from_value(v.get("lists").cloned().unwrap_or_default()).unwrap_or_default();
+            serde_json::from_value(v.get("memory_lists").cloned().unwrap_or_default()).unwrap_or_default();
         let script_rules: Vec<ScriptRuleBlock> =
             serde_json::from_value(v.get("script_rules").cloned().unwrap()).unwrap();
         let bind = BindContext {
@@ -419,6 +420,7 @@ mod tests {
             vars: req.vars,
             tenant_id: "default",
             lists: &lists,
+            redis_list_index: &[],
             cumulatives: &defs,
         };
         let chat_rule = script_rules.iter().find(|r| r.rule_id == "rl_chat").unwrap();

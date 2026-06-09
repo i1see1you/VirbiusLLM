@@ -1,17 +1,13 @@
-//! Virbius 端侧 L0 SDK 集成示例。
+//! Virbius 端侧 L0 SDK 集成示例（生产路径：Init 参数，不用环境变量）。
 //!
-//! 运行：
 //! ```bash
 //! cd virbius-core
 //! cargo run --example rust_client_demo
 //! ```
-//!
-//! 使用内置 fixture manifest（含 DLP：`phone_cn` + `idcard_cn`）；生产环境请改为：
-//! `VIRBIUS_EDGE_MANIFEST_PATH` 或 `VIRBIUS_TENANT_ID` + `VIRBIUS_APP_ID`。
 
 use std::path::PathBuf;
 
-use virbius_core::{EffectiveAction, ScanContext, VirbiusEdge};
+use virbius_core::{EffectiveAction, EdgeInitConfig, ScanContext, VirbiusEdge};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -20,12 +16,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("fixture not found: {}", manifest.display());
         std::process::exit(1);
     }
-    // SAFETY: single-threaded main before any other threads use these vars.
-    unsafe {
-        std::env::set_var("VIRBIUS_EDGE_MANIFEST_PATH", &manifest);
-    }
 
-    let edge = VirbiusEdge::new();
+    let cache_dir = manifest.parent().unwrap().to_path_buf();
+    let edge = VirbiusEdge::init(EdgeInitConfig {
+        offline_manifest_path: Some(manifest),
+        cache_dir,
+        tenant_id: "default".into(),
+        app_id: "demo".into(),
+        ..Default::default()
+    })?;
+
     let ctx = ScanContext {
         user_id: Some("demo-user".into()),
         device_id: Some("demo-device".into()),
@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     demo_scan_review(&edge, &ctx)?;
     demo_dlp_roundtrip(&edge, &ctx)?;
 
-    println!("\nDone. Point VIRBIUS_EDGE_MANIFEST_PATH at your published edge-manifest.json in production.");
+    println!("\nDone. In production, pass EdgeInitConfig from your app config (Control URL + app_id + cache_dir).");
     Ok(())
 }
 
@@ -90,7 +90,6 @@ fn demo_dlp_roundtrip(
         trace_id: Some(trace.into()),
         ..ctx.clone()
     };
-    // 中文可直接紧贴数字/邮箱，无需额外空格（内置实体使用 ASCII 边界校验，非 `\b`）。
     let phone = "13912345678";
     let idcard = "110101199003077934";
     let user_text = format!("请致电 {phone} 办理业务，身份证号 {idcard}。");

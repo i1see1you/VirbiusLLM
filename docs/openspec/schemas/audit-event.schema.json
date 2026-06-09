@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://virbius.io/schemas/audit-event/v1/mvp",
   "title": "VirbiusAuditEvent",
-  "description": "MVP 审计事件。各执行面 publish 至消息总线（默认 Redis Stream virbius:audit:events，可选 Kafka virbius.audit.events），由 AuditIngest 入库；PoC 可同时写本地 jsonl 备档。不记录 bundle_id/bundle_version。ControlContext（F-11）：trace_id 必填；user_id/device_id 若 App 提供则各层应写入。",
+  "description": "MVP 审计事件。review/block/captcha 等经消息总线（默认 Redis Stream virbius:audit:events，可选 Kafka virbius.audit.events）由 AuditIngest 入库 tb_audit_events；effective_action=allow 不入库、不 publish Stream，仅写本地 *-audit-allow.jsonl 备档。PoC 非 allow 事件可同时写 *-audit.jsonl。不记录 bundle_id/bundle_version。ControlContext（F-11）：trace_id 必填；user_id/device_id 若 App 提供则各层应写入。",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -20,9 +20,10 @@
   "properties": {
     "trace_id": {
       "type": "string",
-      "minLength": 16,
-      "maxLength": 128,
-      "description": "App 生成的全局唯一 ID（UUID v4 或 ULID）；端 block 审计必填"
+      "minLength": 36,
+      "maxLength": 36,
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+      "description": "App 生成的 UUID v4（36 字符）；端 block 审计必填"
     },
     "tenant_id": {
       "type": "string",

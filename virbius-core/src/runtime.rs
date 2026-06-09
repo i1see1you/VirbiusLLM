@@ -10,13 +10,11 @@ pub fn ensure_flush_loop() {
     FLUSH_STARTED.get_or_init(|| {
         thread::spawn(|| loop {
             thread::sleep(Duration::from_millis(
-                manifest::sdk_config_from_env(&manifest::load().sdk_config)
+                manifest::effective_sdk_config()
                     .audit_flush_interval_ms
                     .max(5000),
             ));
-            audit::flush_pending(&manifest::sdk_config_from_env(
-                &manifest::load().sdk_config,
-            ));
+            audit::flush_pending(&manifest::effective_sdk_config());
         });
     });
 }

@@ -333,3 +333,19 @@ UPDATE tb_rules_current SET rollout_state = 'disabled', updated_at = CURRENT_TIM
 WHERE runtime = 'native';
 UPDATE tb_rule_history SET rollout_state = 'disabled', modified_at = CURRENT_TIMESTAMP
 WHERE runtime = 'native' AND effective_to IS NULL;
+
+-- PoC dev edge pull key (tenant=default): vrb_edge_dev_default_poc_only
+-- Enable with VIRBIUS_EDGE_AUTH_ENABLED=true
+INSERT INTO tb_edge_tenant_credential (
+    credential_id, tenant_id, key_hash, key_prefix, status, created_at
+)
+SELECT 'poc-default-edge-cred',
+       'default',
+       'dd0ac8f6b2e94abb4bd984c1784a5aa943ebc45cc4a3b70a48e200176285ca50',
+       'vrb_edge_dev',
+       'active',
+       CURRENT_TIMESTAMP
+FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (
+    SELECT 1 FROM tb_edge_tenant_credential WHERE credential_id = 'poc-default-edge-cred'
+);

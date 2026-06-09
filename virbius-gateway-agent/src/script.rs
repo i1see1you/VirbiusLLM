@@ -1,3 +1,4 @@
+use crate::list_redis::{match_redis_list_by_name, RedisListIndexBlock};
 use crate::policy_engine::{match_list_by_name, read_cumulative_count, CumulativeDefBlock, ListDefBlock};
 use mlua::{Lua, MultiValue, Value};
 use std::collections::HashMap;
@@ -11,6 +12,7 @@ pub struct ScriptEnv<'a> {
     pub vars: &'a HashMap<String, String>,
     pub tenant_id: &'a str,
     pub lists: &'a [ListDefBlock],
+    pub redis_list_index: &'a [RedisListIndexBlock],
     pub cumulatives: &'a [CumulativeDefBlock],
 }
 
@@ -48,6 +50,7 @@ pub fn run_lua_decide(body: &str, env: &ScriptEnv<'_>) -> Result<bool, String> {
     .map_err(|e| e.to_string())?;
 
     let lists = env.lists.to_vec();
+    let redis_index = env.redis_list_index.to_vec();
     let cumulatives = env.cumulatives.to_vec();
     let content = env.content.to_string();
     let user_id = env.user_id.map(|s| s.to_string());
@@ -64,6 +67,9 @@ pub fn run_lua_decide(body: &str, env: &ScriptEnv<'_>) -> Result<bool, String> {
     let session_id_lm = session_id.clone();
     let vars_lm = vars.clone();
 
+    let tenant_lm = tenant.clone();
+    let tenant_cum = tenant.clone();
+
     globals
         .set(
             "listMatch",
@@ -79,7 +85,7 @@ pub fn run_lua_decide(body: &str, env: &ScriptEnv<'_>) -> Result<bool, String> {
                     Some(Value::Number(n)) => Some(n.to_string()),
                     _ => None,
                 };
-                Ok(match_list_by_name(
+                Ok(if match_list_by_name(
                     &lists,
                     &name,
                     explicit.as_deref(),
@@ -89,7 +95,21 @@ pub fn run_lua_decide(body: &str, env: &ScriptEnv<'_>) -> Result<bool, String> {
                     client_ip_lm.as_deref(),
                     session_id_lm.as_deref(),
                     &vars_lm,
-                ))
+                ) {
+                    true
+                } else {
+                    match_redis_list_by_name(
+                        &tenant_lm,
+                        &redis_index,
+                        &name,
+                        explicit.as_deref(),
+                        &content_lm,
+                        user_id_lm.as_deref(),
+                        device_id_lm.as_deref(),
+                        client_ip_lm.as_deref(),
+                        &vars_lm,
+                    )
+                })
             })
             .map_err(|e| e.to_string())?,
         )
@@ -100,7 +120,7 @@ pub fn run_lua_decide(body: &str, env: &ScriptEnv<'_>) -> Result<bool, String> {
             "getCumulative",
             lua.create_function(move |_, name: String| {
                 Ok(read_cumulative_count(
-                    &tenant,
+                    &tenant_cum,
                     &cumulatives,
                     &name,
                     &content,

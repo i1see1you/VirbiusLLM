@@ -206,6 +206,12 @@ CREATE TABLE IF NOT EXISTS tb_audit_events (
 
 CREATE INDEX IF NOT EXISTS idx_tb_audit_events_rule ON tb_audit_events (tenant_id, rule_id, intercepted_at);
 
+CREATE TABLE IF NOT EXISTS tb_audit_ingest_checkpoint (
+    stream_key      VARCHAR(128) PRIMARY KEY,
+    last_entry_id   VARCHAR(64) NOT NULL,
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS tb_rule_metrics_1h (
     tenant_id           VARCHAR(64) NOT NULL,
     rule_id             VARCHAR(128) NOT NULL,
@@ -229,3 +235,28 @@ CREATE TABLE IF NOT EXISTS tb_tenant_request_stats_1h (
     cnt_total    INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (tenant_id, scene, layer, hour_bucket)
 );
+
+CREATE TABLE IF NOT EXISTS tb_edge_artifact_meta (
+    tenant_id         VARCHAR(64) NOT NULL,
+    app_id            VARCHAR(128) NOT NULL,
+    artifact_revision BIGINT NOT NULL DEFAULT 0,
+    content_sha256    VARCHAR(64) NOT NULL,
+    published_at      TIMESTAMP NOT NULL,
+    PRIMARY KEY (tenant_id, app_id)
+);
+
+CREATE TABLE IF NOT EXISTS tb_edge_tenant_credential (
+    credential_id   VARCHAR(36)  NOT NULL,
+    tenant_id       VARCHAR(64)  NOT NULL,
+    key_hash        VARCHAR(64)  NOT NULL,
+    key_prefix      VARCHAR(16)  NOT NULL,
+    status          VARCHAR(16)  NOT NULL DEFAULT 'active',
+    created_at      TIMESTAMP    NOT NULL,
+    revoked_at      TIMESTAMP,
+    last_used_at    TIMESTAMP,
+    PRIMARY KEY (credential_id),
+    UNIQUE (tenant_id, key_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_edge_tenant_cred_lookup
+    ON tb_edge_tenant_credential (tenant_id, status);

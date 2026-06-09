@@ -1,12 +1,8 @@
 package io.virbius.control.api;
 
-import io.virbius.control.domain.dto.request.AccessListEntriesRequest;
 import io.virbius.control.domain.dto.request.UpdateRuleStatusRequest;
 import io.virbius.control.domain.dto.request.UpdateRuntimeRequest;
 import io.virbius.control.domain.dto.request.UpsertRuleRequest;
-import io.virbius.control.domain.enums.AccessListDimension;
-import io.virbius.control.domain.enums.AccessListPolarity;
-import io.virbius.control.service.AccessListService;
 import io.virbius.control.service.BundleMetadataService;
 import io.virbius.control.service.BundleService;
 import io.virbius.control.service.PublishService;
@@ -31,81 +27,20 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/tenants/{tenantId}")
 public class LegacyApiController {
 
-    private final AccessListService accessListService;
     private final RuleService ruleService;
     private final BundleService bundleService;
     private final PublishService publishService;
     private final BundleMetadataService metadataService;
 
     public LegacyApiController(
-            AccessListService accessListService,
             RuleService ruleService,
             BundleService bundleService,
             PublishService publishService,
             BundleMetadataService metadataService) {
-        this.accessListService = accessListService;
         this.ruleService = ruleService;
         this.bundleService = bundleService;
         this.publishService = publishService;
         this.metadataService = metadataService;
-    }
-
-    @GetMapping("/access-lists")
-    public Map<String, Object> accessListsAll(@PathVariable("tenantId") String tenantId) {
-        return accessListService.getAll(tenantId);
-    }
-
-    @GetMapping("/access-lists/{dimension}/{polarity}")
-    public Map<String, Object> accessListsOne(
-            @PathVariable("tenantId") String tenantId, @PathVariable("dimension") String dimension, @PathVariable("polarity") String polarity) {
-        return Map.of(
-                "tenant_id", tenantId,
-                "dimension", dimension,
-                "polarity", polarity,
-                "values",
-                accessListService.get(
-                        tenantId, AccessListPolarity.parse(polarity), AccessListDimension.parse(dimension)));
-    }
-
-    @PostMapping("/access-lists/{dimension}/{polarity}/entries")
-    public Map<String, Object> accessListsAdd(
-            @PathVariable("tenantId") String tenantId,
-            @PathVariable("dimension") String dimension,
-            @PathVariable("polarity") String polarity,
-            @RequestBody AccessListEntriesRequest body) {
-        return accessListService.addEntriesAndPush(
-                tenantId,
-                AccessListPolarity.parse(polarity),
-                AccessListDimension.parse(dimension),
-                resolveValues(body));
-    }
-
-    @DeleteMapping("/access-lists/{dimension}/{polarity}/entries/{value}")
-    public Map<String, Object> accessListsRemove(
-            @PathVariable("tenantId") String tenantId,
-            @PathVariable("dimension") String dimension,
-            @PathVariable("polarity") String polarity,
-            @PathVariable("value") String value) {
-        return accessListService.removeEntryAndPush(
-                tenantId, AccessListPolarity.parse(polarity), AccessListDimension.parse(dimension), value);
-    }
-
-    @PostMapping("/access-lists/sync-rules")
-    public Map<String, Object> syncRules(@PathVariable("tenantId") String tenantId) {
-        return accessListService.syncRules(tenantId);
-    }
-
-    @PostMapping("/access-lists/push-engine")
-    public Map<String, Object> pushEngine(@PathVariable("tenantId") String tenantId) {
-        return accessListService.pushToEngine(tenantId);
-    }
-
-    @PostMapping("/access-lists/sync-and-publish")
-    public Map<String, Object> syncAndPublish(
-            @PathVariable("tenantId") String tenantId,
-            @RequestParam(value = "bundleId", defaultValue = "poc-default") String bundleId,
-            @RequestParam(value = "version", defaultValue = "0.1.0") String version) {
-        return accessListService.syncAndPublish(tenantId, bundleId, version);
     }
 
     @GetMapping("/bundles")
@@ -157,15 +92,5 @@ public class LegacyApiController {
     public Map<String, Object> getMetadata(
             @PathVariable("tenantId") String tenantId, @PathVariable("bundleId") String bundleId, @PathVariable("version") String version) {
         return metadataService.getMetadata(tenantId, bundleId, version);
-    }
-
-    private static List<String> resolveValues(AccessListEntriesRequest body) {
-        if (body.values() != null && !body.values().isEmpty()) {
-            return body.values();
-        }
-        if (body.value() != null && !body.value().isBlank()) {
-            return List.of(body.value());
-        }
-        return List.of();
     }
 }

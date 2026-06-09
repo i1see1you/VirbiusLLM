@@ -27,6 +27,24 @@ public class CompilerCli implements Runnable {
             description = "compile target: all | edge | gateway | cloud")
     private String target;
 
+    @Option(
+            names = {"-g", "--gateway"},
+            defaultValue = "apisix",
+            description = "gateway backend when --target=gateway: apisix | openresty | all")
+    private String gateway;
+
+    @Option(
+            names = {"--deploy-layout"},
+            defaultValue = "staged",
+            description = "openresty path layout: staged | control-data (VIRBIUS_DATA_DIR/gateway)")
+    private String deployLayout;
+
+    @Option(
+            names = {"--deploy-prefix"},
+            defaultValue = "/etc/virbius",
+            description = "deploy root for lists_file / scene_registry_file in effective JSON")
+    private String deployPrefix;
+
     private final ObjectMapper json = new ObjectMapper();
     private final ObjectMapper yaml = new ObjectMapper(new YAMLFactory());
 
@@ -52,10 +70,19 @@ public class CompilerCli implements Runnable {
             if ("gateway".equals(t) || "all".equals(t)) {
                 count += compileLayerRules(root, output, "gateway");
                 Path gwDir = output.resolve("gateway");
-                GatewayApisixEmitter.emitService(root, gwDir, json);
-                GatewayApisixEmitter.emitSceneRegistry(root, gwDir, json);
-                int routeCount = GatewayApisixEmitter.emitRoutes(root, gwDir, json);
-                System.out.println("gateway routes: " + routeCount);
+                String gw = gateway == null ? "apisix" : gateway.trim().toLowerCase(Locale.ROOT);
+                if ("apisix".equals(gw) || "all".equals(gw)) {
+                    GatewayApisixEmitter.emitService(root, gwDir, json);
+                    GatewayApisixEmitter.emitSceneRegistry(root, gwDir, json);
+                    int routeCount = GatewayApisixEmitter.emitRoutes(root, gwDir, json);
+                    System.out.println("gateway apisix routes: " + routeCount);
+                }
+                if ("openresty".equals(gw) || "all".equals(gw)) {
+                    VirbiusConfigMerger.DeployLayout layout =
+                            VirbiusConfigMerger.parseLayout(deployLayout);
+                    int orCount = GatewayOpenrestyEmitter.emit(root, gwDir, json, deployPrefix, layout);
+                    System.out.println("gateway openresty routes: " + orCount);
+                }
             }
             if ("edge".equals(t)) {
                 System.out.println("compiled edge manifest + " + count + " edge rules -> " + output);
@@ -69,7 +96,6 @@ public class CompilerCli implements Runnable {
 
     private int compileEdge(JsonNode root, Path output) throws Exception {
         EdgeManifestEmitter.write(output, root, json);
-        EdgeManifestEmitter.writeLegacyLists(output, root, json);
         return compileLayerRules(root, output, "edge");
     }
 

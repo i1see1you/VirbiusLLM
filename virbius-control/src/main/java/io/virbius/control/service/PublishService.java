@@ -144,7 +144,8 @@ public class PublishService {
                     }
                 }
             }
-            body.set("lists", snakeMapper.valueToTree(policyDataBuilder.buildEngineLists(tenantId)));
+            body.set("lists", snakeMapper.valueToTree(policyDataBuilder.buildEngineMemoryLists(tenantId)));
+            body.set("redis_list_index", snakeMapper.valueToTree(policyDataBuilder.buildEngineRedisListIndex(tenantId)));
             body.set("cumulatives", snakeMapper.valueToTree(policyDataBuilder.buildEngineCumulatives(tenantId)));
             String url = engineBaseUrl + "/admin/cache/reload?tenant_id=" + tenantId + "&bundle_version=" + bundleVersion + "&mode=full";
             HttpRequest req = HttpRequest.newBuilder()

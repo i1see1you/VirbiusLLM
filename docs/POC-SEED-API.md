@@ -117,7 +117,7 @@ curl -s -X POST "http://127.0.0.1:8080/api/v1/admin/tenants/default/bundles/poc-
 
 | 功能 | URL |
 |------|-----|
-| **运营台**（名单 · 累计 · 请求映射 · 规则 · **策略上线**） | http://127.0.0.1:8080/ui |
+| **运营台**（名单 · 累计 · 请求映射 · 规则 · **策略上线** · **审计中心**） | http://127.0.0.1:8080/ui |
 
 单页表格维护；旧 URL（`/ui/access-lists`、`/ui/policies`、`access-lists.html` 等）自动重定向到 `/ui`。
 
@@ -165,16 +165,76 @@ curl -X POST "http://127.0.0.1:8080/api/v1/tenants/default/access-lists/user_id/
   -d '{"value":"u-evil-001"}'
 ```
 
-同步后生成：
+同步后生成（`ArtifactService`，**非 Redis**）：
 
-- `./data/gateway/default-access-lists.json`（gateway-agent、APISIX `virbius-guard`）
-- `./data/edge/default-content-lists.json`（`virbius-core`）
+- `./data/gateway/default-access-lists.json` — `context_bindings`、`lists[]`、`cumulatives[]`、`script_rules[]`（gateway-agent、APISIX/OpenResty 插件）
+- `./data/gateway/default-scene-registry.json` — 运行时 scene 解析
+- `./data/edge/{tenant_id}/{app_id}/edge-manifest.json` — per-app manifest（方案 B+；含 `rules[]`、`dlp_rules[]`、`sdk_config`）
+- `./data/edge/default-content-lists.json` — 遗留 keyword 文件（旧路径；新 PoC 以 per-app manifest 为准）
+
+**OpenResty Stretch**：名单/scene 仍由 control 写入 `data/gateway/`；compiler 仅生成 nginx `locations.conf` 与 `effective-*.json`，通过 `--deploy-prefix=./data --deploy-layout=control-data` 使 effective 内路径与上表一致。详见 [openspec/openresty-gateway.md](openspec/openresty-gateway.md)。
 
 环境变量：
 
 - `VIRBIUS_DATA_DIR`（默认 `./data`）
 - `VIRBIUS_GATEWAY_LISTS_PATH`（agent 名单文件）
-- `VIRBIUS_EDGE_LISTS_PATH`（端侧 keyword 文件）
+- `VIRBIUS_EDGE_LISTS_PATH`（端侧 keyword 文件，遗留）
+
+## 6.5 Edge manifest 同步与鉴权（方案 B+）
+
+PoC 已实现 Control 直拉 + 租户级 Bearer；详见 [DESIGN §8.10.2.5a](DESIGN.md)、[MVP-OPENSPEC §4.8](openspec/MVP-OPENSPEC.md)。
+
+**产物路径**（`ArtifactService.writeEdge`，按 `app_id` 拆分）：
+
+```text
+{data_dir}/edge/{tenant_id}/{app_id}/edge-manifest.json
+```
+
+**Edge 拉取 API**（裸 JSON，无 `code` 包装）：
+
+| 方法 | 路径 |
+|------|------|
+| GET | `/api/v1/edge/tenants/{tenantId}/apps/{appId}/policy-version` |
+| GET | `/api/v1/edge/tenants/{tenantId}/apps/{appId}/manifest` |
+
+**鉴权**（默认关闭）：
+
+```bash
+export VIRBIUS_EDGE_AUTH_ENABLED=true
+# PoC dev key（seed，tenant=default）：
+export VIRBIUS_EDGE_API_KEY=vrb_edge_dev_default_poc_only
+```
+
+| Header | 说明 |
+|--------|------|
+| `Authorization: Bearer <edge_api_key>` | 推荐 |
+| `X-Virbius-Edge-Key` | 可选兼容 |
+
+凭证绑定 **tenant_id**（非 app_id）；Admin 签发：
+
+```bash
+# 列出
+curl -s "http://127.0.0.1:8080/api/v1/admin/tenants/default/edge-credentials"
+# 签发（响应 data.api_key 仅一次）
+curl -s -X POST "http://127.0.0.1:8080/api/v1/admin/tenants/default/edge-credentials"
+```
+
+**SDK Init**（`edge_api_key` 不下发到 manifest）：
+
+```bash
+export VIRBIUS_CONTROL_BASE_URL=http://127.0.0.1:8080
+export VIRBIUS_TENANT_ID=default
+export VIRBIUS_APP_ID=beta
+export VIRBIUS_EDGE_API_KEY=vrb_edge_dev_default_poc_only   # auth 开启时
+export VIRBIUS_EDGE_CACHE_DIR=./cache/beta
+```
+
+验证拉取：
+
+```bash
+curl -s -H "Authorization: Bearer vrb_edge_dev_default_poc_only" \
+  "http://127.0.0.1:8080/api/v1/edge/tenants/default/apps/beta/policy-version"
+```
 
 ## 7. 验证
 

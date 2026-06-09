@@ -11,6 +11,7 @@ import io.virbius.groovy.l3.PolicyContext;
 import io.virbius.groovy.l3.ScriptEnvironment;
 import io.virbius.policy.CounterStore;
 import io.virbius.policy.CumulativeWindow;
+import io.virbius.policy.GatewayListRedisMatcher;
 import io.virbius.policy.IntentAction;
 import io.virbius.policy.MatchContext;
 import io.virbius.policy.ValueSource;
@@ -35,13 +36,19 @@ public class ScriptRuleRunner {
     private final PolicyDataCache policyData;
     private final GroovyL3Executor executor;
     private final Optional<CounterStore> counterStore;
+    private final Optional<GatewayListRedisMatcher> listRedisMatcher;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public ScriptRuleRunner(RuleCache cache, PolicyDataCache policyData, Optional<JedisPool> jedisPool) {
+    public ScriptRuleRunner(
+            RuleCache cache,
+            PolicyDataCache policyData,
+            Optional<JedisPool> jedisPool,
+            Optional<GatewayListRedisMatcher> listRedisMatcher) {
         this.cache = cache;
         this.policyData = policyData;
         this.executor = new GroovyL3Executor();
         this.counterStore = jedisPool.map(CounterStore::new);
+        this.listRedisMatcher = listRedisMatcher;
     }
 
     public List<SignalDto> run(String tenantId, MatchContext matchCtx, List<SignalDto> priorSignals) {
@@ -51,8 +58,17 @@ public class ScriptRuleRunner {
                 .map(store -> (ScriptEnvironment.CumulativeReader) (t, name, value, wMin, kind, zone) ->
                         store.read(t, name, value, wMin, kind, zone))
                 .orElse(null);
-        ScriptEnvironment scriptEnv =
-                new ScriptEnvironment(tenantId, matchCtx, data.lists(), data.cumulatives(), reader);
+        ScriptEnvironment.RedisListReader redisReader = listRedisMatcher
+                .map(m -> (ScriptEnvironment.RedisListReader) m::matches)
+                .orElse(null);
+        ScriptEnvironment scriptEnv = new ScriptEnvironment(
+                tenantId,
+                matchCtx,
+                data.memoryLists(),
+                data.redisLists(),
+                data.cumulatives(),
+                reader,
+                redisReader);
 
         for (RuleEntry rule : cache.rulesForTenant(tenantId)) {
             if (!"groovy".equals(rule.runtime()) || !"cloud".equals(rule.layer())) {
@@ -164,7 +180,9 @@ public class ScriptRuleRunner {
 
     /** Build tenant policy data from reload payload blocks. */
     public static PolicyDataCache.TenantPolicyData fromBlocks(
-            List<PolicyDataCache.ListBlock> lists, List<PolicyDataCache.CumulativeBlock> cumulatives) {
+            List<PolicyDataCache.ListBlock> lists,
+            List<PolicyDataCache.RedisListIndexBlock> redisIndex,
+            List<PolicyDataCache.CumulativeBlock> cumulatives) {
         Map<String, ScriptEnvironment.ListDefinition> listMap = new HashMap<>();
         if (lists != null) {
             for (PolicyDataCache.ListBlock b : lists) {
@@ -178,6 +196,20 @@ public class ScriptRuleRunner {
                                 b.dimension() != null ? b.dimension() : "keyword",
                                 b.entries() != null ? b.entries() : List.of(),
                                 b.valueSource()));
+            }
+        }
+        Map<String, ScriptEnvironment.RedisListDefinition> redisMap = new HashMap<>();
+        if (redisIndex != null) {
+            for (PolicyDataCache.RedisListIndexBlock b : redisIndex) {
+                if (b.listName() == null || b.listName().isBlank()) {
+                    continue;
+                }
+                redisMap.put(
+                        b.listName(),
+                        new ScriptEnvironment.RedisListDefinition(
+                                b.listName(),
+                                b.dimension() != null ? b.dimension() : "user_id",
+                                b.redisKey() != null ? b.redisKey() : ""));
             }
         }
         Map<String, ScriptEnvironment.CumulativeDefinition> cumMap = new HashMap<>();
@@ -203,6 +235,6 @@ public class ScriptRuleRunner {
                                 b.valueSource()));
             }
         }
-        return new PolicyDataCache.TenantPolicyData(listMap, cumMap);
+        return new PolicyDataCache.TenantPolicyData(listMap, redisMap, cumMap);
     }
 }

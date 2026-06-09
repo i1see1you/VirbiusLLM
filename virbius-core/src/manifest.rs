@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use std::{env, fs, path::PathBuf, sync::{OnceLock, RwLock}};
+use std::{fs, sync::{OnceLock, RwLock}};
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct DlpRuleBody {
@@ -91,20 +91,6 @@ fn default_session_key() -> String {
     "device_id".into()
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
-struct LegacyLists {
-    #[serde(default)]
-    deny: LegacySide,
-    #[serde(default)]
-    allow: LegacySide,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-struct LegacySide {
-    #[serde(default)]
-    keywords: Vec<String>,
-}
-
 #[derive(Debug, Clone, Deserialize)]
 struct EdgeManifestFile {
     #[serde(default)]
@@ -117,8 +103,6 @@ struct EdgeManifestFile {
     dlp_rules: Vec<DlpRule>,
     #[serde(default)]
     sdk_config: SdkConfig,
-    #[serde(default)]
-    lists: LegacyLists,
 }
 
 #[derive(Debug, Clone)]
@@ -133,7 +117,15 @@ pub struct EdgeManifest {
 static MANIFEST: OnceLock<RwLock<EdgeManifest>> = OnceLock::new();
 
 fn manifest_lock() -> &'static RwLock<EdgeManifest> {
-    MANIFEST.get_or_init(|| RwLock::new(read_manifest()))
+    MANIFEST.get_or_init(|| {
+        RwLock::new(EdgeManifest {
+            tenant_id: "default".into(),
+            app_id: String::new(),
+            rules: Vec::new(),
+            dlp_rules: Vec::new(),
+            sdk_config: SdkConfig::default(),
+        })
+    })
 }
 
 pub fn load() -> EdgeManifest {
@@ -145,152 +137,69 @@ pub fn reload() {
 }
 
 fn read_manifest() -> EdgeManifest {
-    let path = manifest_path();
+    let cfg = crate::sync::EdgeInitConfig::resolve();
+    let path = cfg.manifest_path();
     if let Ok(raw) = fs::read_to_string(&path) {
         if let Ok(parsed) = serde_json::from_str::<EdgeManifestFile>(&raw) {
             let mut rules = parsed.rules;
             let mut dlp_rules = parsed.dlp_rules;
-            if !app_id_matches(&parsed.app_id) {
+            if !app_id_matches(&parsed.app_id, &cfg) {
                 eprintln!("virbius-core: manifest app_id mismatch; refusing load");
                 rules = Vec::new();
                 dlp_rules = Vec::new();
-            } else if rules.is_empty() {
-                rules = legacy_rules(&parsed.lists);
             }
             return EdgeManifest {
                 tenant_id: if parsed.tenant_id.is_empty() {
-                    env::var("VIRBIUS_TENANT_ID").unwrap_or_else(|_| "default".into())
+                    cfg.tenant_id.clone()
                 } else {
                     parsed.tenant_id
                 },
-                app_id: resolve_app_id(&parsed.app_id),
+                app_id: resolve_app_id(&parsed.app_id, &cfg),
                 rules,
                 dlp_rules,
                 sdk_config: parsed.sdk_config,
             };
         }
-        if let Ok(legacy) = serde_json::from_str::<LegacyLists>(&raw) {
-            return EdgeManifest {
-                tenant_id: env::var("VIRBIUS_TENANT_ID").unwrap_or_else(|_| "default".into()),
-                app_id: resolve_app_id(""),
-                rules: legacy_rules(&legacy),
-                dlp_rules: Vec::new(),
-                sdk_config: SdkConfig::default(),
-            };
-        }
+        eprintln!(
+            "virbius-core: failed to parse edge manifest at {}",
+            path.display()
+        );
+    } else {
+        eprintln!(
+            "virbius-core: edge manifest not found at {}",
+            path.display()
+        );
     }
     EdgeManifest {
-        tenant_id: env::var("VIRBIUS_TENANT_ID").unwrap_or_else(|_| "default".into()),
-        app_id: resolve_app_id(""),
+        tenant_id: cfg.tenant_id.clone(),
+        app_id: resolve_app_id("", &cfg),
         rules: Vec::new(),
         dlp_rules: Vec::new(),
         sdk_config: SdkConfig::default(),
     }
 }
 
-fn resolve_app_id(manifest_app_id: &str) -> String {
+fn resolve_app_id(manifest_app_id: &str, cfg: &crate::sync::EdgeInitConfig) -> String {
     if !manifest_app_id.is_empty() {
         return manifest_app_id.to_string();
     }
-    env::var("VIRBIUS_APP_ID").unwrap_or_default()
+    cfg.app_id.clone()
 }
 
-fn app_id_matches(manifest_app_id: &str) -> bool {
-    let expected = env::var("VIRBIUS_APP_ID").unwrap_or_default();
-    if expected.is_empty() || manifest_app_id.is_empty() {
+fn app_id_matches(manifest_app_id: &str, cfg: &crate::sync::EdgeInitConfig) -> bool {
+    if cfg.offline_manifest_path.is_some() {
         return true;
     }
-    expected == manifest_app_id
+    let expected = &cfg.app_id;
+    !expected.is_empty() && !manifest_app_id.is_empty() && expected == manifest_app_id
 }
 
-fn legacy_rules(lists: &LegacyLists) -> Vec<EdgeRule> {
-    let mut out = Vec::new();
-    if !lists.allow.keywords.is_empty() {
-        out.push(EdgeRule {
-            rule_id: "edge_l0_content_allow".into(),
-            rule_revision: 1,
-            reason_code: "EDGE_CONTENT_KEYWORD_ALLOW".into(),
-            risk_score: 0,
-            intent_action: "allow".into(),
-            enforce_mode: "dry_run".into(),
-            rollout_state: "dry_run".into(),
-            canary_percent: None,
-            body: RuleBody {
-                keywords: lists.allow.keywords.clone(),
-                list_type: "allow".into(),
-            },
-        });
-    }
-    if !lists.deny.keywords.is_empty() {
-        out.push(EdgeRule {
-            rule_id: "edge_l0_content_deny".into(),
-            rule_revision: 1,
-            reason_code: "EDGE_CONTENT_KEYWORD_DENY".into(),
-            risk_score: 100,
-            intent_action: "deny".into(),
-            enforce_mode: "dry_run".into(),
-            rollout_state: "dry_run".into(),
-            canary_percent: None,
-            body: RuleBody {
-                keywords: lists.deny.keywords.clone(),
-                list_type: "deny".into(),
-            },
-        });
-    }
-    out
+pub fn manifest_path() -> std::path::PathBuf {
+    crate::sync::EdgeInitConfig::resolve().manifest_path()
 }
 
-pub fn manifest_path() -> PathBuf {
-    if let Ok(p) = env::var("VIRBIUS_EDGE_MANIFEST_PATH") {
-        return PathBuf::from(p);
-    }
-    let data = env::var("VIRBIUS_DATA_DIR").unwrap_or_else(|_| "./data".into());
-    let tenant = env::var("VIRBIUS_TENANT_ID").unwrap_or_else(|_| "default".into());
-    if let Ok(app_id) = env::var("VIRBIUS_APP_ID") {
-        if !app_id.is_empty() {
-            let per_app = PathBuf::from(&data)
-                .join("edge")
-                .join(&tenant)
-                .join(&app_id)
-                .join("edge-manifest.json");
-            if per_app.exists() {
-                return per_app;
-            }
-        }
-    }
-    let manifest = PathBuf::from(&data)
-        .join("edge")
-        .join(format!("{tenant}-edge-manifest.json"));
-    if manifest.exists() {
-        return manifest;
-    }
-    env::var("VIRBIUS_EDGE_LISTS_PATH")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            PathBuf::from(data)
-                .join("edge")
-                .join(format!("{tenant}-content-lists.json"))
-        })
-}
-
-pub fn sdk_config_from_env(base: &SdkConfig) -> SdkConfig {
-    let mut cfg = base.clone();
-    if let Ok(v) = env::var("VIRBIUS_AUDIT_INGEST_URL") {
-        if !v.is_empty() {
-            cfg.audit_ingest_url = v;
-        }
-    }
-    if let Ok(v) = env::var("VIRBIUS_AUDIT_INGEST_TOKEN") {
-        if !v.is_empty() {
-            cfg.audit_ingest_token = v;
-        }
-    }
-    if let Ok(v) = env::var("VIRBIUS_AUDIT_SAMPLE_RATE_ALLOW") {
-        if let Ok(n) = v.parse::<f64>() {
-            cfg.audit_sample_rate_allow = n;
-        }
-    }
-    cfg
+pub fn effective_sdk_config() -> SdkConfig {
+    load().sdk_config
 }
 
 pub fn session_key_value<'a>(

@@ -1,11 +1,12 @@
 openapi: 3.0.3
 info:
   title: Virbius Control Plane API (MVP)
-  version: 1.4.0-mvp
+  version: 1.5.0-mvp
   description: |
     **virbius-control** 单 Java 进程（Registry + Admin 合并）。
 
     - **规范面**：`/api/v1/admin/tenants/{tenantId}/...`，响应 `{ code, message, data, timestamp }`（`code=0` 成功）。
+    - **Edge 拉取面**：`/api/v1/edge/tenants/{tenantId}/apps/{appId}/...`，响应 **裸 JSON**（无 `code` 包装）；可选租户级 Bearer（§edge-delivery）。
     - **兼容面**：`/api/v1/tenants/{tenantId}/...`（Legacy，裸 JSON），逐步废弃。
     - 规则真源：`rule_history`；`runtime` 见 DESIGN §8.5.0。
     - **运营放量**：`rollout_state` + `canary_percent`（[rule-rollout.md](./rule-rollout.md)）；R1 目标 API `PATCH .../rollout`。
@@ -27,6 +28,10 @@ tags:
   - name: legacy
   - name: internal-audit
     description: 端侧 HTTP audit ingest（非 Admin UI）
+  - name: edge-delivery
+    description: Edge SDK manifest 拉取（裸 JSON；方案 B+，DESIGN §8.10.2.5a）
+  - name: admin-edge-credentials
+    description: Edge 拉取凭证签发（租户级 Bearer）
 
 paths:
   /api/v1/health:
@@ -709,7 +714,9 @@ paths:
   /api/v1/admin/tenants/{tenantId}/traces/{traceId}:
     get:
       tags: [admin-rules]
-      summary: 跨层 audit trace（edge/gateway/cloud）
+      summary: 跨层 audit trace（仅 tb_audit_events）
+      description: |
+        返回 DB 中该 trace 的多层事件。**不含 allow**（allow 见 `/audit/trace/{traceId}`）。
       parameters:
         - $ref: '#/components/parameters/tenantId'
         - name: traceId
@@ -724,6 +731,42 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiResultAuditTraceList'
+
+  /api/v1/admin/tenants/{tenantId}/audit/trace/{traceId}:
+    get:
+      tags: [admin-rules]
+      summary: 审计中心 — 按 trace_id 合并 DB 与 allow 日志
+      description: |
+        `db_events` 来自 `tb_audit_events`；`allow_log_events` 来自各层 `*-audit-allow.jsonl`。
+        见 [rule-rollout.md §5.8](./rule-rollout.md)。
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: traceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: merged audit detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultAuditCenterTrace'
+
+  /api/v1/admin/tenants/{tenantId}/audit/ingest-status:
+    get:
+      tags: [admin-rules]
+      summary: AuditIngest 消费状态（Stream checkpoint / DB 计数）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: ingest status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
 
   /api/v1/admin/tenants/{tenantId}/rollout/ingest-health:
     get:
@@ -746,14 +789,144 @@ paths:
         '200':
           description: OK
 
+  /api/v1/edge/tenants/{tenantId}/apps/{appId}/policy-version:
+    get:
+      tags: [edge-delivery]
+      summary: Edge manifest 版本探测（方案 B+）
+      description: |
+        轻量探测 `artifact_revision` 与 `content_sha256`；SDK 与本地 cache 比对后决定是否拉 manifest。
+        见 [MVP-OPENSPEC §4.8](./MVP-OPENSPEC.md#48-edge-manifest-同步方案-bf-15)。
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/appId'
+      security:
+        - edgeDeliveryBearer: []
+        - {}
+      responses:
+        '200':
+          description: 当前 artifact 元数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EdgePolicyVersion'
+        '401':
+          description: 缺/无效 Bearer（auth 开启时）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EdgeDeliveryError'
+        '403':
+          description: tenant scope 不匹配
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EdgeDeliveryError'
+        '404':
+          description: 无 artifact meta
+
+  /api/v1/edge/tenants/{tenantId}/apps/{appId}/manifest:
+    get:
+      tags: [edge-delivery]
+      summary: Edge manifest 条件下载
+      description: |
+        返回 `edge-manifest.json` body。`If-None-Match` 与当前 `artifact_revision` 一致时 **304**。
+        SDK 须校验 body sha256 与 policy-version 返回的 `content_sha256` 一致。
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/appId'
+        - name: If-None-Match
+          in: header
+          schema:
+            type: string
+          description: 期望的 artifact_revision（字符串）
+      security:
+        - edgeDeliveryBearer: []
+        - {}
+      responses:
+        '200':
+          description: manifest JSON body
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                description: edge-manifest（见 schemas/edge-manifest.schema.json）
+        '304':
+          description: revision 未变
+          headers:
+            ETag:
+              schema:
+                type: string
+        '401':
+          description: 缺/无效 Bearer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EdgeDeliveryError'
+        '403':
+          description: tenant scope 不匹配
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EdgeDeliveryError'
+        '404':
+          description: 无 artifact
+
+  /api/v1/admin/tenants/{tenantId}/edge-credentials:
+    get:
+      tags: [admin-edge-credentials]
+      summary: 列出租户 Edge 拉取凭证（不含明文 key）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultEdgeCredentialList'
+    post:
+      tags: [admin-edge-credentials]
+      summary: 签发新 Edge 拉取 key（仅此次返回 api_key 明文）
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: Issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultIssueEdgeCredential'
+
+  /api/v1/admin/tenants/{tenantId}/edge-credentials/{credentialId}/revoke:
+    post:
+      tags: [admin-edge-credentials]
+      summary: 吊销 Edge 拉取凭证
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/credentialId'
+      responses:
+        '200':
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+        '404':
+          description: credential not found
+
   /api/v1/internal/audit/events:
     post:
       tags: [internal-audit]
       summary: 端侧 audit 批量 ingest（HTTP）
       description: |
-        Edge SDK 批量上报；engine/gateway 默认走 Redis Stream。
+        Edge SDK 批量上报；engine/gateway 默认走 Redis Stream（**非 allow**）。
+        `effective_action=allow` 仅写入 control 侧 `audit-allow.jsonl`（响应 `logged_allow`），不 publish Stream。
         Bearer `AUDIT_INGEST_TOKEN` 或 `X-Virbius-Audit-Token`。
-        见 [rule-rollout.md §16.5](./rule-rollout.md)。
+        见 [rule-rollout.md §5.7–§5.8](./rule-rollout.md)。
       security:
         - auditIngestBearer: []
       requestBody:
@@ -1061,6 +1234,12 @@ components:
       type: http
       scheme: bearer
       description: AUDIT_INGEST_TOKEN；或请求头 X-Virbius-Audit-Token
+    edgeDeliveryBearer:
+      type: http
+      scheme: bearer
+      description: |
+        租户级 Edge manifest 拉取 key（Init `edge_api_key`）；或 X-Virbius-Edge-Key。
+        `virbius.edge.delivery.auth.enabled=false` 时可省略。
 
   parameters:
     tenantId:
@@ -1090,6 +1269,20 @@ components:
       required: true
       schema:
         type: string
+    appId:
+      name: appId
+      in: path
+      required: true
+      schema:
+        type: string
+        example: beta
+    credentialId:
+      name: credentialId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     revision:
       name: revision
       in: path
@@ -1155,6 +1348,90 @@ components:
         data:
           type: object
           additionalProperties: true
+
+    EdgePolicyVersion:
+      type: object
+      required: [tenant_id, app_id, artifact_revision, content_sha256, published_at]
+      properties:
+        tenant_id:
+          type: string
+        app_id:
+          type: string
+        artifact_revision:
+          type: integer
+          format: int64
+        content_sha256:
+          type: string
+          description: SHA-256 hex of manifest file bytes
+        published_at:
+          type: string
+          format: date-time
+
+    EdgeDeliveryError:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          enum: [unauthorized, forbidden, not_found]
+        message:
+          type: string
+
+    EdgeCredentialSummary:
+      type: object
+      properties:
+        credential_id:
+          type: string
+        tenant_id:
+          type: string
+        key_prefix:
+          type: string
+        status:
+          type: string
+          enum: [active, revoked]
+        created_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+
+    IssueEdgeCredentialResponse:
+      allOf:
+        - $ref: '#/components/schemas/EdgeCredentialSummary'
+        - type: object
+          required: [api_key]
+          properties:
+            api_key:
+              type: string
+              description: 明文 key，仅签发响应返回一次
+
+    ApiResultEdgeCredentialList:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/EdgeCredentialSummary'
+
+    ApiResultIssueEdgeCredential:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/IssueEdgeCredentialResponse'
 
     ApiResultBundleSummaryList:
       type: object
@@ -1678,16 +1955,59 @@ components:
     AuditIngestBatchResponse:
       type: object
       properties:
-        accepted:
+        published:
           type: integer
-        duplicated:
+          description: 非 allow 事件已 publish 至 Stream 的数量
+        logged_allow:
           type: integer
+          description: allow 事件已写入 audit-allow.jsonl 的数量
         rejected:
           type: integer
+        queued_async:
+          type: boolean
+          description: publish 是否异步队列
         errors:
           type: array
           items:
             type: string
+
+    ApiResultAuditCenterTrace:
+      type: object
+      properties:
+        code:
+          type: integer
+        data:
+          type: object
+          properties:
+            trace_id:
+              type: string
+            tenant_id:
+              type: string
+            db_events:
+              type: array
+              items:
+                $ref: './schemas/audit-event.schema.json'
+            db_count:
+              type: integer
+            allow_log_events:
+              type: array
+              items:
+                $ref: './schemas/audit-event.schema.json'
+            allow_log_count:
+              type: integer
+            allow_log_files:
+              type: array
+              items:
+                type: object
+                properties:
+                  label:
+                    type: string
+                  path:
+                    type: string
+                  exists:
+                    type: boolean
+            note:
+              type: string
 
     ApiResultAuditTraceList:
       type: object

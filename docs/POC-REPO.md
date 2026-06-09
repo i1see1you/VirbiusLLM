@@ -2,8 +2,8 @@
 
 | 属性 | 值 |
 |------|-----|
-| 对齐 | [DESIGN.md v2.16](./DESIGN.md)、[MVP-OPENSPEC MVP-1.8](./openspec/MVP-OPENSPEC.md) |
-| 目标 | 最小可编译骨架：`control` + `engine` + `gateway-agent` + APISIX 插件壳 |
+| 对齐 | [DESIGN.md v2.21](./DESIGN.md)、[MVP-OPENSPEC MVP-1.12](./openspec/MVP-OPENSPEC.md) |
+| 目标 | PoC 可运行骨架：`control` + `engine` + `gateway-agent` + APISIX；端 **方案 B+** Control 直拉 manifest |
 
 ## 目录
 
@@ -14,10 +14,11 @@ VirbiusLLM/
 ├── virbius-engine/              # Java：gRPC Evaluate + admin HTTP (:50051 / :8082)
 ├── virbius-gateway-agent/       # Rust：sidecar HTTP → engine（F-14）
 ├── virbius-gateway/
-│   ├── core/                    # 共用 Lua（rules_runner、agent_client）
-│   └── plugins/apisix/          # virbius-guard APISIX 插件
-├── virbius-core/                # Rust 端 L0（后续）
-├── virbius-compiler/            # 编译 CLI（后续）
+│   ├── lib/                     # 共用 Lua（context_vars、scene_registry、access_lists）
+│   ├── plugins/apisix/          # virbius-guard APISIX 插件
+│   └── plugins/openresty/       # access.lua（Stretch）
+├── virbius-core/                # Rust 端 L0
+├── virbius-compiler/            # 编译 CLI（APISIX / OpenResty / edge）
 ├── docs/                        # DESIGN + openspec
 └── docker-compose.poc.yml       # 本地联调（可选）
 ```
@@ -31,6 +32,27 @@ VirbiusLLM/
 | virbius-engine admin | **Java 17** | `http://localhost:8082` |
 | virbius-gateway-agent | **Rust** | `http://127.0.0.1:9070` |
 | APISIX + virbius-guard | Lua | 业务 Route 转发 |
+| OpenResty + access.lua | Lua | Stretch PoC；见 [openspec/openresty-gateway.md](./openspec/openresty-gateway.md) |
+
+## 网关数据文件（`data/gateway/`）
+
+`./scripts/run-local.sh` 后 control 写入（与 APISIX / OpenResty 共用）：
+
+- `default-access-lists.json` — `context_bindings`、名单
+- `default-scene-registry.json` — scene 解析
+
+## 端侧数据文件（`data/edge/`）
+
+`refreshArtifacts` / 规则 publish 后 control 按 `app_id` 写入：
+
+- `{tenant}/{app_id}/edge-manifest.json` — per-app manifest（`rules[]`、`dlp_rules[]`、`sdk_config`）
+
+SDK 通过 Control Edge API 拉取（方案 B+）：
+
+- `GET /api/v1/edge/tenants/{tenantId}/apps/{appId}/policy-version`
+- `GET /api/v1/edge/tenants/{tenantId}/apps/{appId}/manifest`
+
+见 [POC-SEED-API §6.5](./POC-SEED-API.md)、[user-guide §3](./user-guide.md)。
 
 ## 数据库与规则种子（JDBC，默认 SQLite 文件）
 

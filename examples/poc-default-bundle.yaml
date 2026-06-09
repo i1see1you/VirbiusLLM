@@ -15,16 +15,16 @@ scene_registry:
     beta_chat:
       app_id: beta
       default: true
-      uris: [/v1/chat/completions]
+      uris: [/v1/chat/completions, /api/chat]
       priority: 0
     medical-prod_chat:
       app_id: medical-prod
       default: true
-      uris: [/v1/chat/completions]
+      uris: [/v1/chat/completions, /api/chat]
       priority: 0
     medical-prod_clinical:
       app_id: medical-prod
-      uris: [/v1/chat/completions]
+      uris: [/v1/chat/completions, /api/chat]
       priority: 10
       match:
         query:

@@ -53,11 +53,12 @@ public class EngineAdminController {
         if (!rules.isEmpty()) {
             cache.replaceAll(version, rules);
         }
-        if (body != null && (body.lists() != null || body.cumulatives() != null)) {
+        if (body != null && (body.lists() != null || body.redisListIndex() != null || body.cumulatives() != null)) {
             policyData.replace(
                     tenant_id,
                     ScriptRuleRunner.fromBlocks(
                             body.lists() != null ? body.lists() : List.of(),
+                            body.redisListIndex() != null ? body.redisListIndex() : List.of(),
                             body.cumulatives() != null ? body.cumulatives() : List.of()));
         }
         return Map.of(

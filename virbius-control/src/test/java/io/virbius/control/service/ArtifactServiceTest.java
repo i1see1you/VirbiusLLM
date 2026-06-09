@@ -8,7 +8,9 @@ import static org.mockito.Mockito.when;
 
 import io.virbius.control.domain.CumulativeDef;
 import io.virbius.control.domain.RuleRevision;
+import io.virbius.control.gateway.GatewayListRedisService;
 import io.virbius.control.repository.CumulativeRepository;
+import io.virbius.control.repository.EdgeArtifactMetaRepository;
 import io.virbius.control.repository.ListMetaRepository;
 import io.virbius.control.repository.RegistryRepository;
 import io.virbius.control.repository.TenantRolloutPolicyRepository;
@@ -38,10 +40,17 @@ class ArtifactServiceTest {
     @Mock
     private TenantRolloutPolicyRepository policyRepository;
 
+    @Mock
+    private GatewayListRedisService gatewayListRedisService;
+
+    @Mock
+    private EdgeArtifactMetaRepository edgeArtifactMetaRepository;
+
     private ArtifactService artifactService;
 
     @BeforeEach
     void setUp() {
+        when(gatewayListRedisService.publishRedisLists(TENANT)).thenReturn(List.of());
         artifactService = new ArtifactService(
                 "./target/test-data",
                 registryRepo,
@@ -49,7 +58,9 @@ class ArtifactServiceTest {
                 cumulativeRepo,
                 policyRepository,
                 "",
-                "");
+                "",
+                gatewayListRedisService,
+                edgeArtifactMetaRepository);
     }
 
     @Test

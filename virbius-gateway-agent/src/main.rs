@@ -1,4 +1,5 @@
 mod access_lists;
+mod list_redis;
 mod audit;
 mod bind_scope;
 mod cumulative;

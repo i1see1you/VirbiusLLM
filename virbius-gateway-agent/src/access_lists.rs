@@ -32,13 +32,23 @@ struct ContextBindings {
 #[derive(Debug, Clone, Deserialize)]
 struct ListsFile {
     #[serde(default)]
-    lists: Vec<ListDefBlock>,
+    tenant_id: String,
+    #[serde(default)]
+    memory_lists: Vec<ListDefBlock>,
+    #[serde(default)]
+    redis_list_index: Vec<crate::list_redis::RedisListIndexBlock>,
     #[serde(default)]
     cumulatives: Vec<CumulativeDefBlock>,
     #[serde(default)]
     script_rules: Vec<ScriptRuleBlock>,
     #[serde(default)]
     context_bindings: ContextBindings,
+}
+
+impl ListsFile {
+    fn memory_lists(&self) -> &[ListDefBlock] {
+        &self.memory_lists
+    }
 }
 
 pub struct AccessListChecker {
@@ -120,9 +130,14 @@ impl AccessListChecker {
             session_id,
             vars: &vars,
         };
-        let tenant = env::var("VIRBIUS_TENANT_ID").unwrap_or_else(|_| "default".into());
+        let tenant_env = env::var("VIRBIUS_TENANT_ID").unwrap_or_else(|_| "default".into());
+        let tenant = if lists.tenant_id.is_empty() {
+            tenant_env.as_str()
+        } else {
+            lists.tenant_id.as_str()
+        };
 
-        cumulative::ingest_only(&tenant, &lists.cumulatives, bind, &req);
+        cumulative::ingest_only(tenant, &lists.cumulatives, bind, &req);
 
         let mut hits = Vec::new();
         for rule in &lists.script_rules {
@@ -136,8 +151,9 @@ impl AccessListChecker {
                 client_ip,
                 session_id,
                 vars: &vars,
-                tenant_id: &tenant,
-                lists: &lists.lists,
+                tenant_id: tenant,
+                lists: lists.memory_lists(),
+                redis_list_index: &lists.redis_list_index,
                 cumulatives: &lists.cumulatives,
             };
             match run_lua_decide(&rule.body, &env) {

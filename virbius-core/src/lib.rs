@@ -1,11 +1,13 @@
 mod api;
 mod audit;
+mod bootstrap;
 mod dlp;
 mod engine;
 mod enforce;
 mod manifest;
 mod matcher;
 mod runtime;
+mod sync;
 mod trace;
 mod upload;
 
@@ -13,9 +15,11 @@ pub use api::{
     DesensitizeInResult, DesensitizeOutResult, DlpHit, EffectiveAction, RuleHit, ScanContext,
     ScanOutcome, TraceIdSource, VirbiusEdge, VirbiusError,
 };
+pub use sync::EdgeInitConfig;
 
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
+use std::path::PathBuf;
 use std::ptr;
 
 use engine::ScanRequest;
@@ -76,10 +80,59 @@ fn write_scan_result(out: *mut VirbiusScanResult, trace_id: &str, block_rule: Op
 }
 
 #[no_mangle]
-pub extern "C" fn virbius_init(_manifest_url: *const c_char) -> c_int {
-    let _ = manifest::load();
-    runtime::ensure_flush_loop();
-    0
+pub extern "C" fn virbius_init(manifest_url: *const c_char) -> c_int {
+    match init_from_legacy_url(manifest_url) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("virbius-core: virbius_init failed: {e}");
+            -1
+        }
+    }
+}
+
+/// Production C ABI: JSON matching [`EdgeInitConfig`] (see `virbius.h`).
+#[no_mangle]
+pub extern "C" fn virbius_init_config_json(json: *const c_char) -> c_int {
+    if json.is_null() {
+        return -1;
+    }
+    let raw = unsafe { CStr::from_ptr(json) }.to_string_lossy();
+    match serde_json::from_str::<EdgeInitConfig>(&raw) {
+        Ok(cfg) => match bootstrap::bootstrap(&cfg) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("virbius-core: virbius_init_config_json failed: {e}");
+                -1
+            }
+        },
+        Err(e) => {
+            eprintln!("virbius-core: invalid init JSON: {e}");
+            -1
+        }
+    }
+}
+
+fn init_from_legacy_url(manifest_url: *const c_char) -> Result<(), VirbiusError> {
+    if manifest_url.is_null() {
+        if EdgeInitConfig::is_installed() {
+            bootstrap::bootstrap(&EdgeInitConfig::resolve())?;
+            return Ok(());
+        }
+        return Err(VirbiusError::InvalidInitConfig(
+            "call virbius_init_config_json or pass control URL / offline manifest path".into(),
+        ));
+    }
+    let s = unsafe { CStr::from_ptr(manifest_url) }.to_string_lossy();
+    if s.is_empty() {
+        return init_from_legacy_url(ptr::null());
+    }
+    let mut cfg = EdgeInitConfig::default();
+    if s.starts_with("http://") || s.starts_with("https://") {
+        cfg.control_base_url = Some(s.into_owned());
+    } else {
+        cfg.offline_manifest_path = Some(PathBuf::from(s.as_ref()));
+    }
+    bootstrap::bootstrap(&cfg)
 }
 
 #[no_mangle]
@@ -111,8 +164,10 @@ pub extern "C" fn virbius_scan(
             trace::generate_trace_id(),
             trace::TraceIdSource::SdkGenerated,
         )
-    } else {
+    } else if trace::valid_trace_id(&trace_id_raw) {
         (trace_id_raw, trace::TraceIdSource::Client)
+    } else {
+        return -1;
     };
     let result = engine::scan_once(ScanRequest {
         user_id: user_id.as_deref(),
@@ -133,7 +188,7 @@ pub extern "C" fn virbius_scan(
 
 #[no_mangle]
 pub extern "C" fn virbius_reload() -> c_int {
-    manifest::reload();
+    bootstrap::reload_synced();
     0
 }
 

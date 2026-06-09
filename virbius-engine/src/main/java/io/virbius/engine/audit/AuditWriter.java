@@ -5,7 +5,6 @@ import io.virbius.engine.cache.RuleCache;
 import io.virbius.engine.cache.RuleEntry;
 import io.virbius.engine.eval.EngineDecisionDto;
 import io.virbius.engine.eval.EvaluateRequestDto;
-import io.virbius.engine.persist.AuditEventRepository;
 import io.virbius.policy.ActionMerge;
 import io.virbius.policy.audit.AuditEventPublisher;
 import java.nio.file.Files;
@@ -14,7 +13,6 @@ import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,20 +25,17 @@ public class AuditWriter {
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final Path auditPath;
-    private final AuditEventRepository auditRepository;
-    private final boolean sqliteEnabled;
+    private final Path allowAuditPath;
     private final AuditEventPublisher publisher;
     private final RuleCache ruleCache;
 
     public AuditWriter(
             @Value("${virbius.audit.engine-path:/tmp/virbius/engine-audit.jsonl}") String path,
-            @Value("${virbius.audit.sqlite-enabled:true}") boolean sqliteEnabled,
-            AuditEventRepository auditRepository,
+            @Value("${virbius.audit.engine-allow-path:/tmp/virbius/engine-audit-allow.jsonl}") String allowPath,
             AuditEventPublisher publisher,
             RuleCache ruleCache) {
         this.auditPath = Path.of(path);
-        this.sqliteEnabled = sqliteEnabled;
-        this.auditRepository = auditRepository;
+        this.allowAuditPath = Path.of(allowPath);
         this.publisher = publisher;
         this.ruleCache = ruleCache;
     }
@@ -52,13 +47,6 @@ public class AuditWriter {
             int ruleRevision,
             String reasonCode,
             boolean degraded) {
-        if (sqliteEnabled) {
-            try {
-                auditRepository.insert(req, decision, ruleId, ruleRevision, reasonCode, "client");
-            } catch (Exception e) {
-                log.warn("audit sqlite write failed: {}", e.getMessage());
-            }
-        }
         try {
             RuleEntry rule = ruleId != null ? ruleCache.get(req.tenantId(), ruleId) : null;
             String rolloutState = rule != null ? rule.rolloutStateOrDefault() : "dry_run";
@@ -69,7 +57,6 @@ public class AuditWriter {
                 inBucket = ActionMerge.inCanaryBucket(req.sessionId(), canaryPercent);
             }
 
-            Files.createDirectories(auditPath.getParent());
             Map<String, Object> event = new HashMap<>();
             event.put("trace_id", req.traceId());
             event.put("trace_id_source", "client");
@@ -97,9 +84,13 @@ public class AuditWriter {
                 event.put("device_id", req.deviceId());
             }
             String json = mapper.writeValueAsString(event);
-            Map<String, String> streamFields = Map.of("payload", json);
-            publisher.publish(streamFields);
-            Files.writeString(auditPath, json + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            boolean isAllow = "allow".equalsIgnoreCase(decision.effectiveAction());
+            Path logPath = isAllow ? allowAuditPath : auditPath;
+            Files.createDirectories(logPath.getParent());
+            Files.writeString(logPath, json + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            if (!isAllow) {
+                publisher.publish(Map.of("payload", json));
+            }
         } catch (Exception e) {
             log.warn("audit write failed: {}", e.getMessage());
         }

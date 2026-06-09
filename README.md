@@ -28,6 +28,7 @@ Rules are versioned in **`rule_history` / `rule_revision`**. Publishing flows th
 | Rule rollout | [docs/openspec/rule-rollout.md](docs/openspec/rule-rollout.md) |
 | PoC seed & admin API | [docs/POC-SEED-API.md](docs/POC-SEED-API.md) |
 | MVP contracts | [docs/openspec/](docs/openspec/) |
+| OpenResty Stretch (PoC) | [docs/openspec/openresty-gateway.md](docs/openspec/openresty-gateway.md) |
 | Repo layout | [docs/POC-REPO.md](docs/POC-REPO.md) |
 
 ## Requirements
@@ -65,13 +66,26 @@ Rust clients can depend on the crate via path or git:
 virbius-core = { path = "../VirbiusLLM/virbius-core" }
 ```
 
-Point the SDK at an edge manifest (demo fixture includes **phone_cn** and **idcard_cn** DLP rules):
+**Offline demo** (fixture manifest with DLP rules):
 
 ```bash
-export VIRBIUS_EDGE_MANIFEST_PATH=./virbius-core/examples/fixtures/demo-edge-manifest.json
 cd virbius-core
 cargo run --example rust_client_demo
 ```
+
+**Control sync (Scheme B+)** — after `bash scripts/run-local.sh` and publishing edge rules:
+
+```bash
+export VIRBIUS_CONTROL_BASE_URL=http://127.0.0.1:8080
+export VIRBIUS_TENANT_ID=default
+export VIRBIUS_APP_ID=beta
+export VIRBIUS_EDGE_CACHE_DIR=./cache/beta
+# optional when VIRBIUS_EDGE_AUTH_ENABLED=true on control:
+export VIRBIUS_EDGE_API_KEY=vrb_edge_dev_default_poc_only
+cargo run --example rust_client_demo
+```
+
+Production apps should use `VirbiusEdge::init(EdgeInitConfig { ... })` from app config, not env vars. See [docs/user-guide.md](docs/user-guide.md) §3.
 
 Gateway HTTP example (requires APISIX PoC):
 

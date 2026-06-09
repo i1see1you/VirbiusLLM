@@ -30,11 +30,12 @@ public class PolicyDataCache {
     }
 
     public record TenantPolicyData(
-            Map<String, ScriptEnvironment.ListDefinition> lists,
+            Map<String, ScriptEnvironment.ListDefinition> memoryLists,
+            Map<String, ScriptEnvironment.RedisListDefinition> redisLists,
             Map<String, ScriptEnvironment.CumulativeDefinition> cumulatives) {
 
         public static TenantPolicyData empty() {
-            return new TenantPolicyData(Map.of(), Map.of());
+            return new TenantPolicyData(Map.of(), Map.of(), Map.of());
         }
     }
 
@@ -43,6 +44,11 @@ public class PolicyDataCache {
             String dimension,
             List<String> entries,
             @JsonProperty("value_source") ValueSource valueSource) {}
+
+    public record RedisListIndexBlock(
+            @JsonProperty("list_name") String listName,
+            String dimension,
+            @JsonProperty("redis_key") String redisKey) {}
 
     public record CumulativeBlock(
             @JsonProperty("cumulative_name") String cumulativeName,

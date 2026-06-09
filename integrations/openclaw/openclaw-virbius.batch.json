@@ -1,0 +1,78 @@
+[
+  {
+    "path": "models.providers.ollama.baseUrl",
+    "value": "__VIRBIUS_URL__"
+  },
+  {
+    "path": "models.providers.ollama.api",
+    "value": "openai-completions"
+  },
+  {
+    "path": "models.providers.ollama.headers",
+    "value": {
+      "X-App-Id": "__APP_ID__"
+    }
+  },
+  {
+    "path": "models.providers.ollama.models",
+    "value": [
+      {
+        "id": "qwen3.5:9b",
+        "name": "qwen3.5:9b (local · via Virbius)",
+        "reasoning": false,
+        "input": ["text", "image"],
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 262144,
+        "maxTokens": 8192,
+        "api": "openai-completions",
+        "compat": { "supportsTools": true }
+      },
+      {
+        "id": "qwen3.5:27b",
+        "name": "qwen3.5:27b (local · via Virbius)",
+        "reasoning": false,
+        "input": ["text", "image"],
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 262144,
+        "maxTokens": 8192,
+        "api": "openai-completions",
+        "compat": { "supportsTools": true }
+      },
+      {
+        "id": "gemma3:4b",
+        "name": "gemma3:4b (local · via Virbius · no tools)",
+        "reasoning": false,
+        "input": ["text"],
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 32768,
+        "maxTokens": 8192,
+        "api": "openai-completions",
+        "compat": { "supportsTools": false }
+      },
+      {
+        "id": "gemma3:1b",
+        "name": "gemma3:1b (local · via Virbius · no tools)",
+        "reasoning": false,
+        "input": ["text"],
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 32768,
+        "maxTokens": 8192,
+        "api": "openai-completions",
+        "compat": { "supportsTools": false }
+      }
+    ]
+  },
+  {
+    "path": "agents.defaults.model.primary",
+    "value": "__PRIMARY_MODEL__"
+  },
+  {
+    "path": "agents.defaults.model.fallbacks",
+    "value": [
+      "ollama/qwen3.5:9b",
+      "ollama/qwen3.5:27b",
+      "ollama/gemma3:4b",
+      "ollama/gemma3:1b"
+    ]
+  }
+]

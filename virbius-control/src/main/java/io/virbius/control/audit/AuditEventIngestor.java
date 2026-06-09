@@ -23,6 +23,10 @@ public class AuditEventIngestor {
             if (traceId.isBlank() || tenantId.isBlank()) {
                 return IngestResult.rejected("missing trace_id or tenant_id");
             }
+            String effective = str(event.get("effective_action"));
+            if ("allow".equalsIgnoreCase(effective)) {
+                return IngestResult.skippedAllow();
+            }
             String eventId = traceId + ":" + str(event.get("rule_id")) + ":" + str(event.get("intercepted_at"));
             int updated = jdbc.update(
                     """
@@ -72,6 +76,17 @@ public class AuditEventIngestor {
             out.put("message", r.message());
         }
         return out;
+    }
+
+    public IngestResult ingestPayload(String payload) throws Exception {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> event = mapper.readValue(payload, Map.class);
+        return ingestEvent(event);
+    }
+
+    public Long countForStatus(String sql, Object... args) {
+        Long val = jdbc.queryForObject(sql, Long.class, args);
+        return val != null ? val : 0L;
     }
 
     private void bumpRequestStats(String tenantId, String scene, String layer, Map<String, Object> event) {
@@ -133,6 +148,10 @@ public class AuditEventIngestor {
 
         static IngestResult rejected(String message) {
             return new IngestResult("rejected", message);
+        }
+
+        static IngestResult skippedAllow() {
+            return new IngestResult("skipped_allow", null);
         }
     }
 }

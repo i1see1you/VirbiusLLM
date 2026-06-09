@@ -21,16 +21,38 @@ spring:
 
 virbius:
   data-dir: ${VIRBIUS_DATA_DIR:./data}
+  edge:
+    delivery:
+      auth:
+        enabled: ${VIRBIUS_EDGE_AUTH_ENABLED:false}
   redis:
     url: ${VIRBIUS_REDIS_URL:redis://127.0.0.1:6379}
+  lists:
+    redis:
+      enabled: true
+      key-prefix: virbius:lists
+      sweep-cron: "0 0 3 * * *"
   engine:
     base-url: ${VIRBIUS_ENGINE_URL:http://127.0.0.1:8082}
+  audit:
+    allow-log-path: ${VIRBIUS_AUDIT_ALLOW_PATH:${virbius.data-dir}/audit-allow.jsonl}
+    gateway-allow-log-path: ${VIRBIUS_GATEWAY_AUDIT_ALLOW_PATH:${virbius.data-dir}/gateway-audit-allow.jsonl}
+    engine-allow-log-path: ${VIRBIUS_ENGINE_AUDIT_ALLOW:/tmp/virbius/engine-audit-allow.jsonl}
 
 audit:
+  publish:
+    backend: redis-stream
+    async: true
+    queue-max: 2000
+    flush-batch-size: 64
+    flush-interval-ms: 100
+    redis:
+      stream-key: virbius:audit:events
   ingest:
     enabled: true
     backend: redis-stream
-    poll-ms: 5000
+    poll-ms: 1000
+    batch-size: 256
     redis:
       stream-key: virbius:audit:events
     consumer-group: virbius-audit-ingest

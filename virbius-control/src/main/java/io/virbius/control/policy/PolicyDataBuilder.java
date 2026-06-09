@@ -3,9 +3,11 @@ package io.virbius.control.policy;
 import io.virbius.control.domain.AccessListEntry;
 import io.virbius.control.domain.AccessListMeta;
 import io.virbius.control.domain.CumulativeDef;
+import io.virbius.control.gateway.GatewayListRedisService;
 import io.virbius.control.repository.CumulativeRepository;
 import io.virbius.control.repository.ListMetaRepository;
 import io.virbius.policy.CumulativeWindow;
+import io.virbius.policy.ListStorageKind;
 import io.virbius.policy.ValueSource;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -19,25 +21,52 @@ public class PolicyDataBuilder {
 
     private final ListMetaRepository listMetaRepo;
     private final CumulativeRepository cumulativeRepo;
+    private final GatewayListRedisService gatewayListRedisService;
 
-    public PolicyDataBuilder(ListMetaRepository listMetaRepo, CumulativeRepository cumulativeRepo) {
+    public PolicyDataBuilder(
+            ListMetaRepository listMetaRepo,
+            CumulativeRepository cumulativeRepo,
+            GatewayListRedisService gatewayListRedisService) {
         this.listMetaRepo = listMetaRepo;
         this.cumulativeRepo = cumulativeRepo;
+        this.gatewayListRedisService = gatewayListRedisService;
     }
 
-    public List<Map<String, Object>> buildEngineLists(String tenantId) {
+    /** Memory lists only (keyword / ip_cidr) for engine PolicyDataCache. */
+    public List<Map<String, Object>> buildEngineMemoryLists(String tenantId) {
         List<Map<String, Object>> blocks = new ArrayList<>();
         for (AccessListMeta meta : listMetaRepo.listMeta(tenantId)) {
-            List<String> entries = listMetaRepo.listEntries(tenantId, meta.listName()).stream()
-                    .map(AccessListEntry::value)
-                    .toList();
+            if (ListStorageKind.fromDimension(meta.dimension()) != ListStorageKind.MEMORY) {
+                continue;
+            }
             Map<String, Object> block = new LinkedHashMap<>();
             block.put("list_name", meta.listName());
             block.put("dimension", meta.dimension());
-            block.put("entries", entries);
+            block.put("storage", "memory");
+            block.put(
+                    "entries",
+                    listMetaRepo.listEntries(tenantId, meta.listName()).stream()
+                            .map(AccessListEntry::value)
+                            .toList());
             blocks.add(block);
         }
         return blocks;
+    }
+
+    public List<Map<String, Object>> buildEngineRedisListIndex(String tenantId) {
+        List<Map<String, Object>> index = new ArrayList<>();
+        for (AccessListMeta meta : listMetaRepo.listMeta(tenantId)) {
+            if (ListStorageKind.fromDimension(meta.dimension()) != ListStorageKind.REDIS) {
+                continue;
+            }
+            index.add(gatewayListRedisService.redisIndexEntry(tenantId, meta));
+        }
+        return index;
+    }
+
+    /** @deprecated use {@link #buildEngineMemoryLists} */
+    public List<Map<String, Object>> buildEngineLists(String tenantId) {
+        return buildEngineMemoryLists(tenantId);
     }
 
     public List<Map<String, Object>> buildEngineCumulatives(String tenantId) {

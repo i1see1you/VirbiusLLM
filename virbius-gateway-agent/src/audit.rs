@@ -5,7 +5,12 @@ use std::{
     fs::{self, OpenOptions},
     io::Write,
     path::PathBuf,
-    sync::{OnceLock, RwLock},
+    sync::{
+        mpsc::{sync_channel, RecvTimeoutError, SyncSender},
+        OnceLock, RwLock,
+    },
+    thread,
+    time::Duration,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -33,49 +38,188 @@ pub struct AuditEvent {
     pub device_id: Option<String>,
 }
 
+struct PublishJob {
+    stream_key: String,
+    payload: String,
+}
+
+#[derive(Clone)]
 struct AuditConfig {
     redis_url: Option<String>,
     stream_key: String,
     jsonl_path: PathBuf,
+    allow_jsonl_path: PathBuf,
     tenant_id: String,
+    publish_async: bool,
+    queue_max: usize,
+    flush_batch: usize,
+    flush_interval_ms: u64,
 }
 
 static CONFIG: OnceLock<RwLock<AuditConfig>> = OnceLock::new();
+static PUBLISH_TX: OnceLock<SyncSender<PublishJob>> = OnceLock::new();
+
+fn parse_bool(name: &str, default: bool) -> bool {
+    env::var(name)
+        .ok()
+        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(default)
+}
+
+fn parse_usize(name: &str, default: usize) -> usize {
+    env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
+fn parse_u64(name: &str, default: u64) -> u64 {
+    env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
 
 fn config() -> &'static RwLock<AuditConfig> {
     CONFIG.get_or_init(|| {
         let data_dir = env::var("VIRBIUS_DATA_DIR").unwrap_or_else(|_| "./data".into());
-        let jsonl = env::var("VIRBIUS_GATEWAY_AUDIT_PATH").map(PathBuf::from).unwrap_or_else(|_| {
-            PathBuf::from(data_dir).join("gateway-audit.jsonl")
-        });
-        RwLock::new(AuditConfig {
+        let jsonl = env::var("VIRBIUS_GATEWAY_AUDIT_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(&data_dir).join("gateway-audit.jsonl"));
+        let allow_jsonl = env::var("VIRBIUS_GATEWAY_AUDIT_ALLOW_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(&data_dir).join("gateway-audit-allow.jsonl"));
+        let publish_async = parse_bool("VIRBIUS_AUDIT_PUBLISH_ASYNC", true);
+        let queue_max = parse_usize("VIRBIUS_AUDIT_QUEUE_MAX", 2000);
+        let flush_batch = parse_usize("VIRBIUS_AUDIT_FLUSH_BATCH", 64).max(1);
+        let flush_interval_ms = parse_u64("VIRBIUS_AUDIT_FLUSH_INTERVAL_MS", 100);
+        let cfg = AuditConfig {
             redis_url: env::var("VIRBIUS_REDIS_URL").ok().filter(|s| !s.is_empty()),
             stream_key: env::var("VIRBIUS_AUDIT_STREAM_KEY")
                 .unwrap_or_else(|_| "virbius:audit:events".into()),
             jsonl_path: jsonl,
+            allow_jsonl_path: allow_jsonl,
             tenant_id: env::var("VIRBIUS_TENANT_ID").unwrap_or_else(|_| "default".into()),
-        })
+            publish_async,
+            queue_max,
+            flush_batch,
+            flush_interval_ms,
+        };
+        if publish_async && cfg.redis_url.is_some() {
+            start_publish_worker(&cfg);
+        }
+        RwLock::new(cfg)
     })
 }
 
+fn start_publish_worker(cfg: &AuditConfig) {
+    if PUBLISH_TX.get().is_some() {
+        return;
+    }
+    let (tx, rx) = sync_channel(cfg.queue_max);
+    let _ = PUBLISH_TX.set(tx);
+    let redis_url = cfg.redis_url.clone().unwrap_or_default();
+    let flush_batch = cfg.flush_batch;
+    let flush_interval = Duration::from_millis(cfg.flush_interval_ms);
+    thread::Builder::new()
+        .name("virbius-audit-publish".into())
+        .spawn(move || {
+            let client = match redis::Client::open(redis_url.as_str()) {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            let mut batch: Vec<PublishJob> = Vec::with_capacity(flush_batch);
+            loop {
+                match rx.recv_timeout(flush_interval) {
+                    Ok(job) => {
+                        batch.push(job);
+                        while batch.len() < flush_batch {
+                            match rx.try_recv() {
+                                Ok(job) => batch.push(job),
+                                Err(_) => break,
+                            }
+                        }
+                    }
+                    Err(RecvTimeoutError::Timeout) => {}
+                    Err(RecvTimeoutError::Disconnected) => break,
+                }
+                if batch.is_empty() {
+                    continue;
+                }
+                if let Ok(mut conn) = client.get_connection() {
+                    for job in &batch {
+                        let _: Result<String, _> = redis::cmd("XADD")
+                            .arg(&job.stream_key)
+                            .arg("*")
+                            .arg("payload")
+                            .arg(&job.payload)
+                            .query(&mut conn);
+                    }
+                }
+                batch.clear();
+            }
+            if let Ok(mut conn) = client.get_connection() {
+                while let Ok(job) = rx.try_recv() {
+                    let _: Result<String, _> = redis::cmd("XADD")
+                        .arg(&job.stream_key)
+                        .arg("*")
+                        .arg("payload")
+                        .arg(&job.payload)
+                        .query(&mut conn);
+                }
+            }
+        })
+        .ok();
+}
+
 pub fn tenant_id() -> String {
-    config().read().map(|c| c.tenant_id.clone()).unwrap_or_else(|_| "default".into())
+    config()
+        .read()
+        .map(|c| c.tenant_id.clone())
+        .unwrap_or_else(|_| "default".into())
 }
 
 pub fn emit(event: AuditEvent) {
     let cfg = match config().read() {
-        Ok(c) => c,
+        Ok(c) => c.clone(),
         Err(_) => return,
     };
     let payload = match serde_json::to_string(&event) {
         Ok(p) => p,
         Err(_) => return,
     };
-    if let Some(parent) = cfg.jsonl_path.parent() {
+    let is_allow = event.effective_action.eq_ignore_ascii_case("allow");
+    let log_path = if is_allow {
+        &cfg.allow_jsonl_path
+    } else {
+        &cfg.jsonl_path
+    };
+    if let Some(parent) = log_path.parent() {
         let _ = fs::create_dir_all(parent);
     }
-    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&cfg.jsonl_path) {
+    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(log_path) {
         let _ = writeln!(f, "{}", payload);
+    }
+    if !is_allow {
+        publish_redis(&cfg, payload);
+    }
+}
+
+fn publish_redis(cfg: &AuditConfig, payload: String) {
+    if cfg.redis_url.is_none() {
+        return;
+    }
+    if cfg.publish_async {
+        if let Some(tx) = PUBLISH_TX.get() {
+            let job = PublishJob {
+                stream_key: cfg.stream_key.clone(),
+                payload,
+            };
+            if tx.try_send(job).is_err() {
+                eprintln!("virbius-gateway-agent: audit publish queue full, dropping event");
+            }
+            return;
+        }
     }
     if let Some(url) = cfg.redis_url.as_deref() {
         if let Ok(client) = redis::Client::open(url) {

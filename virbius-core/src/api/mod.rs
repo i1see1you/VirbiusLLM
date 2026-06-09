@@ -8,10 +8,11 @@ pub use result::{EffectiveAction, RuleHit, ScanOutcome};
 
 pub use crate::trace::TraceIdSource;
 
+use crate::bootstrap;
 use crate::dlp;
 use crate::engine::{self, ScanRequest};
 use crate::manifest;
-use crate::runtime;
+use crate::sync::EdgeInitConfig;
 use std::time::Duration;
 
 pub use crate::dlp::{DesensitizeInResult, DesensitizeOutResult, DlpHit};
@@ -21,14 +22,29 @@ pub use crate::dlp::{DesensitizeInResult, DesensitizeOutResult, DlpHit};
 pub struct VirbiusEdge;
 
 impl VirbiusEdge {
+    /// Production entry: host app supplies [`EdgeInitConfig`] (no environment variables).
+    pub fn init(cfg: EdgeInitConfig) -> Result<Self, VirbiusError> {
+        bootstrap::bootstrap(&cfg)?;
+        Ok(Self)
+    }
+
+    /// Examples / CI only: reads `VIRBIUS_*` environment variables.
+    #[doc(hidden)]
+    pub fn new_from_env() -> Result<Self, VirbiusError> {
+        bootstrap::bootstrap(&EdgeInitConfig::from_env())?;
+        Ok(Self)
+    }
+
+    /// Convenience for unit tests and local demos without env; loads empty rules if not configured.
     pub fn new() -> Self {
-        let _ = manifest::load();
-        runtime::ensure_flush_loop();
-        Self
+        Self::new_from_env().unwrap_or_else(|_| {
+            let _ = bootstrap::bootstrap(&EdgeInitConfig::default());
+            Self
+        })
     }
 
     pub fn reload(&self) {
-        manifest::reload();
+        bootstrap::reload_synced();
     }
 
     pub fn scan(&self, content: &str) -> Result<ScanOutcome, VirbiusError> {
@@ -125,31 +141,31 @@ fn to_outcome(engine_result: engine::ScanEngineResult) -> ScanOutcome {
 mod tests {
     use super::*;
     use crate::trace;
-    use std::env;
     use std::io::Write;
     use std::sync::{Mutex, OnceLock};
     use tempfile::NamedTempFile;
 
-    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
-    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-        ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+    fn test_lock() -> std::sync::MutexGuard<'static, ()> {
+        TEST_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
     }
 
     fn with_manifest(json: &str, f: impl FnOnce()) {
-        let _guard = env_lock();
+        let _guard = test_lock();
         let mut file = NamedTempFile::new().expect("temp manifest");
         file.write_all(json.as_bytes()).expect("write manifest");
         let path = file.path().to_path_buf();
-        unsafe {
-            env::set_var("VIRBIUS_EDGE_MANIFEST_PATH", &path);
-        }
-        manifest::reload();
+        let cache_dir = path.parent().unwrap().to_path_buf();
+        let cfg = EdgeInitConfig {
+            offline_manifest_path: Some(path),
+            cache_dir,
+            tenant_id: "default".into(),
+            app_id: "test".into(),
+            ..Default::default()
+        };
+        bootstrap::bootstrap(&cfg).expect("bootstrap");
         f();
-        unsafe {
-            env::remove_var("VIRBIUS_EDGE_MANIFEST_PATH");
-        }
-        manifest::reload();
     }
 
     #[test]
@@ -168,7 +184,7 @@ mod tests {
               }]
             }"#,
             || {
-                let edge = VirbiusEdge::new();
+                let edge = VirbiusEdge;
                 let out = edge.scan("please jailbreak now").expect("scan");
                 assert_eq!(out.action, EffectiveAction::Block);
                 assert_eq!(
@@ -196,7 +212,7 @@ mod tests {
               }]
             }"#,
             || {
-                let edge = VirbiusEdge::new();
+                let edge = VirbiusEdge;
                 let out = edge.scan("jailbreak").expect("scan");
                 assert_eq!(out.action, EffectiveAction::Review);
             },
@@ -226,7 +242,7 @@ mod tests {
               "sdk_config": { "dlp_vault_ttl_ms": 60000 }
             }"#,
             || {
-                let edge = VirbiusEdge::new();
+                let edge = VirbiusEdge;
                 let trace = "550e8400-e29b-41d4-a716-446655440000";
                 let ctx = ScanContext {
                     trace_id: Some(trace.into()),

@@ -14,15 +14,17 @@ virbius-core = { path = "../VirbiusLLM/virbius-core" }
 ```
 
 ```rust
-use virbius_core::{EffectiveAction, ScanContext, VirbiusEdge};
+use std::path::PathBuf;
+use virbius_core::{EffectiveAction, EdgeInitConfig, ScanContext, VirbiusEdge};
 
 fn main() -> Result<(), virbius_core::VirbiusError> {
-    std::env::set_var(
-        "VIRBIUS_EDGE_MANIFEST_PATH",
-        "./virbius-core/examples/fixtures/demo-edge-manifest.json",
-    );
-
-    let edge = VirbiusEdge::new();
+    let edge = VirbiusEdge::init(EdgeInitConfig {
+        offline_manifest_path: Some(
+            "./virbius-core/examples/fixtures/demo-edge-manifest.json".into(),
+        ),
+        cache_dir: PathBuf::from("./cache"),
+        ..Default::default()
+    })?;
     let outcome = edge.scan_with(
         ScanContext {
             scene: Some("chat".into()),
@@ -56,7 +58,7 @@ cargo run --example gateway_http_client
 ```
 
 - **`trace_id`**: auto-generated UUID v4 if omitted (`trace_id_source=sdk`).
-- If you set it explicitly, use **UUID v4 or ULID**.
+- If you set it explicitly, use **UUID v4** (36 characters).
 
 ## DLP (desensitize in / out)
 
@@ -75,26 +77,39 @@ Place a space before digits when possible — built-in patterns use `\b` word bo
 
 Demo manifest: [examples/fixtures/demo-edge-manifest.json](examples/fixtures/demo-edge-manifest.json).
 
-## Manifest paths
+## Manifest paths (production)
 
-Per-app layout (recommended after publish):
+Use [`EdgeInitConfig`](src/sync.rs) + [`VirbiusEdge::init`](src/api/mod.rs) — **not** environment variables in shipped apps:
 
-```bash
-export VIRBIUS_TENANT_ID=default
-export VIRBIUS_APP_ID=demo-app
-export VIRBIUS_DATA_DIR=./data
-# loads ./data/edge/{tenant}/{app_id}/edge-manifest.json
+```rust
+use std::path::PathBuf;
+use virbius_core::{EdgeInitConfig, VirbiusEdge};
+
+let edge = VirbiusEdge::init(EdgeInitConfig {
+    control_base_url: Some("http://127.0.0.1:8080".into()),
+    tenant_id: "default".into(),
+    app_id: "beta".into(),
+    edge_api_key: Some("vrb_edge_...".into()), // when Control auth enabled
+    cache_dir: PathBuf::from("/path/to/app/sandbox/virbius"),
+    offline_manifest_path: None,
+})?;
 ```
 
-Or set explicitly:
+Offline / local fixture:
 
-```bash
-export VIRBIUS_EDGE_MANIFEST_PATH=./data/edge/default/demo-app/edge-manifest.json
+```rust
+VirbiusEdge::init(EdgeInitConfig {
+    offline_manifest_path: Some("./fixtures/demo-edge-manifest.json".into()),
+    cache_dir: PathBuf::from("./cache"),
+    ..Default::default()
+})?;
 ```
+
+Examples / CI may use `VirbiusEdge::new_from_env()`; see [user-guide §3.2.2](../docs/user-guide.md) for `VIRBIUS_*` variables.
 
 ## C ABI
 
-See [include/virbius.h](include/virbius.h): `virbius_init`, `virbius_scan`, `virbius_reload`, `virbius_free_string`.
+See [include/virbius.h](include/virbius.h): `virbius_init_config_json` (production), `virbius_init` (legacy URL/path), `virbius_scan`, `virbius_reload`, `virbius_free_string`.
 
 ## License
 

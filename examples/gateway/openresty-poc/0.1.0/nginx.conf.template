@@ -1,0 +1,26 @@
+worker_processes  1;
+error_log  logs/error.log;
+pid        logs/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+    sendfile      on;
+    keepalive_timeout 65;
+
+    # Point to repo lib/ (adjust absolute path)
+    lua_package_path "__VIRBIUS_REPO__/virbius-gateway/lib/?.lua;;";
+
+    include __STAGING__/gateway/openresty/upstreams.conf;
+
+    server {
+        listen 9080;
+        server_name localhost;
+
+        include __STAGING__/gateway/openresty/locations.conf;
+    }
+}

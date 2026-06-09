@@ -1,0 +1,6 @@
+# Copy to openresty-env.local.sh and source before start-openresty-poc.sh (optional).
+#   source scripts/openresty-env.local.sh
+
+# After: cd openresty-1.31.1.1 && ./configure && make && sudo make install
+export OPENRESTY_HOME="/usr/local/openresty"
+export OPENRESTY_NGINX_BIN="$OPENRESTY_HOME/bin/openresty"

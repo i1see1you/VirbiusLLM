@@ -143,6 +143,7 @@
           </div>
         </div>
         <button type="button" class="nav-item" data-tab="rollout"><span class="nav-icon">🚀</span><span class="nav-label">策略上线</span></button>
+        <button type="button" class="nav-item" data-tab="audit-center"><span class="nav-icon">🔍</span><span class="nav-label">审计中心</span></button>
       </nav>
     </aside>
 
@@ -157,7 +158,7 @@
 
   <div id="panel-lists" class="panel active card">
     <h2 style="margin:0 0 0.5rem;font-size:1rem">命名名单</h2>
-    <p class="hint">名单仅定义 <code>list_name</code> + 维度 + 纯值条目；拦截/放行由脚本规则 <code>listMatch(...)</code> + 规则行 <code>intent_action</code> / <code>risk_score</code> 决定。按 Header/Query 匹配：维度选 <code>var:逻辑变量</code>（如 <code>var:app_id</code>），条目填纯值（如 <code>evil</code>），脚本写 <code>listMatch('名单', ctx.var('app_id'))</code>。</p>
+    <p class="hint">名单仅定义 <code>list_name</code> + 维度 + 纯值条目；拦截/放行由脚本规则 <code>listMatch(...)</code> + 规则行 <code>intent_action</code> / <code>risk_score</code> 决定。按 Header/Query 匹配：维度选 <code>var:逻辑变量</code>（如 <code>var:app_id</code>），条目填纯值（如 <code>evil</code>），脚本写 <code>listMatch('名单', ctx.var('app_id'))</code>。<strong>存储</strong>：<code>keyword</code> / <code>ip_cidr</code> → 内存（gateway JSON + Engine reload）；<code>user_id</code> / <code>device_id</code> / <code>var:*</code> → Redis ZSET（支持单条过期）。内存名单<strong>生效条目上限 1000</strong>；保存后自动刷新 gateway 产物、Redis 并推送 Engine。</p>
     <div class="row">
       <input id="newListName" placeholder="list_name" size="14" />
       <select id="newListDim">
@@ -184,7 +185,7 @@
       <button type="button" id="btnListAdd">添加明细</button>
     </div>
     <table id="listsTable">
-      <thead><tr><th>名单</th><th>维度</th><th>值</th><th>创建</th><th>过期</th><th>备注</th><th></th></tr></thead>
+      <thead><tr><th>名单</th><th>维度</th><th>存储</th><th>值</th><th>创建</th><th>过期</th><th>备注</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -586,10 +587,41 @@
       <h3 style="margin:0 0 0.5rem;font-size:0.95rem">Trace 详情</h3>
       <p class="hint" id="roTraceHint"></p>
       <table id="roTraceTable">
-        <thead><tr><th>时间</th><th>layer</th><th>action</th><th>rule</th><th>rollout</th><th>risk</th></tr></thead>
+        <thead><tr><th>时间</th><th>layer</th><th>action</th><th>rule</th><th>rollout</th><th>risk</th><th>来源</th></tr></thead>
         <tbody></tbody>
       </table>
       <button type="button" class="secondary" id="roTraceClose" style="margin-top:0.5rem">关闭</button>
+    </div>
+  </div>
+
+  <div id="panel-audit-center" class="panel card">
+    <h2 style="margin:0 0 0.5rem;font-size:1rem">审计中心</h2>
+    <p class="hint">按 <code>trace_id</code> 查询 <code>tb_audit_events</code>（review/block/captcha 等）及 allow 日志文件。allow 请求不入库，仅写入各层 JSONL 备档。</p>
+    <div class="row">
+      <label>trace_id <input id="acTraceId" placeholder="输入 trace_id" style="min-width:22rem" autocomplete="off" /></label>
+      <button type="button" id="acSearch">查询</button>
+    </div>
+    <p class="hint" id="acSummary"></p>
+    <div class="rollout-section">
+      <h3>tb_audit_events（<span id="acDbCount">0</span>）</h3>
+      <table id="acDbTable">
+        <thead><tr><th>时间</th><th>layer</th><th>scene</th><th>action</th><th>rule</th><th>reason</th><th>risk</th><th>rollout</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="rollout-section">
+      <h3>allow 日志（<span id="acAllowCount">0</span>）</h3>
+      <table id="acAllowTable">
+        <thead><tr><th>时间</th><th>layer</th><th>scene</th><th>action</th><th>rule</th><th>reason</th><th>risk</th><th>rollout</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="rollout-section">
+      <h3>allow 日志文件</h3>
+      <table id="acLogFilesTable">
+        <thead><tr><th>来源</th><th>路径</th><th>可读</th></tr></thead>
+        <tbody></tbody>
+      </table>
     </div>
   </div>
 
@@ -1005,9 +1037,37 @@ end`;
     function formatListDimension(dim) {
       if (!dim) return '—';
       if (String(dim).startsWith('var:')) return 'var(' + dim.slice(4) + ')';
-      if (String(dim) === 'var') return 'var（已废弃）';
       const label = DIM_HINT[dim] || dim;
       return label + ' `' + dim + '`';
+    }
+
+    function inferListStorage(dim, storage) {
+      if (storage) return String(storage).toLowerCase();
+      const d = (dim || '').toLowerCase();
+      if (d === 'keyword' || d === 'ip_cidr' || d === 'ip' || d === 'content') return 'memory';
+      if (d === 'user_id' || d === 'device_id' || d === 'var' || d.startsWith('var:')) return 'redis';
+      return 'memory';
+    }
+
+    function formatListStorage(storage) {
+      return storage === 'redis' ? 'Redis' : '内存';
+    }
+
+    function isListEntryActive(expiresAt) {
+      if (!expiresAt) return true;
+      const t = Date.parse(String(expiresAt));
+      return !Number.isNaN(t) && t > Date.now();
+    }
+
+    function countActiveListEntries(entries) {
+      if (!Array.isArray(entries)) return 0;
+      return entries.filter(e => isListEntryActive(field(e, 'expires_at', 'expiresAt'))).length;
+    }
+
+    function listSyncHint(data) {
+      if (data && data.engine_reload) return '（gateway + Engine 已同步）';
+      if (data && data.refreshed) return '（gateway 产物已刷新）';
+      return '';
     }
 
     function syncListDimUi() {
@@ -1046,6 +1106,8 @@ end`;
     }
 
     let listCatalog = [];
+    let listMetaByName = {};
+    const MEMORY_LIST_MAX_ACTIVE = 1000;
 
     const COMPARE_OP_SYMBOL = { gte: '>=', gt: '>', lte: '<=', lt: '<', eq: '==' };
 
@@ -1731,11 +1793,13 @@ end`;
       lists.forEach(item => {
         const name = field(item, 'list_name', 'listName') || '';
         const dim = field(item, 'dimension') || '';
+        const storage = inferListStorage(dim, field(item, 'storage'));
         const entries = field(item, 'entries') || [];
         entries.forEach(e => {
           rows.push({
             listName: name,
             dim,
+            storage,
             value: entryValue(e),
             createdAt: field(e, 'created_at', 'createdAt') || '',
             expiresAt: field(e, 'expires_at', 'expiresAt') || '',
@@ -1929,7 +1993,20 @@ end`;
 
     async function loadLists() {
       const data = await admin('/lists');
-      listCatalog = (data.lists || []).map(x => field(x, 'list_name', 'listName')).filter(Boolean);
+      listMetaByName = {};
+      (data.lists || []).forEach(item => {
+        const name = field(item, 'list_name', 'listName');
+        if (!name) return;
+        const dim = field(item, 'dimension') || '';
+        const storage = inferListStorage(dim, field(item, 'storage'));
+        listMetaByName[name] = {
+          dimension: dim,
+          storage,
+          entries: field(item, 'entries') || [],
+          activeEntryCount: field(item, 'active_entry_count', 'activeEntryCount')
+        };
+      });
+      listCatalog = Object.keys(listMetaByName).sort();
       const sel = document.getElementById('entryListName');
       const prev = sel.value;
       sel.innerHTML = '<option value="">选择名单</option>' +
@@ -1942,6 +2019,7 @@ end`;
         const tr = document.createElement('tr');
         tr.innerHTML = `<td><code>${esc(row.listName)}</code></td>
           <td>${esc(formatListDimension(row.dim))}</td>
+          <td>${esc(formatListStorage(row.storage))}</td>
           <td><code>${esc(row.value)}</code></td>
           <td>${esc(fmtTime(row.createdAt))}</td>
           <td>${esc(fmtTime(row.expiresAt))}</td>
@@ -1951,9 +2029,9 @@ end`;
       });
       tbody.querySelectorAll('button.danger').forEach(btn => {
         btn.onclick = async () => {
-          await admin(`/lists/${encodeURIComponent(btn.dataset.name)}/entries/${encodeURIComponent(btn.dataset.val)}`, { method: 'DELETE' });
+          const resp = await admin(`/lists/${encodeURIComponent(btn.dataset.name)}/entries/${encodeURIComponent(btn.dataset.val)}`, { method: 'DELETE' });
           await loadLists();
-          log('已删除明细');
+          log('已删除明细' + listSyncHint(resp));
         };
       });
     }
@@ -2364,24 +2442,98 @@ end`;
       const tbody = document.querySelector('#roTraceTable tbody');
       modal.style.display = '';
       hint.textContent = `trace_id: ${traceId}`;
-      tbody.innerHTML = '<tr><td colspan="6" class="hint">加载中…</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="hint">加载中…</td></tr>';
       try {
-        const hops = await admin('/traces/' + encodeURIComponent(traceId));
+        const detail = await admin('/audit/trace/' + encodeURIComponent(traceId));
         tbody.innerHTML = '';
-        (hops || []).forEach(h => {
+        const rows = [];
+        (detail.db_events || []).forEach(h => rows.push({ ...h, _source: 'db' }));
+        (detail.allow_log_events || []).forEach(h => rows.push({ ...h, _source: 'allow-log' }));
+        rows.sort((a, b) => String(a.intercepted_at || '').localeCompare(String(b.intercepted_at || '')));
+        rows.forEach(h => {
           const tr = document.createElement('tr');
           tr.innerHTML = `<td>${esc(fmtTime(h.intercepted_at))}</td>
             <td>${esc(h.layer || '')}</td><td>${esc(h.effective_action || '')}</td>
             <td>${esc(h.rule_id || '')}@${h.rule_revision ?? ''}</td>
             <td>${esc(rolloutStateLabel(h.rollout_state, h.canary_percent))}</td>
-            <td>${h.max_risk_score ?? ''}</td>`;
+            <td>${h.max_risk_score ?? ''}</td>
+            <td>${esc(h._source || '')}</td>`;
           tbody.appendChild(tr);
         });
-        if (!hops || !hops.length) {
-          tbody.innerHTML = '<tr><td colspan="6" class="hint">无跨层 audit 记录</td></tr>';
+        if (!rows.length) {
+          tbody.innerHTML = '<tr><td colspan="7" class="hint">无 audit 记录（DB 与 allow 日志均为空）</td></tr>';
+        }
+        if (detail.note) {
+          hint.textContent = `trace_id: ${traceId} — ${detail.note}`;
         }
       } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="6" class="hint">${esc(e.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="hint">${esc(e.message)}</td></tr>`;
+      }
+    }
+
+    function renderAuditEventRow(h) {
+      return `<td>${esc(fmtTime(h.intercepted_at))}</td>
+        <td>${esc(h.layer || '')}</td><td>${esc(h.scene || '')}</td>
+        <td>${esc(h.effective_action || '')}</td>
+        <td>${esc(h.rule_id || '')}@${h.rule_revision ?? ''}</td>
+        <td>${esc(h.reason_code || '')}</td>
+        <td>${h.max_risk_score ?? ''}</td>
+        <td>${esc(rolloutStateLabel(h.rollout_state, h.canary_percent))}</td>`;
+    }
+
+    async function searchAuditCenter(traceId) {
+      const tid = (traceId || document.getElementById('acTraceId').value || '').trim();
+      if (!tid) {
+        log('请输入 trace_id');
+        return;
+      }
+      document.getElementById('acTraceId').value = tid;
+      const summary = document.getElementById('acSummary');
+      const dbTbody = document.querySelector('#acDbTable tbody');
+      const allowTbody = document.querySelector('#acAllowTable tbody');
+      const filesTbody = document.querySelector('#acLogFilesTable tbody');
+      summary.textContent = '查询中…';
+      dbTbody.innerHTML = '<tr><td colspan="8" class="hint">加载中…</td></tr>';
+      allowTbody.innerHTML = '<tr><td colspan="8" class="hint">加载中…</td></tr>';
+      try {
+        const detail = await admin('/audit/trace/' + encodeURIComponent(tid));
+        document.getElementById('acDbCount').textContent = detail.db_count ?? 0;
+        document.getElementById('acAllowCount').textContent = detail.allow_log_count ?? 0;
+        summary.textContent = detail.note || '';
+        dbTbody.innerHTML = '';
+        (detail.db_events || []).forEach(h => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = renderAuditEventRow(h);
+          dbTbody.appendChild(tr);
+        });
+        if (!(detail.db_events || []).length) {
+          dbTbody.innerHTML = '<tr><td colspan="8" class="hint">无 tb_audit_events 记录</td></tr>';
+        }
+        allowTbody.innerHTML = '';
+        (detail.allow_log_events || []).forEach(h => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = renderAuditEventRow(h);
+          allowTbody.appendChild(tr);
+        });
+        if (!(detail.allow_log_events || []).length) {
+          allowTbody.innerHTML = '<tr><td colspan="8" class="hint">无 allow 日志记录</td></tr>';
+        }
+        filesTbody.innerHTML = '';
+        (detail.allow_log_files || []).forEach(f => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${esc(f.label || '')}</td><td><code>${esc(f.path || '')}</code></td>
+            <td>${f.exists ? '是' : '否'}</td>`;
+          filesTbody.appendChild(tr);
+        });
+        if (!(detail.allow_log_files || []).length) {
+          filesTbody.innerHTML = '<tr><td colspan="3" class="hint">—</td></tr>';
+        }
+        log({ trace_id: tid, db_count: detail.db_count, allow_log_count: detail.allow_log_count });
+      } catch (e) {
+        summary.textContent = e.message;
+        dbTbody.innerHTML = `<tr><td colspan="8" class="hint">${esc(e.message)}</td></tr>`;
+        allowTbody.innerHTML = '<tr><td colspan="8" class="hint">—</td></tr>';
+        filesTbody.innerHTML = '<tr><td colspan="3" class="hint">—</td></tr>';
       }
     }
 
@@ -2551,6 +2703,13 @@ end`;
       } else {
         stopRolloutAutoRefresh();
       }
+      if (tab === 'audit-center') {
+        const q = new URLSearchParams(window.location.search).get('trace_id');
+        if (q) {
+          document.getElementById('acTraceId').value = q;
+          searchAuditCenter(q).catch(e => log(e.message));
+        }
+      }
     }
 
     document.getElementById('btnSidebarToggle').onclick = () => {
@@ -2661,7 +2820,7 @@ end`;
       document.getElementById('newListName').value = '';
       document.getElementById('newListRemark').value = '';
       await loadLists();
-      log('名单已创建');
+      log('名单已创建（gateway + Engine 已同步）');
     };
     document.getElementById('newListDim').onchange = syncListDimUi;
 
@@ -2671,6 +2830,18 @@ end`;
       const expires = document.getElementById('entryExpires').value.trim();
       const remark = document.getElementById('entryRemark').value.trim();
       if (!listName || !val) { log('请选择名单并填写值'); return; }
+      const meta = listMetaByName[listName];
+      if (meta && meta.storage === 'memory') {
+        const active = meta.activeEntryCount != null
+          ? Number(meta.activeEntryCount)
+          : countActiveListEntries(meta.entries);
+        const newActive = isListEntryActive(expires || null);
+        const duplicate = (meta.entries || []).some(e => entryValue(e) === val);
+        if (newActive && !duplicate && active >= MEMORY_LIST_MAX_ACTIVE) {
+          log(`内存名单生效条目已达上限（${MEMORY_LIST_MAX_ACTIVE}），无法继续添加`);
+          return;
+        }
+      }
       const entry = { value: val };
       if (remark) entry.remark = remark;
       if (expires) entry.expires_at = expires;
@@ -2678,13 +2849,14 @@ end`;
         method: 'POST',
         body: JSON.stringify({ entries: [entry] })
       })
-        .then(() => {
+        .then(resp => {
           document.getElementById('entryVal').value = '';
           document.getElementById('entryExpires').value = '';
           document.getElementById('entryRemark').value = '';
-          return loadLists();
+          return loadLists().then(() => resp);
         })
-        .then(() => log('明细已添加')).catch(e => log(e.message));
+        .then(resp => log('明细已添加' + listSyncHint(resp)))
+        .catch(e => log(e.message));
     };
 
     document.getElementById('btnBindAdd').onclick = () => {
@@ -2995,6 +3167,15 @@ end`;
     document.getElementById('roTraceClose').onclick = () => {
       document.getElementById('roTraceModal').style.display = 'none';
     };
+    document.getElementById('acSearch').onclick = () => {
+      searchAuditCenter().catch(e => log(e.message));
+    };
+    document.getElementById('acTraceId').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        searchAuditCenter().catch(err => log(err.message));
+      }
+    });
 
     initScriptAutocomplete();
     reloadAll().catch(e => log(e.message));

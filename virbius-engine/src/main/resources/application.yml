@@ -17,11 +17,15 @@ virbius:
   data-dir: ${VIRBIUS_DATA_DIR:./data}
   redis:
     url: ${VIRBIUS_REDIS_URL:redis://127.0.0.1:6379}
+  lists:
+    redis:
+      match-cache-ttl-sec: 60
+      match-cache-max-entries: 200000
   grpc:
     port: 50051
   audit:
     engine-path: ${VIRBIUS_ENGINE_AUDIT:/tmp/virbius/engine-audit.jsonl}
-    sqlite-enabled: true
+    engine-allow-path: ${VIRBIUS_ENGINE_AUDIT_ALLOW:/tmp/virbius/engine-audit-allow.jsonl}
   prompt-llm:
     base-url: ${VIRBIUS_PROMPT_LLM_BASE_URL:http://127.0.0.1:11434}
     model: ${VIRBIUS_PROMPT_LLM_MODEL:virbius-prompt-1b}
@@ -34,9 +38,12 @@ virbius:
 audit:
   publish:
     backend: redis-stream
+    async: true
+    queue-max: 2000
+    flush-batch-size: 64
+    flush-interval-ms: 100
     redis:
       stream-key: virbius:audit:events
-    sqlite-enabled: true
 
 management:
   endpoints:

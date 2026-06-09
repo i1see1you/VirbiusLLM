@@ -205,7 +205,7 @@ in_canary = (bucket < canary_percent)
 
 推荐扩展（R2a+）：`rollout_state`, `canary_percent`, `in_canary_bucket`, `degraded`。
 
-**投递**：各执行面 publish 至消息总线 → **AuditIngest** 入库；默认 **Redis Stream**（`virbius:audit:events`），可选 **Kafka**（`virbius.audit.events`）。PoC 仍写本地 jsonl 备档。详见 [rule-rollout.md §5.7](./rule-rollout.md)。
+**投递**：`effective_action=allow` **仅写本地 `*-audit-allow.jsonl`**，不入 Stream、不入库；review/block/captcha 等 publish 至消息总线 → **AuditIngest** 入库 `tb_audit_events`；默认 **Redis Stream**（`virbius:audit:events`），可选 **Kafka**（`virbius.audit.events`）。PoC 非 allow 事件可同时写 `*-audit.jsonl` 备档。排障见运营台 **「审计中心」**（[rule-rollout.md §5.8](./rule-rollout.md)）。详见 [rule-rollout.md §5.7](./rule-rollout.md)。
 
 **不再写入** `would_block`。Schema：[audit-event.schema.json](./schemas/audit-event.schema.json)。
 
@@ -215,6 +215,7 @@ in_canary = (bucket < canary_percent)
 
 - 规则表展示 `rollout_state`（或 PoC：`rule_status` / `enforce_mode`）/ `intent_action` / `risk_score`
 - 「**策略上线**」侧栏：放量流程条、看板、门禁 evaluate（R2+）；见 [rule-rollout.md §8.3](./rule-rollout.md)
+- 「**审计中心**」：按 `trace_id` 查询 `tb_audit_events` 与 allow JSONL；见 [rule-rollout.md §5.8](./rule-rollout.md)
 - Groovy 模板默认 `dry_run → review`
 
 ---

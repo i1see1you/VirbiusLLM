@@ -1,6 +1,7 @@
 {
   "tenant_id": "default",
-  "lists": [],
+  "schema_version": 2,
+  "memory_lists": [],
   "cumulatives": [
     {
       "cumulative_name": "user_req_1h_global",

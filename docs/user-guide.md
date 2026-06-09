@@ -83,34 +83,91 @@ Per-App 端 manifest 路径（方案 A）：
 virbius-core = { path = "../VirbiusLLM/virbius-core" }
 ```
 
-### 3.2 环境变量
+### 3.2 初始化（生产）
+
+宿主 App 从自有配置构造 [`EdgeInitConfig`](../../virbius-core/src/sync.rs)，**不要依赖环境变量**：
+
+```rust
+use std::path::PathBuf;
+use virbius_core::{EdgeInitConfig, ScanContext, VirbiusEdge};
+
+let edge = VirbiusEdge::init(EdgeInitConfig {
+    control_base_url: Some("http://127.0.0.1:8080".into()),
+    tenant_id: "default".into(),
+    app_id: "beta".into(),
+    edge_api_key: Some("vrb_edge_...".into()), // Control 开启 VIRBIUS_EDGE_AUTH_ENABLED 时必填
+    cache_dir: PathBuf::from(app_cache_dir),
+    offline_manifest_path: None,
+})?;
+```
+
+| 字段 | 说明 |
+|------|------|
+| `control_base_url` | Control 根 URL；与 `app_id` 同设时启动/`reload` 走方案 B 同步 |
+| `tenant_id` | 租户，默认 `default` |
+| `app_id` | App 标识；与 manifest 内 `app_id` 校验 |
+| `edge_api_key` | Control Edge 拉取 Bearer（租户级；与 `tenant_id` scope 一致；**不在 manifest 内**） |
+| `cache_dir` | manifest 与 `meta.json` 缓存目录（**必填**） |
+| `offline_manifest_path` | 离线/调试：本地 manifest 路径（设则跳过 Control 同步） |
+
+C ABI：`virbius_init_config_json("{...}")`，JSON 字段同上（见 `include/virbius.h`）。
+
+规则与审计等行为由 Control 下发的 manifest `sdk_config` 决定；`reload()` 会再次 sync + 热更新。
+
+**示例 / CI 专用**：`VirbiusEdge::new_from_env()` 或 `EdgeInitConfig::from_env()` 读取 `VIRBIUS_*` 环境变量，**不要在生产 App 中使用**。
+
+### 3.2.1 Control Edge 鉴权（方案 B+）
+
+Control 可通过 `VIRBIUS_EDGE_AUTH_ENABLED=true` 开启租户级 Bearer（默认关闭，与 PoC 兼容）：
+
+| 项 | 说明 |
+|----|------|
+| Header | `Authorization: Bearer <edge_api_key>` 或 `X-Virbius-Edge-Key` |
+| Scope | key 绑定 **tenant_id**；path 中 `{tenantId}` 须一致，否则 403 |
+| PoC dev key | `vrb_edge_dev_default_poc_only`（seed，`tenant=default`） |
+| 签发 | `POST /api/v1/admin/tenants/{tenantId}/edge-credentials`（响应含一次性 `api_key`） |
+| 吊销 | `POST .../edge-credentials/{credentialId}/revoke` |
+
+`edge_api_key` **仅**在 Init 配置，不下发到 manifest（与 `audit_ingest_token` 分离）。
+
+### 3.2.2 示例 / CI 环境变量（`from_env`）
+
+以下变量供 **`VirbiusEdge::new_from_env()`**、示例与自动化测试使用；**生产 App 应写入自有配置**，见 §3.2。
 
 | 变量 | 说明 |
 |------|------|
-| `VIRBIUS_EDGE_MANIFEST_PATH` | **推荐**：显式指定 manifest 绝对/相对路径 |
+| `VIRBIUS_CONTROL_BASE_URL` | Control 根 URL；与 `app_id` 同设时启用远程 sync |
 | `VIRBIUS_TENANT_ID` | 租户，默认 `default` |
-| `VIRBIUS_APP_ID` | App 标识；与 manifest 内 `app_id` 校验 |
-| `VIRBIUS_DATA_DIR` | 数据根目录，默认 `./data` |
+| `VIRBIUS_APP_ID` | 拉取的 per-app manifest 标识 |
+| `VIRBIUS_EDGE_CACHE_DIR` | 本地 `edge-manifest.json` + `meta.json` 目录 |
+| `VIRBIUS_EDGE_API_KEY` | Bearer；Control `VIRBIUS_EDGE_AUTH_ENABLED=true` 时必填 |
+| `VIRBIUS_EDGE_MANIFEST_PATH` | 离线 manifest 路径；**设则跳过 Control 同步** |
+| `VIRBIUS_DATA_DIR` | 未设 `VIRBIUS_EDGE_CACHE_DIR` 时，cache 默认为 `{DATA_DIR}/edge/{tenant}/{app}` |
 
-未设置 `VIRBIUS_EDGE_MANIFEST_PATH` 时，SDK 按 `{DATA_DIR}/edge/{tenant}/{app_id}/edge-manifest.json` 查找。
+**Control 侧**（启动 virbius-control 时）：
 
-### 3.3 初始化
+| 变量 | 说明 |
+|------|------|
+| `VIRBIUS_EDGE_AUTH_ENABLED` | `true` 开启 Edge 拉取 Bearer（默认 `false`） |
+| `VIRBIUS_DATA_DIR` | 产物与 SQLite 目录，默认 `./data` |
 
-进程内 **单例** 即可：
+PoC 联调示例见 [POC-SEED-API.md §6.5](./POC-SEED-API.md)。
+
+### 3.3 初始化（示例）
 
 ```rust
 use virbius_core::VirbiusEdge;
 
-let edge = VirbiusEdge::new(); // 加载 manifest，启动审计 flush
+let edge = VirbiusEdge::new(); // 仅本地空规则或 new_from_env；生产请用 init()
 ```
 
-规则文件更新后：
+### 3.4 热更新
 
 ```rust
 edge.reload();
 ```
 
-### 3.4 请求上下文 `ScanContext`
+### 3.5 请求上下文 `ScanContext`
 
 与网关 Header、审计字段对齐（[ControlContext](./openspec/schemas/control-context.schema.json)）：
 
@@ -119,7 +176,7 @@ edge.reload();
 | `user_id` | 可选，PII |
 | `device_id` | 可选；canary 分桶常用 |
 | `scene` | 可选，默认 `default` |
-| `trace_id` | 可选；**不传则 SDK 生成 UUID v4**；传入须为 UUID v4 或 ULID |
+| `trace_id` | 可选；**不传则 SDK 生成 UUID v4**；传入须为 **UUID v4**（36 字符） |
 
 ```rust
 use virbius_core::ScanContext;
@@ -238,7 +295,7 @@ cargo run --example rust_client_demo
 
 | Header | 设置方 | 说明 |
 |--------|--------|------|
-| `X-Virbius-Trace-Id` | **客户端** | 与端 scan 的 `trace_id` 一致；UUID v4 / ULID |
+| `X-Virbius-Trace-Id` | **客户端** | 与端 scan 的 `trace_id` 一致；**UUID v4** |
 | `X-Virbius-User-Id` | 客户端（可选） | 与 `ScanContext.user_id` 一致 |
 | `X-Virbius-Device-Id` | 客户端（可选） | 与 `ScanContext.device_id` 一致 |
 | `X-Virbius-Edge-Pass` | 客户端（可选） | 端已 scan 且放行时可设 `1` |
@@ -302,7 +359,25 @@ cargo run --example gateway_http_client
 
 PoC curl 见 [POC-SEED-API.md §7](./POC-SEED-API.md)。
 
-### 4.7 HTTP 状态码
+### 4.7 管侧 JSON 与网关路径（APISIX / OpenResty）
+
+**真源**：virbius-control `ArtifactService` 写入 `{VIRBIUS_DATA_DIR}/gateway/`（默认 `./data/gateway/`），**不经过 Redis**。
+
+| 文件 | 用途 |
+|------|------|
+| `default-access-lists.json` | `context_bindings`（如 `X-App-Id`→`app_id`）、管侧名单 |
+| `default-scene-registry.json` | 运行时 `(app_id, uri, match) → scene_id` |
+
+启动 `./scripts/run-local.sh` 后会自动 refresh。改名单后 control 同步即可；OpenResty 在 **方案 A** 下无需重新 compile。
+
+| 网关 | 路径配置位置 |
+|------|----------------|
+| APISIX | `plugins.virbius-guard.lists_file` / `scene_registry_file`（service JSON） |
+| OpenResty（Stretch） | compiler 生成的 `effective-*.json` 内同名字段 |
+
+OpenResty 本地对齐：`./scripts/compile-openresty-poc.sh`（`--deploy-layout=control-data`）。详见 [openspec/openresty-gateway.md](./openspec/openresty-gateway.md)。
+
+### 4.8 HTTP 状态码
 
 | 状态 | 含义 |
 |------|------|
@@ -327,7 +402,9 @@ PoC curl 见 [POC-SEED-API.md §7](./POC-SEED-API.md)。
 |------|------|
 | 端 **Block** 不上行 | 须在端生成 trace 并写 edge audit |
 | 仅管层 | 客户端传合法 trace，或依赖网关策略（见 MVP 版本说明） |
-| 格式 | UUID v4 或 ULID，16～128 字符 |
+| 格式 | **UUID v4**，固定 36 字符（如 `uuidgen` 小写） |
+
+**运营台排障**：http://127.0.0.1:8080/ui → **审计中心**，输入 `trace_id` 可查看 `tb_audit_events`（review/block/captcha）与各层 **allow JSONL** 合并结果；API：`GET /api/v1/admin/tenants/{tenant}/audit/trace/{traceId}`（详见 [rule-rollout.md §5.8](./openspec/rule-rollout.md)）。
 
 ---
 
@@ -397,7 +474,9 @@ async fn chat(
 | 网关 400 | `X-Virbius-Trace-Id` 非法 |
 | 网关 403 | 管/云规则 full/canary 拦截 |
 | 云规则不生效 | 未走 gateway evaluate；或 engine 未同步 RuleCache |
-| 端 manifest app_id 不匹配 | `VIRBIUS_APP_ID` 与文件内 `app_id` 不一致，规则被清空 |
+| 端 manifest app_id 不匹配 | Init `app_id` 与 manifest 内 `app_id` 不一致，规则被清空 |
+| 端 manifest sync 401/403 | Control 开启鉴权但未配 `edge_api_key`；或 key 与 `tenant_id` 不一致 |
+| 端 manifest sync 404 | 未 publish edge 规则，或 `app_id` 无 artifact；检查 `data/edge/{tenant}/{app}/` |
 
 ---
 

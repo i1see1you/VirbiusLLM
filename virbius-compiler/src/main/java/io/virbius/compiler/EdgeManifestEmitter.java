@@ -42,7 +42,6 @@ public final class EdgeManifestEmitter {
         manifest.put("rules", rules);
         manifest.put("dlp_rules", dlpRules);
         manifest.put("sdk_config", defaultSdkConfig(root));
-        manifest.put("lists", legacyLists(rules, tenantId));
         return manifest;
     }
 
@@ -56,11 +55,8 @@ public final class EdgeManifestEmitter {
 
         Map<String, Path> written = new LinkedHashMap<>();
         if (appIds.isEmpty()) {
-            Files.createDirectories(outputDir);
-            Path file = outputDir.resolve("edge-manifest.json");
-            json.writerWithDefaultPrettyPrinter().writeValue(file.toFile(), buildManifest(root, null));
-            written.put("_tenant", file);
-            return written;
+            throw new IllegalStateException(
+                    "scene_registry with at least one app_id required to emit edge manifests");
         }
         for (String appId : appIds) {
             Path dir = outputDir.resolve(tenantId).resolve(appId);
@@ -202,37 +198,6 @@ public final class EdgeManifestEmitter {
         return sdk;
     }
 
-    private static Map<String, Object> legacyLists(List<Map<String, Object>> rules, String tenantId) {
-        Map<String, Object> lists = new LinkedHashMap<>();
-        lists.put("tenant_id", tenantId);
-        lists.put("deny", Map.of("keywords", keywordsForListType(rules, "deny")));
-        lists.put("allow", Map.of("keywords", keywordsForListType(rules, "allow")));
-        return lists;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<String> keywordsForListType(List<Map<String, Object>> rules, String listType) {
-        List<String> out = new ArrayList<>();
-        for (Map<String, Object> rule : rules) {
-            Object bodyObj = rule.get("body");
-            if (!(bodyObj instanceof Map<?, ?> body)) {
-                continue;
-            }
-            if (!listType.equals(String.valueOf(body.get("list_type")))) {
-                continue;
-            }
-            Object keywords = body.get("keywords");
-            if (keywords instanceof List<?> list) {
-                for (Object kw : list) {
-                    if (kw != null) {
-                        out.add(kw.toString());
-                    }
-                }
-            }
-        }
-        return out;
-    }
-
     private static boolean inExecutionPlane(String rolloutState) {
         if (rolloutState == null || rolloutState.isBlank()) {
             return false;
@@ -284,29 +249,5 @@ public final class EdgeManifestEmitter {
         Map<String, Object> map = new LinkedHashMap<>();
         node.fields().forEachRemaining(e -> map.put(e.getKey(), jsonToMap(e.getValue())));
         return map;
-    }
-
-    /** Writes legacy {@code {tenant}-content-lists.json} beside manifest (tenant-wide or per-app dir). */
-    public static void writeLegacyLists(Path outputDir, JsonNode root, ObjectMapper json) throws IOException {
-        String tenantId = root.path("tenant_id").asText("default");
-        SceneRegistry registry = SceneRegistry.parse(metadataMap(root));
-        List<String> appIds = EdgeManifestFilter.collectAppIds(registry, scopesFromRules(root));
-        if (appIds.isEmpty()) {
-            writeLegacyListsFile(outputDir, tenantId, buildManifest(root, null), json);
-            return;
-        }
-        for (String appId : appIds) {
-            Path dir = outputDir.resolve(tenantId).resolve(appId);
-            writeLegacyListsFile(dir, tenantId, buildManifest(root, appId), json);
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static void writeLegacyListsFile(
-            Path outputDir, String tenantId, Map<String, Object> manifest, ObjectMapper json) throws IOException {
-        Map<String, Object> lists = (Map<String, Object>) manifest.get("lists");
-        Files.createDirectories(outputDir);
-        Path file = outputDir.resolve(tenantId + "-content-lists.json");
-        json.writerWithDefaultPrettyPrinter().writeValue(file.toFile(), lists);
     }
 }

@@ -1,7 +1,11 @@
 package io.virbius.control.service;
 
 import io.virbius.control.domain.CumulativeDef;
+import io.virbius.control.domain.AccessListEntry;
+import io.virbius.control.gateway.GatewayListRedisService;
 import io.virbius.control.domain.AccessListMeta;
+import io.virbius.control.domain.EdgeArtifactMeta;
+import io.virbius.policy.ListStorageKind;
 import io.virbius.control.domain.RuleRevision;
 import io.virbius.control.domain.RolloutStateHelper;
 import io.virbius.control.domain.TenantRolloutPolicy;
@@ -12,13 +16,17 @@ import io.virbius.policy.EdgeManifestFilter;
 import io.virbius.policy.SceneRegistry;
 import io.virbius.control.policy.RuleBodyRefs;
 import io.virbius.control.repository.CumulativeRepository;
+import io.virbius.control.repository.EdgeArtifactMetaRepository;
 import io.virbius.control.repository.ListMetaRepository;
 import io.virbius.control.repository.RegistryRepository;
 import io.virbius.control.repository.TenantRolloutPolicyRepository;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.security.MessageDigest;
+import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,6 +45,8 @@ public class ArtifactService {
     private final TenantRolloutPolicyRepository policyRepository;
     private final String auditIngestUrl;
     private final String auditIngestToken;
+    private final GatewayListRedisService gatewayListRedisService;
+    private final EdgeArtifactMetaRepository edgeArtifactMetaRepository;
 
     public ArtifactService(
             @Value("${virbius.data-dir:./data}") String dataDir,
@@ -45,7 +55,9 @@ public class ArtifactService {
             CumulativeRepository cumulativeRepo,
             TenantRolloutPolicyRepository policyRepository,
             @Value("${audit.edge.ingest-url:}") String auditIngestUrl,
-            @Value("${audit.ingest.http.token:}") String auditIngestToken) {
+            @Value("${audit.ingest.http.token:}") String auditIngestToken,
+            GatewayListRedisService gatewayListRedisService,
+            EdgeArtifactMetaRepository edgeArtifactMetaRepository) {
         this.dataDir = java.nio.file.Path.of(dataDir);
         this.registryRepo = registryRepo;
         this.listMetaRepo = listMetaRepo;
@@ -53,6 +65,8 @@ public class ArtifactService {
         this.policyRepository = policyRepository;
         this.auditIngestUrl = auditIngestUrl != null ? auditIngestUrl : "";
         this.auditIngestToken = auditIngestToken != null ? auditIngestToken : "";
+        this.gatewayListRedisService = gatewayListRedisService;
+        this.edgeArtifactMetaRepository = edgeArtifactMetaRepository;
     }
 
     public Map<String, String> write(String tenantId, Map<String, Object> bundleMetadata) {
@@ -99,8 +113,12 @@ public class ArtifactService {
 
     Map<String, Object> buildGatewaySnapshot(String tenantId, Map<String, Object> bundleMetadata) {
         Map<String, Object> root = new LinkedHashMap<>();
+        root.put("schema_version", 2);
         root.put("tenant_id", tenantId);
-        root.put("lists", buildListDefBlocks(tenantId));
+        List<Map<String, Object>> memoryLists = buildMemoryListDefBlocks(tenantId);
+        List<Map<String, Object>> redisIndex = gatewayListRedisService.publishRedisLists(tenantId);
+        root.put("memory_lists", memoryLists);
+        root.put("redis_list_index", redisIndex);
         root.put("cumulatives", buildCumulativeDefBlocks(tenantId));
         root.put("script_rules", buildScriptRuleBlocks(tenantId));
         Map<String, Object> bindings = ContextBindingsHelper.bindingsBlock(bundleMetadata);
@@ -114,12 +132,16 @@ public class ArtifactService {
         return root;
     }
 
-    private List<Map<String, Object>> buildListDefBlocks(String tenantId) {
+    private List<Map<String, Object>> buildMemoryListDefBlocks(String tenantId) {
         List<Map<String, Object>> blocks = new ArrayList<>();
         for (AccessListMeta meta : listMetaRepo.listMeta(tenantId)) {
+            if (ListStorageKind.fromDimension(meta.dimension()) != ListStorageKind.MEMORY) {
+                continue;
+            }
             Map<String, Object> block = new LinkedHashMap<>();
             block.put("list_name", meta.listName());
             block.put("dimension", meta.dimension());
+            block.put("storage", "memory");
             if (meta.remark() != null && !meta.remark().isBlank()) {
                 block.put("remark", meta.remark());
             }
@@ -230,11 +252,10 @@ public class ArtifactService {
         java.nio.file.Files.createDirectories(edgeBase);
 
         if (appIds.isEmpty()) {
-            java.nio.file.Path manifestFile = edgeBase.resolve(tenantId + "-edge-manifest.json");
-            writeEdgeManifestFile(tenantId, null, allRules, manifestFile);
-            java.nio.file.Path legacyFile = edgeBase.resolve(tenantId + "-content-lists.json");
-            writeEdgeLegacyLists(tenantId, buildEdgeRuleBlocks(allRules), legacyFile);
-            paths.put("edge", manifestFile.toString());
+            log.warn(
+                    "skip edge manifests for tenant={}: scene_registry has no app_id "
+                            + "(seed bundle metadata or rule bind_ref app_ids required)",
+                    tenantId);
             return paths;
         }
 
@@ -244,8 +265,6 @@ public class ArtifactService {
             List<RuleRevision> filtered = filterEdgeRulesForApp(allRules, appId, registry);
             java.nio.file.Path manifestFile = dir.resolve("edge-manifest.json");
             writeEdgeManifestFile(tenantId, appId, filtered, manifestFile);
-            java.nio.file.Path legacyFile = dir.resolve(tenantId + "-content-lists.json");
-            writeEdgeLegacyLists(tenantId, buildEdgeRuleBlocks(filtered), legacyFile);
             paths.put("edge:" + appId, manifestFile.toString());
         }
         paths.put("edge", paths.get("edge:" + appIds.get(0)));
@@ -302,24 +321,28 @@ public class ArtifactService {
         sdk.put("dlp_vault_ttl_ms", 1_800_000L);
         root.put("sdk_config", sdk);
 
-        List<Map<String, Object>> ruleBlocks = buildEdgeRuleBlocks(rules);
-        Map<String, Object> legacyLists = new LinkedHashMap<>();
-        legacyLists.put("tenant_id", tenantId);
-        legacyLists.put("deny", Map.of("keywords", collectDenyKeywords(ruleBlocks)));
-        legacyLists.put("allow", Map.of("keywords", collectAllowKeywords(ruleBlocks)));
-        root.put("lists", legacyLists);
+        Instant publishedAt = Instant.now();
+        long revision = nextArtifactRevision(tenantId, appId);
+        root.put("artifact_revision", revision);
+        root.put("published_at", publishedAt.toString());
 
         mapper.writerWithDefaultPrettyPrinter().writeValue(manifestFile.toFile(), root);
+        byte[] bytes = java.nio.file.Files.readAllBytes(manifestFile);
+        String sha256 = sha256Hex(bytes);
+        edgeArtifactMetaRepository.save(
+                new EdgeArtifactMeta(tenantId, appId, revision, sha256, publishedAt));
     }
 
-    private void writeEdgeLegacyLists(
-            String tenantId, List<Map<String, Object>> ruleBlocks, java.nio.file.Path legacyFile)
-            throws Exception {
-        Map<String, Object> legacyLists = new LinkedHashMap<>();
-        legacyLists.put("tenant_id", tenantId);
-        legacyLists.put("deny", Map.of("keywords", collectDenyKeywords(ruleBlocks)));
-        legacyLists.put("allow", Map.of("keywords", collectAllowKeywords(ruleBlocks)));
-        mapper.writerWithDefaultPrettyPrinter().writeValue(legacyFile.toFile(), legacyLists);
+    private long nextArtifactRevision(String tenantId, String appId) {
+        return edgeArtifactMetaRepository
+                        .get(tenantId, appId)
+                        .map(meta -> meta.artifactRevision() + 1)
+                        .orElse(1L);
+    }
+
+    static String sha256Hex(byte[] data) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        return HexFormat.of().formatHex(digest.digest(data));
     }
 
     /** Package-visible for unit tests. */
@@ -388,51 +411,5 @@ public class ArtifactService {
             block.put("body", rule.body());
         }
         return block;
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<String> collectDenyKeywords(List<Map<String, Object>> ruleBlocks) {
-        List<String> out = new ArrayList<>();
-        for (Map<String, Object> block : ruleBlocks) {
-            Object body = block.get("body");
-            if (!(body instanceof Map<?, ?> bodyMap)) {
-                continue;
-            }
-            if (!"deny".equals(String.valueOf(bodyMap.get("list_type")))) {
-                continue;
-            }
-            Object keywords = bodyMap.get("keywords");
-            if (keywords instanceof List<?> list) {
-                for (Object kw : list) {
-                    if (kw != null) {
-                        out.add(kw.toString());
-                    }
-                }
-            }
-        }
-        return out;
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<String> collectAllowKeywords(List<Map<String, Object>> ruleBlocks) {
-        List<String> out = new ArrayList<>();
-        for (Map<String, Object> block : ruleBlocks) {
-            Object body = block.get("body");
-            if (!(body instanceof Map<?, ?> bodyMap)) {
-                continue;
-            }
-            if (!"allow".equals(String.valueOf(bodyMap.get("list_type")))) {
-                continue;
-            }
-            Object keywords = bodyMap.get("keywords");
-            if (keywords instanceof List<?> list) {
-                for (Object kw : list) {
-                    if (kw != null) {
-                        out.add(kw.toString());
-                    }
-                }
-            }
-        }
-        return out;
     }
 }

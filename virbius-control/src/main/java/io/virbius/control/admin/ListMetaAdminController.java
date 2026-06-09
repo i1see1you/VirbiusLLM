@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -54,9 +55,7 @@ public class ListMetaAdminController {
         }
         String dimension = AccessListMetaDimension.validate(body.dimension());
         AccessListMeta meta = new AccessListMeta(tenantId, listName, dimension, body.remark());
-        listMetaRepo.upsertMeta(meta);
-        accessListService.refreshArtifacts(tenantId);
-        return ApiResult.ok(meta);
+        return ApiResult.ok(accessListService.upsertMetaAndPush(tenantId, meta));
     }
 
     @PutMapping("/{listName}/entries")
@@ -81,15 +80,12 @@ public class ListMetaAdminController {
     @DeleteMapping("/{listName}/entries/{value}")
     public ApiResult<Map<String, Object>> removeEntry(
             @PathVariable("tenantId") String tenantId, @PathVariable("listName") String listName, @PathVariable("value") String value) {
-        listMetaRepo.getMeta(tenantId, listName).orElseThrow(() -> new IllegalArgumentException("list not found"));
-        listMetaRepo.removeEntry(tenantId, listName, value);
-        return ApiResult.ok(accessListService.refreshArtifacts(tenantId));
+        return ApiResult.ok(accessListService.removeNamedEntryAndPush(tenantId, listName, value));
     }
 
     @DeleteMapping("/{listName}")
     public ApiResult<Map<String, Object>> delete(@PathVariable("tenantId") String tenantId, @PathVariable("listName") String listName) {
-        listMetaRepo.deleteMeta(tenantId, listName);
-        return ApiResult.ok(accessListService.refreshArtifacts(tenantId));
+        return ApiResult.ok(accessListService.deleteListAndPush(tenantId, listName));
     }
 
     private static List<AccessListEntryInput> resolveEntryInputs(AccessListEntriesRequest req) {
@@ -118,5 +114,23 @@ public class ListMetaAdminController {
             return new AccessListEntryInput(req.values().get(0), null, null);
         }
         throw new IllegalArgumentException("value required");
+    }
+
+    @PostMapping("/sync-rules")
+    public ApiResult<Map<String, Object>> syncRules(@PathVariable("tenantId") String tenantId) {
+        return ApiResult.ok(accessListService.syncRules(tenantId));
+    }
+
+    @PostMapping("/push-engine")
+    public ApiResult<Map<String, Object>> pushEngine(@PathVariable("tenantId") String tenantId) {
+        return ApiResult.ok(accessListService.pushToEngine(tenantId));
+    }
+
+    @PostMapping("/sync-and-publish")
+    public ApiResult<Map<String, Object>> syncAndPublish(
+            @PathVariable("tenantId") String tenantId,
+            @RequestParam(value = "bundleId", defaultValue = "poc-default") String bundleId,
+            @RequestParam(value = "version", defaultValue = "0.1.0") String version) {
+        return ApiResult.ok(accessListService.syncAndPublish(tenantId, bundleId, version));
     }
 }

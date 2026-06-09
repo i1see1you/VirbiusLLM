@@ -16,7 +16,7 @@ use std::path::PathBuf;
 
 use serde_json::json;
 use uuid::Uuid;
-use virbius_core::{EffectiveAction, ScanContext, VirbiusEdge};
+use virbius_core::{EffectiveAction, EdgeInitConfig, ScanContext, VirbiusEdge};
 
 const DEFAULT_GATEWAY: &str = "http://127.0.0.1:9080/v1/chat/completions";
 
@@ -76,13 +76,18 @@ fn edge_scan_and_trace(
 ) -> Result<(String, bool), Box<dyn std::error::Error>> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("examples/fixtures/demo-edge-manifest.json");
-    if manifest.exists() {
-        unsafe {
-            std::env::set_var("VIRBIUS_EDGE_MANIFEST_PATH", &manifest);
-        }
-    }
-
-    let edge = VirbiusEdge::new();
+    let edge = if manifest.exists() {
+        let cache_dir = manifest.parent().unwrap().to_path_buf();
+        VirbiusEdge::init(EdgeInitConfig {
+            offline_manifest_path: Some(manifest),
+            cache_dir,
+            tenant_id: "default".into(),
+            app_id: "demo".into(),
+            ..Default::default()
+        })?
+    } else {
+        VirbiusEdge::new()
+    };
     let out = edge.scan_with(ctx.clone(), prompt)?;
     println!("[edge] scan action={:?} trace={}", out.action, out.trace_id);
 
@@ -126,7 +131,7 @@ fn chat_via_gateway(
     let mut request = ureq::post(url).set("Content-Type", "application/json");
 
     // --- Virbius ControlContext → HTTP Header（§4.6 MVP-OPENSPEC）---
-    // trace_id：与端 scan 相同，便于 audit 串联；须 UUID v4 / ULID。
+    // trace_id：与端 scan 相同，便于 audit 串联；须 UUID v4。
     request = request.set("X-Virbius-Trace-Id", trace_id);
 
     if let Some(uid) = ctx.user_id.as_deref().filter(|s| !s.is_empty()) {

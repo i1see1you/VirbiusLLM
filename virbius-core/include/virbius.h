@@ -25,7 +25,25 @@ typedef struct {
   const char* trace_id;       /* SDK 生成或透传；须 virbius_free_string 释放 */
 } virbius_scan_result;
 
+/**
+ * Legacy init: pass Control base URL (http(s)://...) or offline manifest file path.
+ * Production mobile apps should use virbius_init_config_json instead.
+ */
 int virbius_init(const char* manifest_url);
+
+/**
+ * Production init — JSON object matching EdgeInitConfig:
+ * {
+ *   "control_base_url": "https://control.example.com",  // optional if offline_manifest_path set
+ *   "tenant_id": "default",
+ *   "app_id": "beta",
+ *   "cache_dir": "/var/mobile/.../virbius",
+ *   "edge_api_key": "vrb_edge_...",          // optional; required when Control auth enabled
+ *   "offline_manifest_path": null
+ * }
+ */
+int virbius_init_config_json(const char* json);
+
 int virbius_scan(const virbius_scan_ctx* ctx, const char* text, virbius_scan_result* out);
 int virbius_reload(void);
 void virbius_free_string(char* p);

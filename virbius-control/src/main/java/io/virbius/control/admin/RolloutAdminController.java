@@ -7,6 +7,8 @@ import io.virbius.control.domain.dto.request.UpdateRolloutRequest;
 import io.virbius.control.repository.TenantRolloutPolicyRepository;
 import io.virbius.control.service.RolloutDashboardService;
 import io.virbius.control.service.RolloutService;
+import io.virbius.control.audit.AuditCenterService;
+import io.virbius.control.audit.AuditIngestService;
 import java.util.List;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,14 +28,20 @@ public class RolloutAdminController {
     private final RolloutService rolloutService;
     private final TenantRolloutPolicyRepository policyRepository;
     private final RolloutDashboardService dashboardService;
+    private final AuditIngestService auditIngestService;
+    private final AuditCenterService auditCenterService;
 
     public RolloutAdminController(
             RolloutService rolloutService,
             TenantRolloutPolicyRepository policyRepository,
-            RolloutDashboardService dashboardService) {
+            RolloutDashboardService dashboardService,
+            AuditIngestService auditIngestService,
+            AuditCenterService auditCenterService) {
         this.rolloutService = rolloutService;
         this.policyRepository = policyRepository;
         this.dashboardService = dashboardService;
+        this.auditIngestService = auditIngestService;
+        this.auditCenterService = auditCenterService;
     }
 
     @PatchMapping("/rules/{ruleId}/rollout")
@@ -146,6 +154,17 @@ public class RolloutAdminController {
             @RequestParam(value = "layer", defaultValue = "edge") String layer,
             @RequestParam(value = "hours", defaultValue = "24") int hours) {
         return ApiResult.ok(dashboardService.ingestHealth(tenantId, layer, hours));
+    }
+
+    @GetMapping("/audit/ingest-status")
+    public ApiResult<Map<String, Object>> auditIngestStatus(@PathVariable("tenantId") String tenantId) {
+        return ApiResult.ok(auditIngestService.status(tenantId));
+    }
+
+    @GetMapping("/audit/trace/{traceId}")
+    public ApiResult<Map<String, Object>> auditTraceDetail(
+            @PathVariable("tenantId") String tenantId, @PathVariable("traceId") String traceId) {
+        return ApiResult.ok(auditCenterService.traceDetail(tenantId, traceId));
     }
 
     @GetMapping("/rules/{ruleId}/rollout/gates")

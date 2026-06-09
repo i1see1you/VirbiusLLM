@@ -3,11 +3,9 @@ package io.virbius.control.service;
 import io.virbius.control.domain.AccessListEntry;
 import io.virbius.control.domain.AccessListMeta;
 import io.virbius.control.domain.dto.request.AccessListEntryInput;
-import io.virbius.control.domain.enums.AccessListDimension;
-import io.virbius.control.domain.enums.AccessListPolarity;
-import io.virbius.control.repository.AccessListRepository;
 import io.virbius.control.repository.ListMetaRepository;
 import io.virbius.control.repository.RegistryRepository;
+import io.virbius.policy.ListStorageKind;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -18,19 +16,19 @@ import org.springframework.stereotype.Service;
 @Service
 public class AccessListService {
 
-    private final AccessListRepository legacyListRepo;
+    /** Max active (non-expired) entries per memory list (keyword / ip_cidr). */
+    public static final int MEMORY_LIST_MAX_ACTIVE_ENTRIES = 1000;
+
     private final ListMetaRepository listMetaRepo;
     private final RegistryRepository registryRepo;
     private final PublishService publishService;
     private final ArtifactService artifactService;
 
     public AccessListService(
-            AccessListRepository legacyListRepo,
             ListMetaRepository listMetaRepo,
             RegistryRepository registryRepo,
             PublishService publishService,
             ArtifactService artifactService) {
-        this.legacyListRepo = legacyListRepo;
         this.listMetaRepo = listMetaRepo;
         this.registryRepo = registryRepo;
         this.publishService = publishService;
@@ -45,8 +43,13 @@ public class AccessListService {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("list_name", meta.listName());
             item.put("dimension", meta.dimension());
+            item.put("storage", storageKind(meta.dimension()).name().toLowerCase());
             item.put("remark", meta.remark());
-            item.put("entries", entryMaps(listMetaRepo.listEntries(tenantId, meta.listName())));
+            List<AccessListEntry> entries = listMetaRepo.listEntries(tenantId, meta.listName());
+            item.put("entries", entryMaps(entries));
+            if (storageKind(meta.dimension()) == ListStorageKind.MEMORY) {
+                item.put("active_entry_count", countActiveEntries(entries, Instant.now()));
+            }
             lists.add(item);
         }
         out.put("lists", lists);
@@ -58,52 +61,36 @@ public class AccessListService {
         return listMetaRepo.listEntries(tenantId, listName);
     }
 
-    /** Legacy shim: maps polarity+dimension to historical list_name `{polarity}_{dimension}`. */
-    public List<String> get(String tenantId, AccessListPolarity polarity, AccessListDimension dimension) {
-        String listName = legacyListName(polarity, dimension);
-        if (listMetaRepo.getMeta(tenantId, listName).isPresent()) {
-            return listMetaRepo.listEntries(tenantId, listName).stream().map(AccessListEntry::value).toList();
-        }
-        return legacyListRepo.list(tenantId, polarity, dimension);
-    }
-
-    public Map<String, Object> replaceAndPush(
-            String tenantId, AccessListPolarity polarity, AccessListDimension dimension, List<String> values) {
-        String listName = legacyListName(polarity, dimension);
-        ensureLegacyMeta(tenantId, listName, dimension);
-        listMetaRepo.replaceEntries(tenantId, listName, toValueOnlyEntries(normalizeValues(tenantId, dimension, values)));
-        return refreshArtifactsAndPush(tenantId, Map.of());
-    }
-
-    public Map<String, Object> addEntriesAndPush(
-            String tenantId, AccessListPolarity polarity, AccessListDimension dimension, List<String> values) {
-        String listName = legacyListName(polarity, dimension);
-        ensureLegacyMeta(tenantId, listName, dimension);
-        int added = 0;
-        for (String v : normalizeValues(tenantId, dimension, values)) {
-            if (listMetaRepo.addEntry(tenantId, listName, v, null, null)) {
-                added++;
-            }
-        }
-        return refreshArtifactsAndPush(tenantId, Map.of("added", added));
-    }
-
-    public Map<String, Object> removeEntryAndPush(
-            String tenantId, AccessListPolarity polarity, AccessListDimension dimension, String value) {
-        String listName = legacyListName(polarity, dimension);
-        boolean removed = listMetaRepo.removeEntry(tenantId, listName, value);
-        return refreshArtifactsAndPush(tenantId, Map.of("removed", removed));
-    }
-
     public Map<String, Object> addEntry(
             String tenantId, String listName, String value, String remark, Instant expiresAt) {
-        listMetaRepo.getMeta(tenantId, listName).orElseThrow(() -> new IllegalArgumentException("list not found"));
+        AccessListMeta meta = listMetaRepo
+                .getMeta(tenantId, listName)
+                .orElseThrow(() -> new IllegalArgumentException("list not found"));
         String normalized = value == null ? "" : value.trim();
         if (normalized.isEmpty()) {
             throw new IllegalArgumentException("value required");
         }
-        listMetaRepo.addEntry(tenantId, listName, normalized, remark, expiresAt);
-        return refreshArtifactsAndPush(tenantId, Map.of("added", true));
+        Instant now = Instant.now();
+        ensureMemoryListCapacity(meta, listMetaRepo.listEntries(tenantId, listName), normalized, expiresAt, now);
+        boolean added = listMetaRepo.addEntry(tenantId, listName, normalized, remark, expiresAt);
+        return refreshArtifactsAndPush(tenantId, Map.of("added", added));
+    }
+
+    public AccessListMeta upsertMetaAndPush(String tenantId, AccessListMeta meta) {
+        listMetaRepo.upsertMeta(meta);
+        refreshArtifactsAndPush(tenantId, Map.of());
+        return meta;
+    }
+
+    public Map<String, Object> removeNamedEntryAndPush(String tenantId, String listName, String value) {
+        listMetaRepo.getMeta(tenantId, listName).orElseThrow(() -> new IllegalArgumentException("list not found"));
+        boolean removed = listMetaRepo.removeEntry(tenantId, listName, value);
+        return refreshArtifactsAndPush(tenantId, Map.of("removed", removed));
+    }
+
+    public Map<String, Object> deleteListAndPush(String tenantId, String listName) {
+        listMetaRepo.deleteMeta(tenantId, listName);
+        return refreshArtifactsAndPush(tenantId, Map.of());
     }
 
     public Map<String, Object> replaceNamedEntries(String tenantId, String listName, List<AccessListEntryInput> inputs) {
@@ -122,7 +109,7 @@ public class AccessListService {
             }
         }
         listMetaRepo.replaceEntries(tenantId, listName, entries);
-        return refreshArtifacts(tenantId);
+        return refreshArtifactsAndPush(tenantId, Map.of());
     }
 
     public Map<String, Object> pushToEngine(String tenantId) {
@@ -139,7 +126,7 @@ public class AccessListService {
     }
 
     public Map<String, Object> syncRules(String tenantId) {
-        return refreshArtifacts(tenantId);
+        return refreshArtifactsAndPush(tenantId, Map.of());
     }
 
     public Map<String, Object> syncAndPublish(String tenantId, String bundleId, String version) {
@@ -155,21 +142,15 @@ public class AccessListService {
         return sync;
     }
 
+    public Map<String, Object> refreshArtifactsAndPush(String tenantId) {
+        return refreshArtifactsAndPush(tenantId, Map.of());
+    }
+
     private Map<String, Object> refreshArtifactsAndPush(String tenantId, Map<String, Object> extra) {
         Map<String, Object> out = new LinkedHashMap<>(refreshArtifacts(tenantId));
         out.putAll(extra);
         out.put("engine_reload", publishService.runtimeSnapshot(tenantId));
         return out;
-    }
-
-    private void ensureLegacyMeta(String tenantId, String listName, AccessListDimension dimension) {
-        if (listMetaRepo.getMeta(tenantId, listName).isEmpty()) {
-            listMetaRepo.upsertMeta(new AccessListMeta(tenantId, listName, dimension.value(), null));
-        }
-    }
-
-    public static String legacyListName(AccessListPolarity polarity, AccessListDimension dimension) {
-        return polarity.value() + "_" + dimension.value();
     }
 
     private Map<String, Object> bundleMetadata(String tenantId) {
@@ -179,24 +160,49 @@ public class AccessListService {
                 .orElse(Map.of());
     }
 
-    private List<String> normalizeValues(String tenantId, AccessListDimension dimension, List<String> values) {
-        List<String> out = new ArrayList<>();
-        if (values == null) {
-            return out;
-        }
-        Map<String, Object> metadata = bundleMetadata(tenantId);
-        for (String v : values) {
-            out.add(AccessListEntryValidator.normalizeAndValidate(dimension, v, metadata));
-        }
-        return out;
+    static ListStorageKind storageKind(String dimension) {
+        return ListStorageKind.fromDimension(dimension);
     }
 
-    private static List<AccessListEntry> toValueOnlyEntries(List<String> values) {
-        List<AccessListEntry> out = new ArrayList<>();
-        for (String v : values) {
-            out.add(new AccessListEntry(v, null, null, null));
+    static long countActiveEntries(List<AccessListEntry> entries, Instant now) {
+        if (entries == null || entries.isEmpty()) {
+            return 0;
         }
-        return out;
+        return entries.stream().filter(e -> isActiveEntry(e, now)).count();
+    }
+
+    static boolean isActiveEntry(AccessListEntry entry, Instant now) {
+        if (entry == null) {
+            return false;
+        }
+        Instant exp = entry.expiresAt();
+        return exp == null || exp.isAfter(now);
+    }
+
+    static void ensureMemoryListCapacity(
+            AccessListMeta meta,
+            List<AccessListEntry> existing,
+            String newValue,
+            Instant newExpiresAt,
+            Instant now) {
+        if (storageKind(meta.dimension()) != ListStorageKind.MEMORY) {
+            return;
+        }
+        boolean duplicate = existing.stream().anyMatch(e -> newValue.equals(e.value()));
+        if (duplicate) {
+            return;
+        }
+        if (!willBeActive(newExpiresAt, now)) {
+            return;
+        }
+        if (countActiveEntries(existing, now) >= MEMORY_LIST_MAX_ACTIVE_ENTRIES) {
+            throw new IllegalArgumentException(
+                    "内存名单生效条目已达上限（" + MEMORY_LIST_MAX_ACTIVE_ENTRIES + "），无法继续添加");
+        }
+    }
+
+    private static boolean willBeActive(Instant expiresAt, Instant now) {
+        return expiresAt == null || expiresAt.isAfter(now);
     }
 
     public static List<Map<String, Object>> entryMaps(List<AccessListEntry> entries) {

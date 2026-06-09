@@ -1,6 +1,6 @@
 # VirbiusLLM MVP OpenSpec
 
-本目录为 **MVP（Phase 1）** 可实施接口与数据契约，与 [DESIGN.md v2.22](../DESIGN.md) 对齐，**§11.6.0 冻结清单** 为准。代码骨架见 [POC-REPO.md](../POC-REPO.md)。
+本目录为 **MVP（Phase 1）** 可实施接口与数据契约，与 [DESIGN.md v2.21](../DESIGN.md) 对齐，**§11.6.0 冻结清单** 为准。代码骨架见 [POC-REPO.md](../POC-REPO.md)。
 
 | 文件 | 说明 |
 |------|------|
@@ -12,7 +12,7 @@
 | [schemas/rule-bundle.schema.json](./schemas/rule-bundle.schema.json) | Bundle 逻辑结构校验 |
 | [schemas/audit-event.schema.json](./schemas/audit-event.schema.json) | 审计 jsonl 单行事件 |
 | [schemas/control-context.schema.json](./schemas/control-context.schema.json) | 端/管/云公用防控请求上下文 |
-| [schemas/edge-manifest.schema.json](./schemas/edge-manifest.schema.json) | 端侧 CDN 清单 |
+| [schemas/edge-manifest.schema.json](./schemas/edge-manifest.schema.json) | 端侧 manifest（PoC JSON；CDN 终态含 bin URL） |
 | [rule-hit-merge.md](./rule-hit-merge.md) | **命中 + L3 合并**：prompt/groovy/prior 同池 ActionMerge（**无 cloud_groovy_l3**） |
 | [groovy-l3-contract.md](./groovy-l3-contract.md) | 云侧 **Groovy 检测脚本**（boolean `decide`）；L3 合并见 rule-hit-merge |
 | [script-rules.md](./script-rules.md) | **统一脚本方案**：lua/groovy `decide(ctx)` → boolean；`listMatch` / `getCumulative` |
@@ -22,6 +22,7 @@
 | [list-and-cumulative-rules.md](./list-and-cumulative-rules.md) | **名单 + 累计最新合并设计（推荐阅读）** |
 | [bind-scope.md](./bind-scope.md) | **`bind_scope`**：Global / Service（**`app_ids`**）/ Route 绑定（**定稿**） |
 | [scene-registry.md](./scene-registry.md) | **`scene_registry`**：`app_id`↔`scene_id` 归属与运行时解析（**定稿**） |
+| [openresty-gateway.md](./openresty-gateway.md) | **OpenResty Stretch**：编译期拍平、`control-data` 与 `data/gateway` 路径对齐 |
 | [rule-level-enforce.md](./rule-level-enforce.md) | **执行面** enforce / ActionMerge（管侧真拦 + 云 PolicyMerge） |
 | [rule-rollout.md](./rule-rollout.md) | **运营面** rollout_state、放量 SOP、看板、门禁、canary 阶梯（**定稿**） |
 | [rule-authoring.md](./rule-authoring.md) | **P1/P2** 表单驱动条件编译、脚本反解析、规则 simulate（**不存 authoring**） |

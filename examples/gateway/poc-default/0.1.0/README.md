@@ -80,7 +80,27 @@ curl -s -X PUT "$APISIX_ADMIN/routes/virbius-route-general-chat" \
 同步 access-lists（管侧发布或 `AccessListService.syncRules` 产出）：
 
 ```text
+./data/gateway/default-access-lists.json          # context_bindings + lists（插件、agent）
+./data/gateway/default-scene-registry.json        # scene_registry
+```
+
+本地 PoC：`./scripts/run-local.sh` 启动 control 后自动 `refreshArtifacts` 写入上述路径（`VIRBIUS_DATA_DIR`，默认 `./data`）。
+
+容器 / APISIX 安装路径示例：
+
+```text
 /usr/local/apisix/conf/virbius/data/gateway/default-access-lists.json
+```
+
+**OpenResty Stretch**：compiler 使用 `--deploy-prefix=./data --deploy-layout=control-data`，effective 内 `lists_file` / `scene_registry_file` 指向同一 `data/gateway/` 目录。见 [openresty-poc](../../openresty-poc/0.1.0/README.md) 与 [openresty-gateway.md](../../../docs/openspec/openresty-gateway.md)。
+
+## OpenResty（Stretch，可选）
+
+非 MVP 验收；与 APISIX 共用 `data/gateway/` 与 `virbius-gateway/lib/`：
+
+```bash
+./scripts/run-local.sh
+./scripts/compile-openresty-poc.sh
 ```
 
 ## 验证
