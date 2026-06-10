@@ -3,6 +3,7 @@ package io.virbius.control.service;
 import io.virbius.control.domain.AccessListEntry;
 import io.virbius.control.domain.AccessListMeta;
 import io.virbius.control.domain.dto.request.AccessListEntryInput;
+import io.virbius.control.gateway.artifact.GatewayArtifactPublisher;
 import io.virbius.control.repository.ListMetaRepository;
 import io.virbius.control.repository.RegistryRepository;
 import io.virbius.policy.ListStorageKind;
@@ -23,16 +24,19 @@ public class AccessListService {
     private final RegistryRepository registryRepo;
     private final PublishService publishService;
     private final ArtifactService artifactService;
+    private final GatewayArtifactPublisher gatewayArtifactPublisher;
 
     public AccessListService(
             ListMetaRepository listMetaRepo,
             RegistryRepository registryRepo,
             PublishService publishService,
-            ArtifactService artifactService) {
+            ArtifactService artifactService,
+            GatewayArtifactPublisher gatewayArtifactPublisher) {
         this.listMetaRepo = listMetaRepo;
         this.registryRepo = registryRepo;
         this.publishService = publishService;
         this.artifactService = artifactService;
+        this.gatewayArtifactPublisher = gatewayArtifactPublisher;
     }
 
     public Map<String, Object> getAll(String tenantId) {
@@ -117,11 +121,23 @@ public class AccessListService {
     }
 
     public Map<String, Object> refreshArtifacts(String tenantId) {
+        return refreshArtifacts(tenantId, "access_list");
+    }
+
+    public Map<String, Object> refreshArtifacts(String tenantId, String trigger) {
         Map<String, Object> metadata = bundleMetadata(tenantId);
         Map<String, String> artifacts = artifactService.write(tenantId, metadata);
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("refreshed", true);
         summary.put("artifacts", artifacts);
+        try {
+            gatewayArtifactPublisher.publishIfEnabled(tenantId, metadata, trigger).ifPresent(result -> {
+                summary.put("gateway_redis", result);
+                summary.put("gateway_sync_ack", result.syncAck());
+            });
+        } catch (Exception ex) {
+            summary.put("gateway_redis_error", ex.getMessage());
+        }
         return summary;
     }
 

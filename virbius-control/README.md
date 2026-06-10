@@ -29,36 +29,58 @@ Edge 拉取契约：[MVP-OPENSPEC §4.8](../docs/openspec/MVP-OPENSPEC.md)、[DE
 
 ## 配置
 
-### Edge manifest 拉取鉴权（方案 B+）
+### API Key 鉴权（Admin / Edge / Legacy tenants API）
 
 `src/main/resources/application.yml`：
 
 ```yaml
 virbius:
-  edge:
-    delivery:
-      auth:
-        enabled: ${VIRBIUS_EDGE_AUTH_ENABLED:false}
+  security:
+    api-key:
+      enabled: ${VIRBIUS_API_KEY_AUTH_ENABLED:false}
 ```
 
 | 变量 / 配置 | 默认 | 说明 |
 |-------------|------|------|
-| `virbius.edge.delivery.auth.enabled` | `false` | 等同环境变量 `VIRBIUS_EDGE_AUTH_ENABLED` |
-| `VIRBIUS_EDGE_AUTH_ENABLED` | `false` | `true` 时 Edge API 须带有效 Bearer |
-| PoC dev key | seed | `vrb_edge_dev_default_poc_only`（`tenant=default`） |
+| `virbius.security.api-key.enabled` | `false` | 等同环境变量 `VIRBIUS_API_KEY_AUTH_ENABLED` |
+| `VIRBIUS_API_KEY_AUTH_ENABLED` | `false` | `true` 时 Admin / Edge / `/api/v1/tenants/**` 须带有效 Bearer |
+| PoC dev keys | seed | 见下表 |
+
+**角色**（`tb_tenant_api_credential.role`）：
+
+| 角色 | 能力 |
+|------|------|
+| `tenant_viewer` | Edge manifest GET；Admin GET |
+| `tenant_admin` | 写操作、放量、发布、租户级凭证管理 |
+| `platform_admin` | 租户 CRUD；全租户；平台级凭证 |
+
+**PoC seed keys**（`VIRBIUS_API_KEY_AUTH_ENABLED=true` 时使用）：
+
+| Key | tenant | role |
+|-----|--------|------|
+| `vrb_tk_dev_viewer_default` | `default` | `tenant_viewer` |
+| `vrb_tk_dev_admin_default` | `default` | `tenant_admin` |
+| `vrb_tk_dev_platform` | `*` | `platform_admin` |
 
 **凭证 Admin API**（响应带 `code` 包装）：
 
 ```bash
-# 列出（不含明文 key）
-curl -s "http://127.0.0.1:8080/api/v1/admin/tenants/default/edge-credentials"
-# 签发（data.api_key 仅返回一次）
-curl -s -X POST "http://127.0.0.1:8080/api/v1/admin/tenants/default/edge-credentials"
-# 吊销
-curl -s -X POST "http://127.0.0.1:8080/api/v1/admin/tenants/default/edge-credentials/{credentialId}/revoke"
+# 租户级：列出 / 签发 / 吊销
+curl -s -H "Authorization: Bearer vrb_tk_dev_admin_default" \
+  "http://127.0.0.1:8080/api/v1/admin/tenants/default/api-credentials"
+curl -s -X POST -H "Authorization: Bearer vrb_tk_dev_admin_default" \
+  -H "Content-Type: application/json" \
+  -d '{"role":"tenant_viewer","label":"edge-sdk"}' \
+  "http://127.0.0.1:8080/api/v1/admin/tenants/default/api-credentials"
+curl -s -X POST -H "Authorization: Bearer vrb_tk_dev_admin_default" \
+  "http://127.0.0.1:8080/api/v1/admin/tenants/default/api-credentials/{credentialId}/revoke"
+
+# 平台级
+curl -s -H "Authorization: Bearer vrb_tk_dev_platform" \
+  "http://127.0.0.1:8080/api/v1/admin/platform/api-credentials"
 ```
 
-凭证存 **`tb_edge_tenant_credential`**（仅 `tenant_id`，无 `app_id`）。详见 [db/README.md](../db/README.md)。
+凭证存 **`tb_tenant_api_credential`**（`tenant_id` + `role` + `key_hash`）。运营台「租户」页可 CRUD 租户与凭证。详见 [db/README.md](../db/README.md)。
 
 ### 数据目录与 JDBC
 

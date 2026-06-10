@@ -459,18 +459,31 @@ WHERE runtime = 'native';
 UPDATE tb_rule_history SET rollout_state = 'disabled', modified_at = CURRENT_TIMESTAMP
 WHERE runtime = 'native' AND effective_to IS NULL;
 
--- PoC dev edge pull key (tenant=default): vrb_edge_dev_default_poc_only
--- Enable with VIRBIUS_EDGE_AUTH_ENABLED=true
-INSERT INTO tb_edge_tenant_credential (
-    credential_id, tenant_id, key_hash, key_prefix, status, created_at
+-- Dev API keys (enable: VIRBIUS_API_KEY_AUTH_ENABLED=true)
+-- viewer: vrb_tk_dev_viewer_default  admin: vrb_tk_dev_admin_default  platform: vrb_tk_dev_platform
+INSERT INTO tb_tenant_api_credential (
+    credential_id, tenant_id, role, key_hash, key_prefix, label, status, created_by, created_at
 )
-SELECT 'poc-default-edge-cred',
-       'default',
-       'dd0ac8f6b2e94abb4bd984c1784a5aa943ebc45cc4a3b70a48e200176285ca50',
-       'vrb_edge_dev',
-       'active',
-       CURRENT_TIMESTAMP
+SELECT 'poc-default-viewer-cred', 'default', 'tenant_viewer',
+       '4ed0b5b63560b08804d88c05a4611a44abc914360a5497c4eb997712a6d7dc7f',
+       'vrb_tk_dev_v', 'PoC viewer (Edge manifest + read)', 'active', 'seed', CURRENT_TIMESTAMP
 FROM (SELECT 1) AS _one
-WHERE NOT EXISTS (
-    SELECT 1 FROM tb_edge_tenant_credential WHERE credential_id = 'poc-default-edge-cred'
-);
+WHERE NOT EXISTS (SELECT 1 FROM tb_tenant_api_credential WHERE credential_id = 'poc-default-viewer-cred');
+
+INSERT INTO tb_tenant_api_credential (
+    credential_id, tenant_id, role, key_hash, key_prefix, label, status, created_by, created_at
+)
+SELECT 'poc-default-admin-cred', 'default', 'tenant_admin',
+       '5f2cd0afc4e76e5c2ef842d6dd5c99594d3887b4d175a789c30c4d63315593e8',
+       'vrb_tk_dev_a', 'PoC admin (write/rollout/publish/keys)', 'active', 'seed', CURRENT_TIMESTAMP
+FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_tenant_api_credential WHERE credential_id = 'poc-default-admin-cred');
+
+INSERT INTO tb_tenant_api_credential (
+    credential_id, tenant_id, role, key_hash, key_prefix, label, status, created_by, created_at
+)
+SELECT 'poc-platform-admin-cred', '*', 'platform_admin',
+       '47f37a5083b0f2938e0552c72f51453f68efe6bc85c257bdf3c8eb843f7035de',
+       'vrb_tk_dev_p', 'PoC platform (tenant management)', 'active', 'seed', CURRENT_TIMESTAMP
+FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_tenant_api_credential WHERE credential_id = 'poc-platform-admin-cred');

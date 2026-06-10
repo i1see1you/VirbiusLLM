@@ -1,6 +1,7 @@
 package io.virbius.control.config;
 
 import io.virbius.control.service.AccessListService;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -21,8 +22,13 @@ public class AccessListBootstrap {
     @EventListener(ApplicationReadyEvent.class)
     public void syncDefaultArtifacts() {
         try {
-            accessListService.refreshArtifacts("default");
-            log.info("access lists refreshed for tenant=default (gateway/edge artifacts written)");
+            Map<String, Object> summary = accessListService.refreshArtifacts("default", "bootstrap");
+            Object redisErr = summary.get("gateway_redis_error");
+            if (redisErr != null) {
+                log.warn("gateway artifact publish failed at bootstrap: {}", redisErr);
+            } else {
+                log.info("access lists refreshed for tenant=default (gateway/edge artifacts written)");
+            }
         } catch (Exception e) {
             log.warn("access list bootstrap skipped: {}", e.getMessage());
         }

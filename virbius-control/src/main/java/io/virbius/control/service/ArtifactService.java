@@ -47,6 +47,8 @@ public class ArtifactService {
     private final String auditIngestToken;
     private final GatewayListRedisService gatewayListRedisService;
     private final EdgeArtifactMetaRepository edgeArtifactMetaRepository;
+    private final boolean gatewayArtifactEnabled;
+    private final boolean gatewayArtifactLocalFallback;
 
     public ArtifactService(
             @Value("${virbius.data-dir:./data}") String dataDir,
@@ -57,7 +59,9 @@ public class ArtifactService {
             @Value("${audit.edge.ingest-url:}") String auditIngestUrl,
             @Value("${audit.ingest.http.token:}") String auditIngestToken,
             GatewayListRedisService gatewayListRedisService,
-            EdgeArtifactMetaRepository edgeArtifactMetaRepository) {
+            EdgeArtifactMetaRepository edgeArtifactMetaRepository,
+            @Value("${virbius.gateway.artifact.enabled:true}") boolean gatewayArtifactEnabled,
+            @Value("${virbius.gateway.artifact.local-fallback:false}") boolean gatewayArtifactLocalFallback) {
         this.dataDir = java.nio.file.Path.of(dataDir);
         this.registryRepo = registryRepo;
         this.listMetaRepo = listMetaRepo;
@@ -67,19 +71,60 @@ public class ArtifactService {
         this.auditIngestToken = auditIngestToken != null ? auditIngestToken : "";
         this.gatewayListRedisService = gatewayListRedisService;
         this.edgeArtifactMetaRepository = edgeArtifactMetaRepository;
+        this.gatewayArtifactEnabled = gatewayArtifactEnabled;
+        this.gatewayArtifactLocalFallback = gatewayArtifactLocalFallback;
     }
 
     public Map<String, String> write(String tenantId, Map<String, Object> bundleMetadata) {
         Map<String, String> paths = new LinkedHashMap<>();
         try {
-            paths.put("gateway", writeGateway(tenantId, bundleMetadata).toString());
-            paths.put("scene_registry", writeSceneRegistry(tenantId, bundleMetadata).toString());
+            if (shouldWriteGatewayLocal()) {
+                paths.put("gateway", writeGateway(tenantId, bundleMetadata).toString());
+                paths.put("scene_registry", writeSceneRegistry(tenantId, bundleMetadata).toString());
+            }
             paths.putAll(writeEdge(tenantId, bundleMetadata));
         } catch (Exception e) {
             log.warn("failed to write list artifacts: {}", e.getMessage());
             paths.put("error", e.getMessage());
         }
         return paths;
+    }
+
+    public void writeGatewayLocalFiles(String tenantId, Map<String, Object> bundleMetadata) {
+        try {
+            writeGateway(tenantId, bundleMetadata);
+            writeSceneRegistry(tenantId, bundleMetadata);
+        } catch (Exception e) {
+            throw new IllegalStateException("failed to write gateway local files: " + e.getMessage(), e);
+        }
+    }
+
+    public byte[] buildAccessListsJsonBytes(String tenantId, Map<String, Object> bundleMetadata) {
+        try {
+            Map<String, Object> root = buildGatewaySnapshot(tenantId, bundleMetadata);
+            return mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(root);
+        } catch (Exception e) {
+            throw new IllegalStateException("failed to build access-lists json: " + e.getMessage(), e);
+        }
+    }
+
+    public byte[] buildSceneRegistryJsonBytes(String tenantId, Map<String, Object> bundleMetadata) {
+        try {
+            Map<String, Object> block = io.virbius.control.gateway.SceneRegistryHelper.registryBlock(bundleMetadata);
+            if (block.isEmpty()) {
+                block = Map.of("version", 1, "scenes", Map.of());
+            }
+            Map<String, Object> root = new LinkedHashMap<>();
+            root.put("tenant_id", tenantId);
+            root.put("scene_registry", block);
+            return mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(root);
+        } catch (Exception e) {
+            throw new IllegalStateException("failed to build scene-registry json: " + e.getMessage(), e);
+        }
+    }
+
+    private boolean shouldWriteGatewayLocal() {
+        return !gatewayArtifactEnabled || gatewayArtifactLocalFallback;
     }
 
     private java.nio.file.Path writeSceneRegistry(String tenantId, Map<String, Object> bundleMetadata) throws Exception {

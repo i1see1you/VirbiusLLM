@@ -11,6 +11,10 @@ export VIRBIUS_REDIS_PORT="${VIRBIUS_REDIS_PORT:-6379}"
 export VIRBIUS_REDIS_URL="${VIRBIUS_REDIS_URL:-redis://127.0.0.1:${VIRBIUS_REDIS_PORT}}"
 MVN="${MVN:-$HOME/.local/apache-maven-3.9.6/bin/mvn}"
 AGENT_BIN="$CARGO_TARGET_DIR/release/virbius-gateway-agent"
+SYNC_BIN="$CARGO_TARGET_DIR/release/virbius-gateway-sync"
+export VIRBIUS_GATEWAY_ARTIFACT_ENABLED="${VIRBIUS_GATEWAY_ARTIFACT_ENABLED:-true}"
+export VIRBIUS_GATEWAY_ARTIFACT_LOCAL_FALLBACK="${VIRBIUS_GATEWAY_ARTIFACT_LOCAL_FALLBACK:-false}"
+export VIRBIUS_GATEWAY_CACHE_DIR="${VIRBIUS_GATEWAY_CACHE_DIR:-$VIRBIUS_DATA_DIR/gateway}"
 LOG_DIR="${LOG_DIR:-/tmp/virbius/logs}"
 export VIRBIUS_LOG_DIR="${VIRBIUS_LOG_DIR:-$LOG_DIR}"
 export VIRBIUS_LOG_MAX_FILE_SIZE="${VIRBIUS_LOG_MAX_FILE_SIZE:-100MB}"
@@ -99,8 +103,6 @@ fi
 echo "Building..."
 "$MVN" -q -pl virbius-engine,virbius-control -am package -DskipTests
 cargo build --release --manifest-path "$ROOT/virbius-gateway-agent/Cargo.toml"
-
-echo "Freeing ports 8080, 8082, 9070..."
 for p in 8080 8082 9070; do
   kill_port "$p"
 done
@@ -118,6 +120,8 @@ nohup env VIRBIUS_DATA_DIR="$VIRBIUS_DATA_DIR" VIRBIUS_REDIS_URL="$VIRBIUS_REDIS
   java -jar "$ROOT/virbius-engine/target/virbius-engine-0.1.0-SNAPSHOT.jar" \
   >/dev/null 2>&1 &
 nohup env VIRBIUS_DATA_DIR="$VIRBIUS_DATA_DIR" VIRBIUS_REDIS_URL="$VIRBIUS_REDIS_URL" \
+  VIRBIUS_GATEWAY_ARTIFACT_ENABLED="$VIRBIUS_GATEWAY_ARTIFACT_ENABLED" \
+  VIRBIUS_GATEWAY_ARTIFACT_LOCAL_FALLBACK="$VIRBIUS_GATEWAY_ARTIFACT_LOCAL_FALLBACK" \
   VIRBIUS_LOG_DIR="$VIRBIUS_LOG_DIR" VIRBIUS_LOG_MAX_FILE_SIZE="$VIRBIUS_LOG_MAX_FILE_SIZE" \
   VIRBIUS_LOG_MAX_HISTORY_DAYS="$VIRBIUS_LOG_MAX_HISTORY_DAYS" \
   java -jar "$ROOT/virbius-control/target/virbius-control-0.1.0-SNAPSHOT.jar" \
@@ -148,6 +152,14 @@ wait_http "http://127.0.0.1:9070/health" "gateway-agent" || {
   exit 1
 }
 
+mkdir -p "$VIRBIUS_GATEWAY_CACHE_DIR"
+nohup env VIRBIUS_REDIS_URL="$VIRBIUS_REDIS_URL" \
+  VIRBIUS_GATEWAY_SYNC_TENANT="${VIRBIUS_GATEWAY_SYNC_TENANT:-default}" \
+  VIRBIUS_GATEWAY_CACHE_DIR="$VIRBIUS_GATEWAY_CACHE_DIR" \
+  VIRBIUS_CONTROL_BASE_URL="${VIRBIUS_CONTROL_BASE_URL:-http://127.0.0.1:8080}" \
+  VIRBIUS_GATEWAY_SYNC_POLL_SEC="${VIRBIUS_GATEWAY_SYNC_POLL_SEC:-5}" \
+  "$SYNC_BIN" >>"$LOG_DIR/gateway-sync.log" 2>&1 &
+
 echo ""
 echo "Logs (rolling: max ${VIRBIUS_LOG_MAX_FILE_SIZE}, keep ${VIRBIUS_LOG_MAX_HISTORY_DAYS} days):"
 echo "  tail -f $LOG_DIR/control.log $LOG_DIR/engine.log $LOG_DIR/agent.log"
@@ -158,6 +170,7 @@ echo "virbius-engine   http://127.0.0.1:8082"
 echo "virbius-control  http://127.0.0.1:8080"
 echo "  运营台         http://127.0.0.1:8080/ui"
 echo "gateway-agent    http://127.0.0.1:9070"
+echo "gateway-sync     cache → $VIRBIUS_GATEWAY_CACHE_DIR (log: $LOG_DIR/gateway-sync.log)"
 echo ""
 echo "Stop Redis started by this script: redis-cli -p $VIRBIUS_REDIS_PORT shutdown"
 echo "Smoke: bash $ROOT/scripts/smoke-test.sh"

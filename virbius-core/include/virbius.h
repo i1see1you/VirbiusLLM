@@ -38,7 +38,7 @@ int virbius_init(const char* manifest_url);
  *   "tenant_id": "default",
  *   "app_id": "beta",
  *   "cache_dir": "/var/mobile/.../virbius",
- *   "edge_api_key": "vrb_edge_...",          // optional; required when Control auth enabled
+ *   "edge_api_key": "vrb_tk_...",          // optional; required when Control VIRBIUS_API_KEY_AUTH_ENABLED
  *   "offline_manifest_path": null
  * }
  */

@@ -232,7 +232,7 @@ Schema：[control-context.schema.json](./schemas/control-context.schema.json)
 
 ### 4.8 Edge manifest 同步（方案 B+，F-15）
 
-PoC **已实现**；OpenAPI：[registry.openapi.yaml](./registry.openapi.yaml) `edge-delivery` / `admin-edge-credentials`。
+PoC **已实现**；OpenAPI：[registry.openapi.yaml](./registry.openapi.yaml) `edge-delivery` / `admin-api-credentials` / `admin-tenants`。
 
 **路径**（响应 **裸 JSON**，无 `ApiResult`）：
 
@@ -262,18 +262,20 @@ GET policy-version → 与 cache meta 比对
   → sha256(body) == content_sha256 → 原子写 cache_dir
 ```
 
-**租户级 Bearer**（`virbius.edge.delivery.auth.enabled`，默认 **false**）：
+**统一 API Key Bearer**（`virbius.security.api-key.enabled`，默认 **false**）：
 
 | 项 | 约定 |
 |----|------|
-| 凭证 | `tb_edge_tenant_credential`：`tenant_id` + `key_hash`；一租户可多 key |
-| Scope | key 绑定 **tenant**；`app_id` 仅选包，不参与鉴权 |
-| Header | `Authorization: Bearer` 或 `X-Virbius-Edge-Key` |
-| 401 / 403 | 无效 key / tenant 路径不匹配 |
+| 凭证 | `tb_tenant_api_credential`：`tenant_id` + `role` + `key_hash`；前缀 `vrb_tk_` |
+| 角色 | `tenant_viewer`（Edge GET + Admin GET）→ `tenant_admin`（写/放量/凭证）→ `platform_admin`（租户 CRUD） |
+| Scope | key 绑定 **tenant**（platform 为 `*`）；`app_id` 仅选包，不参与鉴权 |
+| Header | `Authorization: Bearer` 或 `X-Virbius-Api-Key` |
+| 401 / 403 | 无效 key / 角色不足 / tenant 路径不匹配 |
 | Init | `edge_api_key` **仅**宿主 App 配置；**不**写入 manifest `sdk_config` |
-| Admin | `GET|POST .../admin/tenants/{tenantId}/edge-credentials`；`POST .../{id}/revoke` |
+| Admin | `GET|POST .../admin/tenants/{tenantId}/api-credentials`；`POST .../{id}/revoke`；平台级 `.../admin/platform/api-credentials` |
+| 租户 | `GET|POST /api/v1/admin/tenants`；`GET|PATCH .../{tenantId}`（platform_admin） |
 
-PoC dev key（seed）：`vrb_edge_dev_default_poc_only`（`tenant=default`）。
+PoC dev keys（seed）：`vrb_tk_dev_viewer_default` / `vrb_tk_dev_admin_default` / `vrb_tk_dev_platform`（见 `seed.sql`）。
 
 **与 audit 分离**：manifest 内 `audit_ingest_token` → `/api/v1/internal/audit/events`；与 Edge 拉取凭证无关。
 

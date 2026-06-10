@@ -80,8 +80,8 @@ export VIRBIUS_CONTROL_BASE_URL=http://127.0.0.1:8080
 export VIRBIUS_TENANT_ID=default
 export VIRBIUS_APP_ID=beta
 export VIRBIUS_EDGE_CACHE_DIR=./cache/beta
-# optional when VIRBIUS_EDGE_AUTH_ENABLED=true on control:
-export VIRBIUS_EDGE_API_KEY=vrb_edge_dev_default_poc_only
+# optional when VIRBIUS_API_KEY_AUTH_ENABLED=true on control:
+export VIRBIUS_EDGE_API_KEY=vrb_tk_dev_viewer_default
 cargo run --example rust_client_demo
 ```
 

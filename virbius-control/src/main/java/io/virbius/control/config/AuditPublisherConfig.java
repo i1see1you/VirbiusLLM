@@ -2,11 +2,9 @@ package io.virbius.control.config;
 
 import io.virbius.policy.audit.AuditEventPublisher;
 import jakarta.annotation.PreDestroy;
-import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import redis.clients.jedis.JedisPool;
 
 @Configuration
 public class AuditPublisherConfig {
@@ -15,7 +13,7 @@ public class AuditPublisherConfig {
 
     @Bean
     public AuditEventPublisher auditEventPublisher(
-            Optional<JedisPool> jedisPool,
+            ControlJedisPools jedisPools,
             @Value("${audit.publish.backend:redis-stream}") String backend,
             @Value("${audit.publish.redis.stream-key:virbius:audit:events}") String streamKey,
             @Value("${audit.publish.async:true}") boolean async,
@@ -23,7 +21,7 @@ public class AuditPublisherConfig {
             @Value("${audit.publish.flush-batch-size:64}") int batchSize,
             @Value("${audit.publish.flush-interval-ms:100}") long flushIntervalMs) {
         publisher = new AuditEventPublisher(
-                jedisPool, backend, streamKey, async, queueMax, batchSize, flushIntervalMs);
+                jedisPools.pool(), backend, streamKey, async, queueMax, batchSize, flushIntervalMs);
         return publisher;
     }
 

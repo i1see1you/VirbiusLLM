@@ -33,7 +33,7 @@ PoC 已实现 **Control 直拉 manifest + 租户级 Bearer**（DESIGN §8.10.2.5
 | 概念 | 约定 |
 |------|------|
 | 同步 | `policy-version` → 条件 `manifest` + sha256 校验 |
-| 鉴权 | `tb_edge_tenant_credential` 绑定 **tenant_id**；Init 持 `edge_api_key` |
+| 鉴权 | `tb_tenant_api_credential` 绑定 **tenant_id** + **role**；Init 持 `edge_api_key`（viewer+） |
 | 与 CDN 终态 | §8.10.2 仍为目标；B+ 为过渡，不改 SDK sync 步骤语义 |
 
 ---
@@ -1135,28 +1135,28 @@ init / reload
   → load manifest → virbius_scan
 ```
 
-**租户级 Bearer 鉴权**（`virbius.edge.delivery.auth.enabled`，默认 **false**）：
+**统一 API Key Bearer 鉴权**（`virbius.security.api-key.enabled`，默认 **false**）：
 
 | 项 | 约定 |
 |----|------|
-| 凭证表 | `tb_edge_tenant_credential`：`tenant_id` + `key_hash`（SHA-256）；**无** `app_id` 列 |
-| Scope | 一把 key 可拉该租户下**任意** `{appId}` manifest；path `{tenantId}` 须与凭证一致，否则 **403** |
-| Header | `Authorization: Bearer` 或 `X-Virbius-Edge-Key` |
-| 错误 | 401 缺/无效 key；403 tenant 不匹配；plain JSON `{"error","message"}` |
-| 签发 | Admin `POST /api/v1/admin/tenants/{tenantId}/edge-credentials`（一次性返回 `api_key`） |
+| 凭证表 | `tb_tenant_api_credential`：`tenant_id` + `role` + `key_hash`（SHA-256）；**无** `app_id` 列 |
+| 角色 | `tenant_viewer` / `tenant_admin` / `platform_admin`（层级递增） |
+| Scope | 一把 key 可拉该租户下**任意** `{appId}` manifest（viewer+）；path `{tenantId}` 须与凭证一致，否则 **403** |
+| Header | `Authorization: Bearer` 或 `X-Virbius-Api-Key` |
+| 错误 | 401 缺/无效 key；403 tenant/role 不匹配；plain JSON `{"error","message"}`（Edge）；Admin 用 `ApiResult` |
+| 签发 | Admin `POST /api/v1/admin/tenants/{tenantId}/api-credentials`（一次性返回 `api_key`）；平台级 `POST .../admin/platform/api-credentials` |
 | 与 audit 分离 | manifest `sdk_config.audit_ingest_token` 仅用于 `/internal/audit`；**不**用于 manifest 拉取 |
 
 **配置**：
 
 ```yaml
 virbius:
-  edge:
-    delivery:
-      auth:
-        enabled: ${VIRBIUS_EDGE_AUTH_ENABLED:false}
+  security:
+    api-key:
+      enabled: ${VIRBIUS_API_KEY_AUTH_ENABLED:false}
 ```
 
-PoC seed dev key（`tenant=default`）：`vrb_edge_dev_default_poc_only`（见 `seed.sql`）。
+PoC seed dev keys（见 `seed.sql`）：`vrb_tk_dev_viewer_default` / `vrb_tk_dev_admin_default` / `vrb_tk_dev_platform`。
 
 **演进**：生产切 CDN 时，Control 仍可用同一 Bearer 换 **manifest pointer + signed URL**；SDK sync 步骤不变，仅 manifest GET 目标从 Control body 改为 CDN URL。
 

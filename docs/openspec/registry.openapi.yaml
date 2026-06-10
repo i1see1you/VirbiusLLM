@@ -1,13 +1,14 @@
 openapi: 3.0.3
 info:
   title: Virbius Control Plane API (MVP)
-  version: 1.5.0-mvp
+  version: 1.6.0-mvp
   description: |
     **virbius-control** 单 Java 进程（Registry + Admin 合并）。
 
     - **规范面**：`/api/v1/admin/tenants/{tenantId}/...`，响应 `{ code, message, data, timestamp }`（`code=0` 成功）。
-    - **Edge 拉取面**：`/api/v1/edge/tenants/{tenantId}/apps/{appId}/...`，响应 **裸 JSON**（无 `code` 包装）；可选租户级 Bearer（§edge-delivery）。
+    - **Edge 拉取面**：`/api/v1/edge/tenants/{tenantId}/apps/{appId}/...`，响应 **裸 JSON**（无 `code` 包装）；可选 Bearer（`tb_tenant_api_credential`，§edge-delivery）。
     - **兼容面**：`/api/v1/tenants/{tenantId}/...`（Legacy，裸 JSON），逐步废弃。
+    - **API Key**：统一表 `tb_tenant_api_credential`（前缀 `vrb_tk_`）；角色 `tenant_viewer` | `tenant_admin` | `platform_admin`；开关 `virbius.security.api-key.enabled`（默认 false）。
     - 规则真源：`rule_history`；`runtime` 见 DESIGN §8.5.0。
     - **运营放量**：`rollout_state` + `canary_percent`（[rule-rollout.md](./rule-rollout.md)）；R1 目标 API `PATCH .../rollout`。
     - **执行面 enforce**：由 rollout 导出；合并见 [rule-level-enforce.md](./rule-level-enforce.md)。
@@ -30,8 +31,10 @@ tags:
     description: 端侧 HTTP audit ingest（非 Admin UI）
   - name: edge-delivery
     description: Edge SDK manifest 拉取（裸 JSON；方案 B+，DESIGN §8.10.2.5a）
-  - name: admin-edge-credentials
-    description: Edge 拉取凭证签发（租户级 Bearer）
+  - name: admin-tenants
+    description: 租户 CRUD（须 platform_admin；auth 关闭时 PoC 等价 platform_admin）
+  - name: admin-api-credentials
+    description: 统一 API Key 签发/吊销（tb_tenant_api_credential）
 
 paths:
   /api/v1/health:
@@ -800,7 +803,7 @@ paths:
         - $ref: '#/components/parameters/tenantId'
         - $ref: '#/components/parameters/appId'
       security:
-        - edgeDeliveryBearer: []
+        - virbiusApiKeyBearer: []
         - {}
       responses:
         '200':
@@ -840,7 +843,7 @@ paths:
             type: string
           description: 期望的 artifact_revision（字符串）
       security:
-        - edgeDeliveryBearer: []
+        - virbiusApiKeyBearer: []
         - {}
       responses:
         '200':
@@ -875,10 +878,53 @@ paths:
         '404':
           description: 无 artifact
 
-  /api/v1/admin/tenants/{tenantId}/edge-credentials:
+  /api/v1/admin/tenants:
     get:
-      tags: [admin-edge-credentials]
-      summary: 列出租户 Edge 拉取凭证（不含明文 key）
+      tags: [admin-tenants]
+      summary: 列出全部租户
+      description: 须 `platform_admin`（auth 开启时）。
+      security:
+        - virbiusApiKeyBearer: []
+        - {}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultTenantSummaryList'
+        '403':
+          description: 非 platform_admin
+    post:
+      tags: [admin-tenants]
+      summary: 创建租户
+      description: 初始化 rollout policy 与名单产物；须 `platform_admin`。
+      security:
+        - virbiusApiKeyBearer: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTenantRequest'
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultTenantDetail'
+        '409':
+          description: tenant already exists
+
+  /api/v1/admin/tenants/{tenantId}:
+    get:
+      tags: [admin-tenants]
+      summary: 租户详情
+      security:
+        - virbiusApiKeyBearer: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/tenantId'
       responses:
@@ -887,26 +933,139 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiResultEdgeCredentialList'
-    post:
-      tags: [admin-edge-credentials]
-      summary: 签发新 Edge 拉取 key（仅此次返回 api_key 明文）
+                $ref: '#/components/schemas/ApiResultTenantDetail'
+        '404':
+          description: tenant not found
+    patch:
+      tags: [admin-tenants]
+      summary: 更新租户名称
+      security:
+        - virbiusApiKeyBearer: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTenantRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultTenantDetail'
+
+  /api/v1/admin/tenants/{tenantId}/api-credentials:
+    get:
+      tags: [admin-api-credentials]
+      summary: 列出租户 API Key（不含明文）
+      description: 须 `tenant_admin` 或 `platform_admin`；path `{tenantId}` 与凭证 tenant 一致（platform 除外）。
+      security:
+        - virbiusApiKeyBearer: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultTenantApiCredentialList'
+        '403':
+          description: 角色或 tenant scope 不足
+    post:
+      tags: [admin-api-credentials]
+      summary: 签发租户 API Key（仅此次返回 api_key 明文）
+      description: |
+        可签发 `tenant_viewer` 或 `tenant_admin`；不可通过本接口签发 `platform_admin`。
+        须 `tenant_admin`（本租户）或 `platform_admin`。
+      security:
+        - virbiusApiKeyBearer: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueApiCredentialRequest'
       responses:
         '200':
           description: Issued
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiResultIssueEdgeCredential'
+                $ref: '#/components/schemas/ApiResultIssueTenantApiCredential'
+        '403':
+          description: 角色升级或 scope 拒绝
 
-  /api/v1/admin/tenants/{tenantId}/edge-credentials/{credentialId}/revoke:
+  /api/v1/admin/tenants/{tenantId}/api-credentials/{credentialId}/revoke:
     post:
-      tags: [admin-edge-credentials]
-      summary: 吊销 Edge 拉取凭证
+      tags: [admin-api-credentials]
+      summary: 吊销租户 API Key
+      security:
+        - virbiusApiKeyBearer: []
+        - {}
       parameters:
         - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/credentialId'
+      responses:
+        '200':
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultObject'
+        '404':
+          description: credential not found
+
+  /api/v1/admin/platform/api-credentials:
+    get:
+      tags: [admin-api-credentials]
+      summary: 列出 platform_admin API Key
+      security:
+        - virbiusApiKeyBearer: []
+        - {}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultTenantApiCredentialList'
+    post:
+      tags: [admin-api-credentials]
+      summary: 签发 platform_admin API Key
+      description: 须已有 `platform_admin` 凭证；本接口仅签发 `platform_admin` 角色（`tenant_id=*`）。
+      security:
+        - virbiusApiKeyBearer: []
+        - {}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssuePlatformApiCredentialRequest'
+      responses:
+        '200':
+          description: Issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResultIssueTenantApiCredential'
+
+  /api/v1/admin/platform/api-credentials/{credentialId}/revoke:
+    post:
+      tags: [admin-api-credentials]
+      summary: 吊销 platform_admin API Key
+      security:
+        - virbiusApiKeyBearer: []
+        - {}
+      parameters:
         - $ref: '#/components/parameters/credentialId'
       responses:
         '200':
@@ -1234,12 +1393,13 @@ components:
       type: http
       scheme: bearer
       description: AUDIT_INGEST_TOKEN；或请求头 X-Virbius-Audit-Token
-    edgeDeliveryBearer:
+    virbiusApiKeyBearer:
       type: http
       scheme: bearer
       description: |
-        租户级 Edge manifest 拉取 key（Init `edge_api_key`）；或 X-Virbius-Edge-Key。
-        `virbius.edge.delivery.auth.enabled=false` 时可省略。
+        统一 API Key（`tb_tenant_api_credential`，前缀 `vrb_tk_`）；或请求头 `X-Virbius-Api-Key`。
+        保护 Admin / Edge / legacy tenants API。`virbius.security.api-key.enabled=false` 时可省略（PoC 等价 platform_admin）。
+        Edge manifest 拉取须 `tenant_viewer` 及以上；宿主 Init 配置 `edge_api_key`（不下发 manifest）。
 
   parameters:
     tenantId:
@@ -1377,39 +1537,73 @@ components:
         message:
           type: string
 
-    EdgeCredentialSummary:
+    ApiRole:
+      type: string
+      enum: [tenant_viewer, tenant_admin, platform_admin]
+      description: API Key 角色；层级 platform_admin ⊃ tenant_admin ⊃ tenant_viewer
+
+    CreateTenantRequest:
       type: object
+      required: [tenant_id, name]
       properties:
-        credential_id:
-          type: string
         tenant_id:
           type: string
-        key_prefix:
+          description: 小写字母开头，[a-z0-9_-]，长度 2–63
+          example: acme
+        name:
           type: string
-        status:
+          example: Acme Corp
+
+    UpdateTenantRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
           type: string
-          enum: [active, revoked]
+
+    IssueApiCredentialRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: '#/components/schemas/ApiRole'
+        label:
+          type: string
+          nullable: true
+
+    IssuePlatformApiCredentialRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [platform_admin]
+          default: platform_admin
+        label:
+          type: string
+          nullable: true
+
+    TenantSummary:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+        name:
+          type: string
         created_at:
           type: string
           format: date-time
-        revoked_at:
-          type: string
-          format: date-time
-        last_used_at:
-          type: string
-          format: date-time
+        rule_count:
+          type: integer
 
-    IssueEdgeCredentialResponse:
+    TenantDetail:
       allOf:
-        - $ref: '#/components/schemas/EdgeCredentialSummary'
+        - $ref: '#/components/schemas/TenantSummary'
         - type: object
-          required: [api_key]
           properties:
-            api_key:
-              type: string
-              description: 明文 key，仅签发响应返回一次
+            list_meta_count:
+              type: integer
 
-    ApiResultEdgeCredentialList:
+    ApiResultTenantSummaryList:
       type: object
       properties:
         code:
@@ -1420,9 +1614,9 @@ components:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/EdgeCredentialSummary'
+            $ref: '#/components/schemas/TenantSummary'
 
-    ApiResultIssueEdgeCredential:
+    ApiResultTenantDetail:
       type: object
       properties:
         code:
@@ -1431,7 +1625,73 @@ components:
         message:
           type: string
         data:
-          $ref: '#/components/schemas/IssueEdgeCredentialResponse'
+          $ref: '#/components/schemas/TenantDetail'
+
+    TenantApiCredentialSummary:
+      type: object
+      properties:
+        credential_id:
+          type: string
+        tenant_id:
+          type: string
+          description: 平台级凭证为 `*`
+        role:
+          $ref: '#/components/schemas/ApiRole'
+        key_prefix:
+          type: string
+        label:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [active, revoked]
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    IssueTenantApiCredentialResponse:
+      allOf:
+        - $ref: '#/components/schemas/TenantApiCredentialSummary'
+        - type: object
+          required: [api_key]
+          properties:
+            api_key:
+              type: string
+              description: 明文 key，仅签发响应返回一次
+
+    ApiResultTenantApiCredentialList:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TenantApiCredentialSummary'
+
+    ApiResultIssueTenantApiCredential:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/IssueTenantApiCredentialResponse'
 
     ApiResultBundleSummaryList:
       type: object

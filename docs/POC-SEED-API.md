@@ -197,26 +197,33 @@ PoC 已实现 Control 直拉 + 租户级 Bearer；详见 [DESIGN §8.10.2.5a](DE
 | GET | `/api/v1/edge/tenants/{tenantId}/apps/{appId}/policy-version` |
 | GET | `/api/v1/edge/tenants/{tenantId}/apps/{appId}/manifest` |
 
-**鉴权**（默认关闭）：
+**鉴权**（默认关闭；统一 `tb_tenant_api_credential`，Edge 拉取需 `tenant_viewer` 及以上）：
 
 ```bash
-export VIRBIUS_EDGE_AUTH_ENABLED=true
-# PoC dev key（seed，tenant=default）：
-export VIRBIUS_EDGE_API_KEY=vrb_edge_dev_default_poc_only
+export VIRBIUS_API_KEY_AUTH_ENABLED=true
+# PoC dev keys（seed）：
+#   viewer (Edge manifest): vrb_tk_dev_viewer_default
+#   admin (ops write):      vrb_tk_dev_admin_default
+#   platform (tenant CRUD): vrb_tk_dev_platform
+export VIRBIUS_EDGE_API_KEY=vrb_tk_dev_viewer_default
 ```
 
 | Header | 说明 |
 |--------|------|
-| `Authorization: Bearer <edge_api_key>` | 推荐 |
-| `X-Virbius-Edge-Key` | 可选兼容 |
+| `Authorization: Bearer <api_key>` | 推荐 |
+| `X-Virbius-Api-Key` | 可选 |
 
-凭证绑定 **tenant_id**（非 app_id）；Admin 签发：
+凭证绑定 **tenant_id** + **role**；Admin 签发（须 `tenant_admin` 或 `platform_admin`）：
 
 ```bash
 # 列出
-curl -s "http://127.0.0.1:8080/api/v1/admin/tenants/default/edge-credentials"
+curl -s -H "Authorization: Bearer vrb_tk_dev_admin_default" \
+  "http://127.0.0.1:8080/api/v1/admin/tenants/default/api-credentials"
 # 签发（响应 data.api_key 仅一次）
-curl -s -X POST "http://127.0.0.1:8080/api/v1/admin/tenants/default/edge-credentials"
+curl -s -X POST -H "Authorization: Bearer vrb_tk_dev_admin_default" \
+  -H "Content-Type: application/json" \
+  -d '{"role":"tenant_viewer","label":"edge-sdk"}' \
+  "http://127.0.0.1:8080/api/v1/admin/tenants/default/api-credentials"
 ```
 
 **SDK Init**（`edge_api_key` 不下发到 manifest）：
@@ -225,14 +232,14 @@ curl -s -X POST "http://127.0.0.1:8080/api/v1/admin/tenants/default/edge-credent
 export VIRBIUS_CONTROL_BASE_URL=http://127.0.0.1:8080
 export VIRBIUS_TENANT_ID=default
 export VIRBIUS_APP_ID=beta
-export VIRBIUS_EDGE_API_KEY=vrb_edge_dev_default_poc_only   # auth 开启时
+export VIRBIUS_EDGE_API_KEY=vrb_tk_dev_viewer_default   # auth 开启时
 export VIRBIUS_EDGE_CACHE_DIR=./cache/beta
 ```
 
 验证拉取：
 
 ```bash
-curl -s -H "Authorization: Bearer vrb_edge_dev_default_poc_only" \
+curl -s -H "Authorization: Bearer vrb_tk_dev_viewer_default" \
   "http://127.0.0.1:8080/api/v1/edge/tenants/default/apps/beta/policy-version"
 ```
 

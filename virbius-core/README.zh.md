@@ -52,7 +52,7 @@ let edge = VirbiusEdge::init(EdgeInitConfig {
     control_base_url: Some("https://control.example.com".into()),
     tenant_id: "default".into(),
     app_id: "beta".into(),
-    edge_api_key: Some("vrb_edge_...".into()), // Control 开启鉴权时
+    edge_api_key: Some("vrb_tk_...".into()), // Control 开启 VIRBIUS_API_KEY_AUTH_ENABLED 时
     cache_dir: PathBuf::from(app_sandbox_dir),
     offline_manifest_path: None,
 })?;
@@ -103,7 +103,7 @@ export VIRBIUS_CONTROL_BASE_URL=http://127.0.0.1:8080
 export VIRBIUS_TENANT_ID=default
 export VIRBIUS_APP_ID=beta
 export VIRBIUS_EDGE_CACHE_DIR=./cache/beta
-export VIRBIUS_EDGE_API_KEY=vrb_edge_dev_default_poc_only   # auth 开启时
+export VIRBIUS_EDGE_API_KEY=vrb_tk_dev_viewer_default   # auth 开启时
 # 或离线：
 export VIRBIUS_EDGE_MANIFEST_PATH=./fixtures/demo-edge-manifest.json
 ```

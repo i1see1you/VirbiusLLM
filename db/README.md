@@ -35,7 +35,8 @@ MVP 默认用 **SQLite 文件库**（`./data/*.db`），但 **`schema.sql` / `se
 | rule_history | `tb_rule_history` | control |
 | access_list | `tb_access_list` | control |
 | edge_artifact_meta | `tb_edge_artifact_meta` | control（方案 B+ manifest revision / sha256） |
-| edge_tenant_credential | `tb_edge_tenant_credential` | control（Edge 拉取 Bearer，租户级） |
+| tenant_api_credential | `tb_tenant_api_credential` | control（API Bearer：Admin / Edge / tenants API，含 role） |
+| gateway_artifact_meta | `tb_gateway_artifact_meta` | control（网关产物 revision / sha256；Redis/OSS 指针索引） |
 | audit_events | `tb_audit_events` | control |
 | cache_meta | `tb_cache_meta` | engine |
 | rule_cache_entry | `tb_rule_cache_entry` | engine |
@@ -76,7 +77,7 @@ PoC 规则（含黑名单关键字）见 **`virbius-control/src/main/resources/d
 - `tb_bundles` — 发布批次元数据（`metadata_json`：`scope`、`gateway.routes` 含 uri/methods 等）
 - `tb_access_list` — 名单（keyword 全层；user/device/ip 管侧）
 - `tb_edge_artifact_meta` — Edge manifest 元数据（`artifact_revision`、`content_sha256`）
-- `tb_edge_tenant_credential` — Edge 拉取 API Bearer（hash 存储，绑定 `tenant_id`）
+- `tb_tenant_api_credential` — API Bearer（hash 存储；`tenant_id` + `role`：`tenant_viewer` / `tenant_admin` / `platform_admin`）
 
 ## 核心表（engine）
 

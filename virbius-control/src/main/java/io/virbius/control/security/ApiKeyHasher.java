@@ -1,14 +1,14 @@
-package io.virbius.control.service;
+package io.virbius.control.security;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
-final class EdgeCredentialHasher {
+public final class ApiKeyHasher {
 
-    private EdgeCredentialHasher() {}
+    private ApiKeyHasher() {}
 
-    static String sha256Hex(String raw) {
+    public static String sha256Hex(String raw) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(raw.getBytes(StandardCharsets.UTF_8));

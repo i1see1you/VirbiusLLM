@@ -28,14 +28,14 @@ public class EdgeDeliveryController {
 
     @GetMapping("/policy-version")
     public Map<String, Object> policyVersion(
-            @PathVariable String tenantId, @PathVariable String appId) {
+            @PathVariable("tenantId") String tenantId, @PathVariable("appId") String appId) {
         return edgeDeliveryService.policyVersion(tenantId, appId);
     }
 
     @GetMapping(value = "/manifest", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<byte[]> manifest(
-            @PathVariable String tenantId,
-            @PathVariable String appId,
+            @PathVariable("tenantId") String tenantId,
+            @PathVariable("appId") String appId,
             @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) {
         EdgeArtifactMeta meta = edgeDeliveryService.requireMeta(tenantId, appId);
         String etag = String.valueOf(meta.artifactRevision());

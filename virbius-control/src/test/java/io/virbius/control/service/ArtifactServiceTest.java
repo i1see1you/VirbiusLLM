@@ -63,7 +63,9 @@ class ArtifactServiceTest {
                 "",
                 "",
                 gatewayListRedisService,
-                edgeArtifactMetaRepository);
+                edgeArtifactMetaRepository,
+                false,
+                true);
     }
 
     @Test

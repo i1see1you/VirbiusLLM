@@ -127,6 +127,7 @@
         <button type="button" class="sidebar-toggle" id="btnSidebarToggle" title="折叠菜单">◀</button>
       </div>
       <nav class="sidebar-nav">
+        <button type="button" class="nav-item" data-tab="tenants"><span class="nav-icon">🏢</span><span class="nav-label">租户</span></button>
         <button type="button" class="nav-item active" data-tab="lists"><span class="nav-icon">📋</span><span class="nav-label">名单</span></button>
         <button type="button" class="nav-item" data-tab="cumulatives"><span class="nav-icon">📊</span><span class="nav-label">累计</span></button>
         <button type="button" class="nav-item" data-tab="bindings"><span class="nav-icon">🔗</span><span class="nav-label">请求映射</span></button>
@@ -149,12 +150,47 @@
 
     <div class="main">
       <header class="main-topbar">
-        <label class="tenant-field">租户 <input id="tenantId" value="default" autocomplete="off" /></label>
+        <label class="tenant-field">租户
+          <select id="tenantSelect" style="min-width:7rem"></select>
+          <input id="tenantId" value="default" autocomplete="off" style="display:none;width:7rem" />
+        </label>
+        <label class="tenant-field">API Key
+          <input id="apiKey" type="password" placeholder="vrb_tk_..." autocomplete="off" style="width:14rem" />
+        </label>
         <span class="hint" style="margin:0">Bundle <code id="topBundleId">poc-default</code>@<code id="topBundleVer">0.1.0</code></span>
       </header>
       <input type="hidden" id="bundleId" value="poc-default" />
       <input type="hidden" id="bundleVer" value="0.1.0" />
       <div class="main-scroll">
+
+  <div id="panel-tenants" class="panel card">
+    <h2 style="margin:0 0 0.5rem;font-size:1rem">租户与 API 凭证</h2>
+    <p class="hint">角色：<code>tenant_viewer</code>（Edge manifest + 只读）、<code>tenant_admin</code>（写/放量/发布/本租户 Key）、<code>platform_admin</code>（租户管理）。鉴权开启时（<code>VIRBIUS_API_KEY_AUTH_ENABLED=true</code>）请在顶栏填写 API Key。</p>
+    <div class="row" style="margin-bottom:0.75rem">
+      <input id="newTenantId" placeholder="tenant_id (小写)" size="14" />
+      <input id="newTenantName" placeholder="显示名称" size="18" />
+      <button type="button" id="btnCreateTenant">新建租户</button>
+      <button type="button" id="btnReloadTenants">刷新</button>
+    </div>
+    <table id="tenantTable" class="data-table" style="width:100%;margin-bottom:1rem">
+      <thead><tr><th>租户 ID</th><th>名称</th><th>规则数</th><th>创建时间</th><th>操作</th></tr></thead>
+      <tbody id="tenantTableBody"></tbody>
+    </table>
+    <h3 style="margin:0.5rem 0;font-size:0.95rem">当前租户凭证 · <code id="credTenantLabel">default</code></h3>
+    <div class="row" style="margin-bottom:0.5rem">
+      <select id="issueCredRole">
+        <option value="tenant_viewer">tenant_viewer</option>
+        <option value="tenant_admin">tenant_admin</option>
+      </select>
+      <input id="issueCredLabel" placeholder="备注（可选）" size="20" />
+      <button type="button" id="btnIssueCred">签发 Key</button>
+      <button type="button" id="btnIssuePlatformCred">签发 platform_admin</button>
+    </div>
+    <table id="credTable" class="data-table" style="width:100%">
+      <thead><tr><th>前缀</th><th>角色</th><th>备注</th><th>状态</th><th>最后使用</th><th>操作</th></tr></thead>
+      <tbody id="credTableBody"></tbody>
+    </table>
+  </div>
 
   <div id="panel-lists" class="panel active card">
     <h2 style="margin:0 0 0.5rem;font-size:1rem">命名名单</h2>
@@ -526,6 +562,12 @@
   <div id="panel-rollout" class="panel card">
     <h2 style="margin:0 0 0.5rem;font-size:1rem">策略上线</h2>
     <p class="hint">draft 须先 <code>上线</code> 进入 dry_run；达标后点 <code>升级 / 下一步</code>（后端仍校验门禁，未过可 force）。看板每 5 秒自动刷新。</p>
+    <div class="rollout-section" style="margin-bottom:0.75rem">
+      <h3 style="margin:0 0 0.35rem;font-size:0.95rem">网关产物（Redis + Sidecar）</h3>
+      <p class="hint" style="margin:0 0 0.35rem">revision / 节点 ACK；Sidecar 同步至本地 <code>lists_file</code>。</p>
+      <button type="button" class="secondary" id="btnGatewayArtifact">刷新网关产物状态</button>
+      <pre id="gatewayArtifactStatus" class="hint" style="margin:0.35rem 0 0;white-space:pre-wrap;font-size:0.8rem">—</pre>
+    </div>
     <div class="row">
       <label>规则
         <select id="roRuleSelect" style="min-width:16rem"><option value="">— 选择规则 —</option></select>
@@ -1012,6 +1054,26 @@ end`;
     }
 
     function tenant() { return document.getElementById('tenantId').value.trim() || 'default'; }
+    function apiKey() {
+      const el = document.getElementById('apiKey');
+      return el ? el.value.trim() : '';
+    }
+    function authHeaders(extra) {
+      const h = { 'Content-Type': 'application/json', ...(extra || {}) };
+      const key = apiKey();
+      if (key) h['Authorization'] = 'Bearer ' + key;
+      return h;
+    }
+    function adminFetch(url, opts = {}) {
+      return fetch(url, { ...opts, headers: authHeaders(opts.headers) }).then(async res => {
+        const j = await res.json();
+        if (j.code !== 0) throw new Error(j.message || ('HTTP ' + res.status));
+        return j.data;
+      });
+    }
+    function adminRoot(path, opts = {}) {
+      return adminFetch('/api/v1/admin' + path, opts);
+    }
     function bundleId() { return document.getElementById('bundleId').value.trim() || 'poc-default'; }
     function bundleVer() { return document.getElementById('bundleVer').value.trim() || '0.1.0'; }
     function syncTopbarBundle() {
@@ -1022,11 +1084,7 @@ end`;
     }
     function admin(path, opts = {}) {
       const url = '/api/v1/admin/tenants/' + encodeURIComponent(tenant()) + path;
-      return fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts }).then(async res => {
-        const j = await res.json();
-        if (j.code !== 0) throw new Error(j.message || ('HTTP ' + res.status));
-        return j.data;
-      });
+      return adminFetch(url, opts);
     }
     function log(x) { logEl.textContent = typeof x === 'string' ? x : JSON.stringify(x, null, 2); }
 
@@ -2638,6 +2696,19 @@ end`;
         renderRolloutSamples(samples);
       } finally {
         rolloutRefreshBusy = false;
+        loadGatewayArtifactStatus().catch(() => {});
+      }
+    }
+
+    async function loadGatewayArtifactStatus() {
+      const el = document.getElementById('gatewayArtifactStatus');
+      if (!el) return;
+      try {
+        const data = await admin('/gateway-artifacts/policy-version');
+        const nodes = await admin('/gateway-artifacts/nodes');
+        el.textContent = JSON.stringify({ policy: data, nodes }, null, 2);
+      } catch (e) {
+        el.textContent = '不可用: ' + e.message;
       }
     }
 
@@ -2659,6 +2730,7 @@ end`;
 
     async function reloadAll() {
       syncTopbarBundle();
+      await loadTenantSelect();
       await loadLists();
       await loadCumulatives();
       await loadBindings();
@@ -2710,6 +2782,61 @@ end`;
           searchAuditCenter(q).catch(e => log(e.message));
         }
       }
+      if (tab === 'tenants') {
+        loadTenantsPage().catch(e => log(e.message));
+      }
+    }
+
+    async function loadTenantSelect() {
+      const sel = document.getElementById('tenantSelect');
+      const data = await adminRoot('/tenants');
+      const cur = tenant();
+      sel.innerHTML = (data || []).map(t =>
+        `<option value="${escAttr(field(t, 'tenant_id', 'tenantId'))}">${esc(field(t, 'tenant_id', 'tenantId'))} · ${esc(field(t, 'name', 'name') || '')}</option>`
+      ).join('');
+      if (cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+      else if (sel.options.length) sel.value = sel.options[0].value;
+      document.getElementById('tenantId').value = sel.value;
+    }
+
+    async function loadTenantsPage() {
+      await loadTenantSelect();
+      const data = await adminRoot('/tenants');
+      const tbody = document.getElementById('tenantTableBody');
+      tbody.innerHTML = (data || []).map(t => {
+        const tid = field(t, 'tenant_id', 'tenantId');
+        return `<tr>
+          <td><code>${esc(tid)}</code></td>
+          <td>${esc(field(t, 'name', 'name') || '')}</td>
+          <td>${esc(String(field(t, 'rule_count', 'ruleCount') ?? 0))}</td>
+          <td>${esc((field(t, 'created_at', 'createdAt') || '').slice(0, 19))}</td>
+          <td><button type="button" class="btn-switch-tenant" data-tid="${escAttr(tid)}">切换</button>
+              <button type="button" class="btn-load-cred" data-tid="${escAttr(tid)}">凭证</button></td>
+        </tr>`;
+      }).join('');
+      document.getElementById('credTenantLabel').textContent = tenant();
+      await loadCredentialsFor(tenant());
+    }
+
+    async function loadCredentialsFor(tid) {
+      document.getElementById('credTenantLabel').textContent = tid;
+      const creds = await adminFetch('/api/v1/admin/tenants/' + encodeURIComponent(tid) + '/api-credentials');
+      const platform = await adminFetch('/api/v1/admin/platform/api-credentials').catch(() => []);
+      const all = [...(creds || []), ...(platform || [])];
+      const tbody = document.getElementById('credTableBody');
+      tbody.innerHTML = all.map(c => {
+        const cid = field(c, 'credential_id', 'credentialId');
+        const tid = field(c, 'tenant_id', 'tenantId');
+        const st = field(c, 'status', 'status');
+        return `<tr>
+          <td><code>${esc(field(c, 'key_prefix', 'keyPrefix') || '')}****</code></td>
+          <td>${esc(field(c, 'role', 'role') || '')}</td>
+          <td>${esc(field(c, 'label', 'label') || '')}</td>
+          <td>${esc(st)}</td>
+          <td>${esc((field(c, 'last_used_at', 'lastUsedAt') || '—').slice(0, 19))}</td>
+          <td>${st === 'active' ? `<button type="button" class="btn-revoke-cred" data-tid="${escAttr(tid)}" data-cid="${escAttr(cid)}">吊销</button>` : '—'}</td>
+        </tr>`;
+      }).join('');
     }
 
     document.getElementById('btnSidebarToggle').onclick = () => {
@@ -3175,6 +3302,96 @@ end`;
         e.preventDefault();
         searchAuditCenter().catch(err => log(err.message));
       }
+    });
+
+    document.getElementById('btnGatewayArtifact').onclick = () =>
+      loadGatewayArtifactStatus().then(() => log('网关产物状态已刷新')).catch(e => log(e.message));
+
+    try {
+      if (savedKey) document.getElementById('apiKey').value = savedKey;
+    } catch (_) {}
+    document.getElementById('apiKey').addEventListener('change', () => {
+      try { localStorage.setItem('virbius.ops.apiKey', apiKey()); } catch (_) {}
+    });
+    document.getElementById('tenantSelect').onchange = () => {
+      document.getElementById('tenantId').value = document.getElementById('tenantSelect').value;
+      reloadAll().catch(e => log(e.message));
+    };
+    document.getElementById('btnReloadTenants').onclick = () =>
+      loadTenantsPage().then(() => log('租户列表已刷新')).catch(e => log(e.message));
+    document.getElementById('btnCreateTenant').onclick = async () => {
+      const tenantId = document.getElementById('newTenantId').value.trim();
+      const name = document.getElementById('newTenantName').value.trim();
+      if (!tenantId || !name) { log('tenant_id 与名称必填'); return; }
+      try {
+        const data = await adminRoot('/tenants', {
+          method: 'POST',
+          body: JSON.stringify({ tenant_id: tenantId, name })
+        });
+        log(data);
+        document.getElementById('newTenantId').value = '';
+        document.getElementById('newTenantName').value = '';
+        await loadTenantsPage();
+        document.getElementById('tenantSelect').value = tenantId;
+        document.getElementById('tenantId').value = tenantId;
+      } catch (e) { log(e.message); }
+    };
+    document.getElementById('btnIssueCred').onclick = async () => {
+      const role = document.getElementById('issueCredRole').value;
+      const label = document.getElementById('issueCredLabel').value.trim();
+      try {
+        const data = await admin('/api-credentials', {
+          method: 'POST',
+          body: JSON.stringify({ role, label: label || null })
+        });
+        log({ issued: data, warning: 'api_key 仅显示一次，请立即保存' });
+        if (data.api_key) {
+          document.getElementById('apiKey').value = data.api_key;
+          try { localStorage.setItem('virbius.ops.apiKey', data.api_key); } catch (_) {}
+        }
+        await loadCredentialsFor(tenant());
+      } catch (e) { log(e.message); }
+    };
+    document.getElementById('btnIssuePlatformCred').onclick = async () => {
+      const label = document.getElementById('issueCredLabel').value.trim();
+      try {
+        const data = await adminFetch('/api/v1/admin/platform/api-credentials', {
+          method: 'POST',
+          body: JSON.stringify({ role: 'platform_admin', label: label || null })
+        });
+        log({ issued: data, warning: 'platform_admin api_key 仅显示一次' });
+        if (data.api_key) {
+          document.getElementById('apiKey').value = data.api_key;
+          try { localStorage.setItem('virbius.ops.apiKey', data.api_key); } catch (_) {}
+        }
+        await loadCredentialsFor(tenant());
+      } catch (e) { log(e.message); }
+    };
+    document.getElementById('tenantTableBody').addEventListener('click', async (e) => {
+      const sw = e.target.closest('.btn-switch-tenant');
+      if (sw) {
+        document.getElementById('tenantSelect').value = sw.dataset.tid;
+        document.getElementById('tenantId').value = sw.dataset.tid;
+        await reloadAll();
+        log({ switched: sw.dataset.tid });
+        return;
+      }
+      const lc = e.target.closest('.btn-load-cred');
+      if (lc) await loadCredentialsFor(lc.dataset.tid).catch(err => log(err.message));
+    });
+    document.getElementById('credTableBody').addEventListener('click', async (e) => {
+      const btn = e.target.closest('.btn-revoke-cred');
+      if (!btn) return;
+      const tid = btn.dataset.tid;
+      const cid = btn.dataset.cid;
+      const path = tid === '*'
+        ? '/api/v1/admin/platform/api-credentials/' + encodeURIComponent(cid) + '/revoke'
+        : '/api/v1/admin/tenants/' + encodeURIComponent(tid) + '/api-credentials/' + encodeURIComponent(cid) + '/revoke';
+      try {
+        await adminFetch(path, { method: 'POST' });
+        log({ revoked: cid });
+        await loadCredentialsFor(tenant());
+      } catch (err) { log(err.message); }
     });
 
     initScriptAutocomplete();

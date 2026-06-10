@@ -1,5 +1,6 @@
 package io.virbius.control.audit;
 
+import io.virbius.control.config.ControlJedisPools;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -37,14 +38,14 @@ public class AuditIngestService {
     private volatile long lastBatchIngested;
 
     public AuditIngestService(
-            Optional<JedisPool> jedisPool,
+            ControlJedisPools jedisPools,
             AuditEventIngestor ingestor,
             AuditIngestCheckpointRepository checkpointRepository,
             @Value("${audit.ingest.enabled:true}") boolean enabled,
             @Value("${audit.ingest.redis.stream-key:virbius:audit:events}") String streamKey,
             @Value("${audit.ingest.batch-size:256}") int batchSize,
             @Value("${audit.ingest.consumer-group:virbius-audit-ingest}") String consumerGroup) {
-        this.pool = jedisPool;
+        this.pool = jedisPools.pool();
         this.ingestor = ingestor;
         this.checkpointRepository = checkpointRepository;
         this.enabled = enabled;

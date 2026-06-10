@@ -89,7 +89,7 @@ let edge = VirbiusEdge::init(EdgeInitConfig {
     control_base_url: Some("http://127.0.0.1:8080".into()),
     tenant_id: "default".into(),
     app_id: "beta".into(),
-    edge_api_key: Some("vrb_edge_...".into()), // when Control auth enabled
+    edge_api_key: Some("vrb_tk_...".into()), // when Control VIRBIUS_API_KEY_AUTH_ENABLED
     cache_dir: PathBuf::from("/path/to/app/sandbox/virbius"),
     offline_manifest_path: None,
 })?;

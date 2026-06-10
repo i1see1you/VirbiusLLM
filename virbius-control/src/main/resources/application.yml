@@ -29,10 +29,27 @@ spring:
 
 virbius:
   data-dir: ${VIRBIUS_DATA_DIR:./data}
-  edge:
-    delivery:
-      auth:
-        enabled: ${VIRBIUS_EDGE_AUTH_ENABLED:false}
+  security:
+    api-key:
+      enabled: ${VIRBIUS_API_KEY_AUTH_ENABLED:false}
+  gateway:
+    artifact:
+      enabled: ${VIRBIUS_GATEWAY_ARTIFACT_ENABLED:true}
+      storage: ${VIRBIUS_GATEWAY_ARTIFACT_STORAGE:redis}
+      local-fallback: ${VIRBIUS_GATEWAY_ARTIFACT_LOCAL_FALLBACK:false}
+      redis:
+        blob-prefix: virbius:artifacts:gateway
+        pointer-prefix: virbius:config:gateway
+        ack-prefix: virbius:ack:gateway
+        events-stream: virbius:config:events
+        retain-revisions: 10
+        ack-ttl-seconds: 86400
+      oss:
+        base-url: ${VIRBIUS_GATEWAY_OSS_BASE_URL:}
+        public-base-url: ${VIRBIUS_GATEWAY_OSS_PUBLIC_BASE_URL:}
+        access-key: ${VIRBIUS_GATEWAY_OSS_ACCESS_KEY:}
+        secret-key: ${VIRBIUS_GATEWAY_OSS_SECRET_KEY:}
+        authorization-header: ${VIRBIUS_GATEWAY_OSS_AUTH_HEADER:}
   redis:
     url: ${VIRBIUS_REDIS_URL:redis://127.0.0.1:6379}
   lists:

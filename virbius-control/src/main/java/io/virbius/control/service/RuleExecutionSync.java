@@ -20,14 +20,14 @@ public class RuleExecutionSync {
         boolean was = RolloutStateHelper.inExecutionPlane(before);
         boolean now = RolloutStateHelper.inExecutionPlane(after);
         if (was || now) {
-            accessListService.refreshArtifacts(tenantId);
+            accessListService.refreshArtifacts(tenantId, "rollout");
             publishService.runtimeSnapshot(tenantId);
         }
     }
 
     public void afterContentChange(String tenantId, RuleRevision rule) {
         if (RolloutStateHelper.inExecutionPlane(rule)) {
-            accessListService.refreshArtifacts(tenantId);
+            accessListService.refreshArtifacts(tenantId, "rollout");
             publishService.runtimeSnapshot(tenantId);
         }
     }

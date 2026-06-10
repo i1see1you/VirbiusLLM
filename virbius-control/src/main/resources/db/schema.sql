@@ -245,18 +245,34 @@ CREATE TABLE IF NOT EXISTS tb_edge_artifact_meta (
     PRIMARY KEY (tenant_id, app_id)
 );
 
-CREATE TABLE IF NOT EXISTS tb_edge_tenant_credential (
+CREATE TABLE IF NOT EXISTS tb_tenant_api_credential (
     credential_id   VARCHAR(36)  NOT NULL,
     tenant_id       VARCHAR(64)  NOT NULL,
+    role            VARCHAR(32)  NOT NULL,
     key_hash        VARCHAR(64)  NOT NULL,
     key_prefix      VARCHAR(16)  NOT NULL,
+    label           VARCHAR(128),
     status          VARCHAR(16)  NOT NULL DEFAULT 'active',
+    created_by      VARCHAR(64),
     created_at      TIMESTAMP    NOT NULL,
     revoked_at      TIMESTAMP,
     last_used_at    TIMESTAMP,
     PRIMARY KEY (credential_id),
-    UNIQUE (tenant_id, key_hash)
+    UNIQUE (key_hash),
+    CHECK (role IN ('tenant_viewer', 'tenant_admin', 'platform_admin')),
+    CHECK (status IN ('active', 'revoked'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_edge_tenant_cred_lookup
-    ON tb_edge_tenant_credential (tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_tb_tenant_api_cred_tenant
+    ON tb_tenant_api_credential (tenant_id, status);
+
+CREATE TABLE IF NOT EXISTS tb_gateway_artifact_meta (
+    tenant_id              VARCHAR(64) PRIMARY KEY,
+    artifact_revision      BIGINT       NOT NULL DEFAULT 0,
+    access_lists_sha256    VARCHAR(64)  NOT NULL,
+    scene_registry_sha256  VARCHAR(64)  NOT NULL,
+    published_at           TIMESTAMP    NOT NULL,
+    publish_id             VARCHAR(36),
+    trigger                VARCHAR(32),
+    storage                VARCHAR(16)  NOT NULL DEFAULT 'redis'
+);

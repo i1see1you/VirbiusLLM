@@ -1,5 +1,6 @@
 package io.virbius.control.gateway;
 
+import io.virbius.control.config.ControlJedisPools;
 import io.virbius.control.domain.AccessListEntry;
 import io.virbius.control.domain.AccessListMeta;
 import io.virbius.control.repository.ListMetaRepository;
@@ -30,10 +31,11 @@ public class GatewayListRedisService {
     private final boolean enabled;
 
     public GatewayListRedisService(
-            Optional<JedisPool> controlJedisPool,
+            ControlJedisPools jedisPools,
             ListMetaRepository listMetaRepo,
             @Value("${virbius.lists.redis.enabled:true}") boolean enabled,
             @Value("${virbius.lists.redis.key-prefix:virbius:lists}") String keyPrefix) {
+        Optional<JedisPool> controlJedisPool = jedisPools.pool();
         this.pool = controlJedisPool;
         this.listMetaRepo = listMetaRepo;
         this.keyPrefix = keyPrefix;
