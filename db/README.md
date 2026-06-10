@@ -102,4 +102,4 @@ PoC 规则（含黑名单关键字）见 **`virbius-control/src/main/resources/d
 | virbius-engine | `/tmp/virbius/engine-audit-allow.jsonl` |
 | edge / HTTP ingest | `{VIRBIUS_DATA_DIR}/audit-allow.jsonl` |
 
-运营台 **「审计中心」** 按 `trace_id` 合并查询 DB 事件与上述 allow 日志，见 [rule-rollout.md §5.8](../docs/openspec/rule-rollout.md)。
+运营台 **「审计中心」** 按 `trace_id` 合并查询 DB 事件与上述 allow 日志，见 [POC-SEED-API.md](../docs/POC-SEED-API.md)、[用户使用手册 §5](../docs/user-guide.md)。

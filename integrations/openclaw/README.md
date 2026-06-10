@@ -125,5 +125,5 @@ OPENRESTY_NGINX_BIN=/usr/local/openresty/nginx/sbin/nginx ./scripts/start-openre
 
 ## 相关文档
 
-- [docs/openspec/openresty-gateway.md](../../docs/openspec/openresty-gateway.md)
+- [virbius-gateway/README.md](../../virbius-gateway/README.md)、[用户使用手册 §4.7](../../docs/user-guide.md)
 - [examples/gateway/openresty-poc/0.1.0/README.md](../../examples/gateway/openresty-poc/0.1.0/README.md)

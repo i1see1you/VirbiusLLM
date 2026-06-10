@@ -9,7 +9,7 @@ import java.util.Set;
 
 /**
  * Compile-time edge manifest partitioning by {@code bind_scope} + {@code app_id}.
- * See docs/openspec/bind-scope.md (service {@code app_ids}); runtime matching is not used on edge SDK.
+ * See docs/DESIGN.md §11.4 (service {@code app_ids}); runtime matching is not used on edge SDK.
  */
 public final class EdgeManifestFilter {
 

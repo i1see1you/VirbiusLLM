@@ -2,7 +2,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| 对齐 | [DESIGN.md v2.21](./DESIGN.md)、[MVP-OPENSPEC MVP-1.12](./openspec/MVP-OPENSPEC.md) |
+| 对齐 | [DESIGN.md v2.21](./DESIGN.md)、[用户使用手册](./user-guide.md) |
 | 目标 | PoC 可运行骨架：`control` + `engine` + `gateway-agent` + APISIX；端 **方案 B+** Control 直拉 manifest |
 
 ## 目录
@@ -19,7 +19,7 @@ VirbiusLLM/
 │   └── plugins/openresty/       # access.lua（Stretch）
 ├── virbius-core/                # Rust 端 L0
 ├── virbius-compiler/            # 编译 CLI（APISIX / OpenResty / edge）
-├── docs/                        # DESIGN + openspec
+├── docs/                        # DESIGN、用户手册、POC-SEED-API
 └── docker-compose.poc.yml       # 本地联调（可选）
 ```
 
@@ -32,7 +32,7 @@ VirbiusLLM/
 | virbius-engine admin | **Java 17** | `http://localhost:8082` |
 | virbius-gateway-agent | **Rust** | `http://127.0.0.1:9070` |
 | APISIX + virbius-guard | Lua | 业务 Route 转发 |
-| OpenResty + access.lua | Lua | Stretch PoC；见 [openspec/openresty-gateway.md](./openspec/openresty-gateway.md) |
+| OpenResty + access.lua | Lua | Stretch PoC；见 [virbius-gateway/README.md](../virbius-gateway/README.md) |
 
 ## 网关数据文件（`data/gateway/`）
 
@@ -103,5 +103,5 @@ curl -s http://127.0.0.1:9070/health
 
 ## 契约
 
-- OpenAPI / proto / Schema：[openspec/](./openspec/)
+- 集成与 API 说明：[用户使用手册](./user-guide.md)、[POC-SEED-API.md](./POC-SEED-API.md)、[DESIGN.md](./DESIGN.md)
 - 规则真源：**`rule_history`**（非 `rule_runtime`）

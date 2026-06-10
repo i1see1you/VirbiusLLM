@@ -9,7 +9,7 @@
 | `plugins/openresty/access.lua` | OpenResty access（读 compiler 拍平 `effective-*.json`） |
 | `core/` | 预留 `rules.lua` 框架 |
 
-详细设计：[docs/openspec/openresty-gateway.md](../docs/openspec/openresty-gateway.md)
+详细设计：[DESIGN.md §11.5](../docs/DESIGN.md)、[用户使用手册 §4.7](../docs/user-guide.md)
 
 ## 管侧 JSON 真源（APISIX 与 OpenResty 共用）
 

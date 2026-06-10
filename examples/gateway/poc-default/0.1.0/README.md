@@ -92,7 +92,7 @@ curl -s -X PUT "$APISIX_ADMIN/routes/virbius-route-general-chat" \
 /usr/local/apisix/conf/virbius/data/gateway/default-access-lists.json
 ```
 
-**OpenResty Stretch**：compiler 使用 `--deploy-prefix=./data --deploy-layout=control-data`，effective 内 `lists_file` / `scene_registry_file` 指向同一 `data/gateway/` 目录。见 [openresty-poc](../../openresty-poc/0.1.0/README.md) 与 [openresty-gateway.md](../../../docs/openspec/openresty-gateway.md)。
+**OpenResty Stretch**：compiler 使用 `--deploy-prefix=./data --deploy-layout=control-data`，effective 内 `lists_file` / `scene_registry_file` 指向同一 `data/gateway/` 目录。见 [openresty-poc](../../openresty-poc/0.1.0/README.md) 与 [virbius-gateway/README.md](../../../virbius-gateway/README.md)。
 
 ## OpenResty（Stretch，可选）
 

@@ -24,11 +24,9 @@ Rules are versioned in **`rule_history` / `rule_revision`**. Publishing flows th
 | Topic | Link |
 |-------|------|
 | System design | [docs/DESIGN.md](docs/DESIGN.md) |
-| Client integration (edge SDK, gateway headers, DLP) | [docs/user-guide.md](docs/user-guide.md) |
-| Rule rollout | [docs/openspec/rule-rollout.md](docs/openspec/rule-rollout.md) |
+| User guide (EN) | [docs/user-guide.en.md](docs/user-guide.en.md) |
+| User guide (中文) | [docs/user-guide.md](docs/user-guide.md) |
 | PoC seed & admin API | [docs/POC-SEED-API.md](docs/POC-SEED-API.md) |
-| MVP contracts | [docs/openspec/](docs/openspec/) |
-| OpenResty Stretch (PoC) | [docs/openspec/openresty-gateway.md](docs/openspec/openresty-gateway.md) |
 | Repo layout | [docs/POC-REPO.md](docs/POC-REPO.md) |
 
 ## Requirements
@@ -85,7 +83,7 @@ export VIRBIUS_EDGE_API_KEY=vrb_tk_dev_viewer_default
 cargo run --example rust_client_demo
 ```
 
-Production apps should use `VirbiusEdge::init(EdgeInitConfig { ... })` from app config, not env vars. See [docs/user-guide.md](docs/user-guide.md) §3.
+Production apps should use `VirbiusEdge::init(EdgeInitConfig { ... })` from app config, not env vars. See [docs/user-guide.en.md](docs/user-guide.en.md) §3.
 
 Gateway HTTP example (requires APISIX PoC):
 
@@ -94,7 +92,7 @@ export VIRBIUS_GATEWAY_URL=http://127.0.0.1:9080/v1/chat/completions
 cargo run --example gateway_http_client
 ```
 
-More detail: [virbius-core/README.md](virbius-core/README.md) · [docs/user-guide.md](docs/user-guide.md).
+More detail: [virbius-core/README.md](virbius-core/README.md) · [docs/user-guide.en.md](docs/user-guide.en.md).
 
 ## Gateway (APISIX)
 

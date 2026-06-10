@@ -3,8 +3,8 @@
 Registry → edge bin / gateway 产物 / cloud 校验。
 
 - **JDK 17**（继承父 `pom.xml`）
-- CLI 契约：[MVP-OPENSPEC §5](../docs/openspec/MVP-OPENSPEC.md)
-- OpenResty：[openspec/openresty-gateway.md](../docs/openspec/openresty-gateway.md)
+- CLI 用法：见下文；架构见 [DESIGN.md §11.5](../docs/DESIGN.md)
+- OpenResty：[virbius-gateway/README.md](../virbius-gateway/README.md)、[用户使用手册 §4.7](../docs/user-guide.md)
 
 ## 基本用法
 

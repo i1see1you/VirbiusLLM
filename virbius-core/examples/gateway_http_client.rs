@@ -130,7 +130,7 @@ fn chat_via_gateway(
 
     let mut request = ureq::post(url).set("Content-Type", "application/json");
 
-    // --- Virbius ControlContext → HTTP Header（§4.6 MVP-OPENSPEC）---
+    // --- Virbius ControlContext → HTTP Header（见 docs/user-guide.en.md §4.2）---
     // trace_id：与端 scan 相同，便于 audit 串联；须 UUID v4。
     request = request.set("X-Virbius-Trace-Id", trace_id);
 

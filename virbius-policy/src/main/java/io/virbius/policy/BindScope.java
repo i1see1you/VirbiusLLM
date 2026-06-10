@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Gateway rule binding: global / service / route. See docs/openspec/bind-scope.md */
+/** Gateway rule binding: global / service / route. See docs/DESIGN.md §11.4 */
 public final class BindScope {
 
     public static final String GLOBAL = "global";

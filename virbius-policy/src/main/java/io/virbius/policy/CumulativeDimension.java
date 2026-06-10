@@ -4,7 +4,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
-/** Validates tb_cumulative.dimension. See docs/openspec/cumulative-counter.md */
+/** Validates tb_cumulative.dimension. See docs/DESIGN.md §8.5.0.1 */
 public final class CumulativeDimension {
 
     private static final Pattern BUILTIN =

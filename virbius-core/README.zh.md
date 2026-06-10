@@ -2,9 +2,9 @@
 
 License: [MIT](../LICENSE) · English: [README.md](README.md)
 
-端侧 L0 Native SDK（Rust + C ABI）。契约：[MVP-OPENSPEC §4](../docs/openspec/MVP-OPENSPEC.md)、Edge 同步 [§4.8](../docs/openspec/MVP-OPENSPEC.md#48-edge-manifest-同步方案-bf-15)。
+端侧 L0 Native SDK（Rust + C ABI）。集成见 [user-guide.md](../docs/user-guide.md)、Edge 同步见 §3.2。
 
-**用户使用文档**：[docs/user-guide.md](../docs/user-guide.md)（端 SDK、Init 配置、网关 Header、DLP、示例与排障）
+**用户使用手册**：[docs/user-guide.md](../docs/user-guide.md) · [English](../docs/user-guide.en.md)（端 SDK、Init 配置、网关 Header、DLP、排障）
 
 ## Rust 快速开始（推荐）
 

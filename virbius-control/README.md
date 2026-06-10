@@ -4,8 +4,8 @@
 
 - **JDK 17**（继承父 `pom.xml`）
 - 端口：`8080`
-- 契约：[docs/openspec/registry.openapi.yaml](../docs/openspec/registry.openapi.yaml)
-- 规则真源：**`tb_rule_history`**（见 [DESIGN §8.5.2](../docs/DESIGN.md)、[rule-rollout.md](../docs/openspec/rule-rollout.md) 放量、`rule-level-enforce.md` 执行面）
+- Admin / Edge API：[docs/POC-SEED-API.md](../docs/POC-SEED-API.md)
+- 规则真源：**`tb_rule_history`**（见 [DESIGN §8.5](../docs/DESIGN.md)、[用户使用手册 §6](../docs/user-guide.md) 放量与执行面）
 - PoC 种子：**`src/main/resources/db/seed.sql`**
 - 操作说明：[docs/POC-SEED-API.md](../docs/POC-SEED-API.md)
 
@@ -25,7 +25,7 @@
 | `/api/v1/edge/tenants/{tenantId}/apps/{appId}/...` | **裸 JSON** | Edge SDK 拉取（方案 B+） |
 | `/api/v1/tenants/{tenantId}/...` | 裸 JSON | Legacy 兼容 |
 
-Edge 拉取契约：[MVP-OPENSPEC §4.8](../docs/openspec/MVP-OPENSPEC.md)、[DESIGN §8.10.2.5a](../docs/DESIGN.md)。
+Edge 拉取契约：[用户使用手册 §3.2](../docs/user-guide.md)、[DESIGN §8.10.2.5a](../docs/DESIGN.md)。
 
 ## 配置
 

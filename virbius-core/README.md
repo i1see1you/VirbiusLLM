@@ -1,10 +1,10 @@
 # virbius-core
 
-Edge L0 native SDK (Rust + C ABI). Contract: [MVP-OPENSPEC §4](../docs/openspec/MVP-OPENSPEC.md).
+Edge L0 native SDK (Rust + C ABI). Integration: [user-guide.en.md](../docs/user-guide.en.md).
 
 License: [MIT](../LICENSE) · 中文：[README.zh.md](README.zh.md)
 
-Integration guide: [docs/user-guide.md](../docs/user-guide.md) (edge SDK, gateway headers, DLP, troubleshooting).
+Integration guide: [docs/user-guide.en.md](../docs/user-guide.en.md) · 中文：[docs/user-guide.md](../docs/user-guide.md)
 
 ## Rust quick start
 

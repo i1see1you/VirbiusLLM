@@ -1,4 +1,6 @@
-# Virbius 用户使用文档（客户端集成）
+# Virbius 用户使用手册（客户端集成）
+
+**English:** [User Guide (Client Integration)](./user-guide.en.md)
 
 本文面向 **App / 服务端 / Rust 客户端** 集成方，说明如何在业务中接入 Virbius 大模型防控能力。运营配置规则请使用 Admin 运营台（`ops.html`）及 [POC-SEED-API.md](./POC-SEED-API.md)；本文聚焦 **运行时集成**。
 
@@ -7,9 +9,8 @@
 | 文档 | 用途 |
 |------|------|
 | [DESIGN.md](./DESIGN.md) | 架构与设计 |
-| [MVP-OPENSPEC §4](./openspec/MVP-OPENSPEC.md) | SDK / Header / 审计契约 |
-| [rule-rollout.md](./openspec/rule-rollout.md) | 策略上线与放量 |
-| [POC-SEED-API.md](./POC-SEED-API.md) | 本地 PoC 与 curl 示例 |
+| [POC-SEED-API.md](./POC-SEED-API.md) | 本地 PoC、运营 API 与 curl 示例 |
+| [POC-REPO.md](./POC-REPO.md) | 仓库布局与本地启动 |
 
 ---
 
@@ -171,7 +172,7 @@ edge.reload();
 
 ### 3.5 请求上下文 `ScanContext`
 
-与网关 Header、审计字段对齐（[ControlContext](./openspec/schemas/control-context.schema.json)）：
+与网关 Header、审计字段对齐（见 [DESIGN.md](./DESIGN.md) §8）：
 
 | 字段 | 说明 |
 |------|------|
@@ -363,21 +364,35 @@ PoC curl 见 [POC-SEED-API.md §7](./POC-SEED-API.md)。
 
 ### 4.7 管侧 JSON 与网关路径（APISIX / OpenResty）
 
-**真源**：virbius-control `ArtifactService` 写入 `{VIRBIUS_DATA_DIR}/gateway/`（默认 `./data/gateway/`），**不经过 Redis**。
+**运行时策略数据**（名单、`context_bindings`、`scene_registry`）由 control 发布，经 sidecar 落到本地 JSON，供 APISIX / OpenResty 读取：
+
+```text
+control refreshArtifacts
+  → Redis blob + pointer（默认 local-fallback=false 时不写 control 本机）
+  → virbius-gateway-sync 轮询（run-local 默认 5s）
+  → {VIRBIUS_GATEWAY_CACHE_DIR}/default-access-lists.json
+  → {VIRBIUS_GATEWAY_CACHE_DIR}/default-scene-registry.json
+```
+
+`run-local.sh` 默认 `VIRBIUS_GATEWAY_CACHE_DIR=$VIRBIUS_DATA_DIR/gateway`（即 `./data/gateway/`）。OpenResty / APISIX 的 `lists_file`、`scene_registry_file` 应指向该目录；Lua `file_cache` 按文件 **mtime** 热更新，**无需** reload nginx。
+
+Sidecar 也可通过 Control API 拉取：`GET /api/v1/gateway/tenants/{tenantId}/policy-version` 与 `/snapshot`（需 Edge/Viewer Bearer）。
 
 | 文件 | 用途 |
 |------|------|
-| `default-access-lists.json` | `context_bindings`（如 `X-App-Id`→`app_id`）、管侧名单 |
-| `default-scene-registry.json` | 运行时 `(app_id, uri, match) → scene_id` |
+| `{tenant}-access-lists.json` | `context_bindings`、`lists[]`、`cumulatives[]` 等 |
+| `{tenant}-scene-registry.json` | `(app_id, uri, match) → scene_id` |
 
-启动 `./scripts/run-local.sh` 后会自动 refresh。改名单后 control 同步即可；OpenResty 在 **方案 A** 下无需重新 compile。
+**触发 refresh**（control 发布新 revision）：control 启动、`access-lists` 变更、`sync-rules`、规则 rollout 进入/离开执行面、Admin `gateway-artifacts/refresh`。
+
+**nginx 壳配置**（`locations.conf`、`effective-*.json`）仍由 `virbius-compiler` 生成；改路由/upstream 时才需 `./scripts/compile-openresty-poc.sh` 并 reload nginx。改名单 **不必** recompile。
 
 | 网关 | 路径配置位置 |
 |------|----------------|
-| APISIX | `plugins.virbius-guard.lists_file` / `scene_registry_file`（service JSON） |
+| APISIX | `plugins.virbius-guard.lists_file` / `scene_registry_file` |
 | OpenResty（Stretch） | compiler 生成的 `effective-*.json` 内同名字段 |
 
-OpenResty 本地对齐：`./scripts/compile-openresty-poc.sh`（`--deploy-layout=control-data`）。详见 [openspec/openresty-gateway.md](./openspec/openresty-gateway.md)。
+OpenResty 本地对齐：`./scripts/compile-openresty-poc.sh`（`--deploy-layout=control-data`）。详见 [virbius-gateway/README.md](../virbius-gateway/README.md)。
 
 ### 4.8 HTTP 状态码
 
@@ -406,7 +421,7 @@ OpenResty 本地对齐：`./scripts/compile-openresty-poc.sh`（`--deploy-layout
 | 仅管层 | 客户端传合法 trace，或依赖网关策略（见 MVP 版本说明） |
 | 格式 | **UUID v4**，固定 36 字符（如 `uuidgen` 小写） |
 
-**运营台排障**：http://127.0.0.1:8080/ui → **审计中心**，输入 `trace_id` 可查看 `tb_audit_events`（review/block/captcha）与各层 **allow JSONL** 合并结果；API：`GET /api/v1/admin/tenants/{tenant}/audit/trace/{traceId}`（详见 [rule-rollout.md §5.8](./openspec/rule-rollout.md)）。
+**运营台排障**：http://127.0.0.1:8080/ui → **审计中心**，输入 `trace_id` 可查看各层 audit 与 allow 日志；API：`GET /api/v1/admin/tenants/{tenant}/audit/trace/{traceId}`（详见 [POC-SEED-API.md](./POC-SEED-API.md)）。
 
 ---
 
@@ -495,7 +510,7 @@ async fn chat(
 ## 10. 版本与契约
 
 - SDK crate：`virbius-core` 0.1.x
-- Manifest：`manifest_version: "1"`，见 [edge-manifest.schema.json](./openspec/schemas/edge-manifest.schema.json)
-- 接口冻结说明：[MVP-OPENSPEC.md](./openspec/MVP-OPENSPEC.md)
+- Edge manifest：`manifest_version: "1"`（字段见 [POC-SEED-API.md §6](./POC-SEED-API.md)）
+- 架构与接口概览：[DESIGN.md](./DESIGN.md)
 
 如有集成问题，可先对照 `cargo run --example rust_client_demo` 与 [POC-SEED-API.md](./POC-SEED-API.md) 中的 curl 行为是否一致。

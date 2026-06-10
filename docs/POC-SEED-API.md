@@ -14,7 +14,7 @@
 
 Bundle 元数据 `context_bindings`（`tb_bundles.metadata_json`）声明 **逻辑变量 → HTTP 来源**（如 `app_id` ← Header `X-App-Id`）；网关解析后透传 Evaluate 的 `vars`（如 `{"app_id":"beta"}`）。名单与 Groovy 只引用逻辑名。
 
-**场景注册**（`scene_registry`，OpenSpec [scene-registry.md](openspec/scene-registry.md)）：每个 `scene_id` 归属唯一 `app_id`；同一 `app_id` 可有多个 scene。运行时由 `(app_id, uri, match) → scene_id` 解析；Service 规则绑 `bind_ref.app_ids`（见 [bind-scope.md](openspec/bind-scope.md)）。
+**场景注册**（`scene_registry`）：每个 `scene_id` 归属唯一 `app_id`；同一 `app_id` 可有多个 scene。运行时由 `(app_id, uri, match) → scene_id` 解析；Service 规则绑 `bind_ref.app_ids`（见 [DESIGN.md §11.4](DESIGN.md)、[用户使用手册 §4.7](user-guide.md)）。
 
 检测顺序（管侧）：Subject/Network 白 → 黑 → Content 白 → 黑 → Evaluate（云）。
 
@@ -42,7 +42,7 @@ Body 示例（**数组**，与运营台一致）：
 
 ## 2. 规则 `runtime` 与放量（`rollout_state`）
 
-详见 [DESIGN.md §8.5.0](DESIGN.md)、[rule-rollout.md](openspec/rule-rollout.md)（**运营定稿**）、[rule-level-enforce.md](openspec/rule-level-enforce.md)（**执行面**）。
+详见 [DESIGN.md §8.5.0](DESIGN.md)、[用户使用手册 §6](user-guide.md)（**运营放量与执行面**）。
 
 ### `runtime`（执行形态）
 
@@ -127,7 +127,7 @@ Admin API：`/api/v1/admin/tenants/{tenantId}/...`（`{ "code": 0, "data": ... }
 
 ### Web
 
-- http://127.0.0.1:8080/ui → 运营台左侧导航「名单」（详见 [rule-rollout.md §8.3](./openspec/rule-rollout.md)）
+- http://127.0.0.1:8080/ui → 运营台左侧导航「名单」（详见 [DESIGN.md](DESIGN.md) 运营台说明）
 
 若打开报 **404 / 无法连接**：多为 **8080 上仍是旧版 control**（`run-local.sh` 曾提示 `Port 8080 was already in use`）。处理：
 
@@ -172,7 +172,7 @@ curl -X POST "http://127.0.0.1:8080/api/v1/tenants/default/access-lists/user_id/
 - `./data/edge/{tenant_id}/{app_id}/edge-manifest.json` — per-app manifest（方案 B+；含 `rules[]`、`dlp_rules[]`、`sdk_config`）
 - `./data/edge/default-content-lists.json` — 遗留 keyword 文件（旧路径；新 PoC 以 per-app manifest 为准）
 
-**OpenResty Stretch**：名单/scene 仍由 control 写入 `data/gateway/`；compiler 仅生成 nginx `locations.conf` 与 `effective-*.json`，通过 `--deploy-prefix=./data --deploy-layout=control-data` 使 effective 内路径与上表一致。详见 [openspec/openresty-gateway.md](openspec/openresty-gateway.md)。
+**OpenResty Stretch**：名单/scene 由 control 发布、sidecar 同步到 `data/gateway/`；compiler 生成 nginx `locations.conf` 与 `effective-*.json`。详见 [virbius-gateway/README.md](../virbius-gateway/README.md)、[用户使用手册 §4.7](user-guide.md)。
 
 环境变量：
 
@@ -182,7 +182,7 @@ curl -X POST "http://127.0.0.1:8080/api/v1/tenants/default/access-lists/user_id/
 
 ## 6.5 Edge manifest 同步与鉴权（方案 B+）
 
-PoC 已实现 Control 直拉 + 租户级 Bearer；详见 [DESIGN §8.10.2.5a](DESIGN.md)、[MVP-OPENSPEC §4.8](openspec/MVP-OPENSPEC.md)。
+PoC 已实现 Control 直拉 + 租户级 Bearer；详见 [DESIGN §8.10.2.5a](DESIGN.md)、[用户使用手册 §3.2](user-guide.md)。
 
 **产物路径**（`ArtifactService.writeEdge`，按 `app_id` 拆分）：
 
@@ -249,7 +249,7 @@ curl -s -H "Authorization: Bearer vrb_tk_dev_viewer_default" \
 
 ### 云 Prompt 审计（1B 矩阵，dry_run → review）
 
-须先启动 engine 并配置 1B 模型端点（见 [prompt-llm.md](openspec/prompt-llm.md)）。
+须先启动 engine 并配置 1B 模型端点（见 [DESIGN.md](DESIGN.md)、[virbius-engine/README.md](../virbius-engine/README.md)）。
 
 ```bash
 curl -s -X POST "http://127.0.0.1:9070/v1/evaluate" \
@@ -261,7 +261,7 @@ curl -s -X POST "http://127.0.0.1:9070/v1/evaluate" \
 
 ### 经 APISIX 网关（OpenAI Chat Completions JSON）
 
-网关 `virbius-guard` 会从 `messages[].content` 抽取 user 文本再送 evaluate（见 [prompt-llm.md](openspec/prompt-llm.md) §4.1）。
+网关 `virbius-guard` 会从 `messages[].content` 抽取 user 文本再送 evaluate（见 [用户使用手册 §4.3](user-guide.md)）。
 
 ```bash
 curl -s -X POST "http://127.0.0.1:9080/v1/chat/completions" \

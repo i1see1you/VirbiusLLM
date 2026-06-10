@@ -1,6 +1,6 @@
 # OpenResty PoC（路径 A：编译期拍平）
 
-与 [docs/openspec/openresty-gateway.md](../../../docs/openspec/openresty-gateway.md) 对齐。由 `scripts/compile-openresty-poc.sh` 从 `examples/poc-default-bundle.yaml` 生成 nginx 配置；**名单与 context_bindings 真源**仍为 **virbius-control** 写入的 `data/gateway/`。
+与 [virbius-gateway/README.md](../../../virbius-gateway/README.md)、[用户使用手册 §4.7](../../../docs/user-guide.md) 对齐。由 `scripts/compile-openresty-poc.sh` 从 `examples/poc-default-bundle.yaml` 生成 nginx 配置；**名单与 context_bindings 真源**仍为 **virbius-control** 写入的 `data/gateway/`。
 
 ## 前置条件
 
@@ -63,7 +63,7 @@ curl -sS -X POST http://127.0.0.1:9080/v1/chat/completions \
   -d '{"model":"llama3","messages":[{"role":"user","content":"hello"}]}'
 ```
 
-`X-App-Id: medical-prod` + `?mode=clinical` → scene `medical-prod_clinical`（[scene-registry](../../../docs/openspec/scene-registry.md)）。
+`X-App-Id: medical-prod` + `?mode=clinical` → scene `medical-prod_clinical`（见 [用户使用手册 §4.7](../../../docs/user-guide.md)）。
 
 ## 与 APISIX PoC 对齐
 
