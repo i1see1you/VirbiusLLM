@@ -13,7 +13,7 @@ public class MetricsRollupJob {
         this.jdbc = jdbc;
     }
 
-    @Scheduled(fixedDelayString = "${rollout.metrics.rollup-ms:900000}")
+    @Scheduled(fixedDelayString = "${rollout.metrics.rollup-ms:60000}")
     public void rollup() {
         jdbc.update(
                 """

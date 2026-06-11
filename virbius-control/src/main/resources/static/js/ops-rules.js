@@ -983,7 +983,9 @@ end`;
       const edgeRt = isEdgeDslRuntime(runtime);
       const dlpRt = isDlpRuntime(runtime);
       document.getElementById('conditionAuthoringRow').style.display = (scriptRt || edgeRt || dlpRt) ? '' : 'none';
-      document.getElementById('simulateFixtureRow').style.display = (scriptRt || promptRt) ? '' : 'none';
+      document.getElementById('simulateFixtureRow').style.display = 'none';
+      document.getElementById('chkEnableSimulateWrap').style.display = (scriptRt || promptRt) ? 'flex' : 'none';
+      document.getElementById('chkEnableSimulate').checked = false;
       document.getElementById('scriptWizardRow').style.display = scriptRt && !isSimpleEditorMode() ? '' : 'none';
       document.getElementById('scriptSnippetRow').style.display = scriptRt && !isSimpleEditorMode() ? '' : 'none';
       document.getElementById('scriptValidateRow').style.display = scriptRt ? '' : 'none';
@@ -1216,6 +1218,11 @@ end`;
       applyRecipe(id);
     };
     document.getElementById('btnPreviewScript').onclick = () => previewCompiledScript().catch(e => log(e.message, 'err'));
+    document.getElementById('chkEnableSimulate').onchange = () => {
+      const checked = document.getElementById('chkEnableSimulate').checked;
+      document.getElementById('simulateFixtureRow').style.display = checked ? '' : 'none';
+      if (!checked) document.getElementById('simulatePanel').style.display = 'none';
+    };
     document.getElementById('btnSimulateRule').onclick = () => runRuleSimulate().catch(e => log(e.message, 'err'));
     document.getElementById('btnSimFixtureApplyPreset').onclick = () => {
       resetSimFixture(document.getElementById('fSimFixturePreset').value);

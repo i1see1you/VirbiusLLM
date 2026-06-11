@@ -506,30 +506,6 @@
         <pre id="scriptPreview" class="hint" style="display:none;margin-top:0.5rem;white-space:pre-wrap;background:#f8fafc;padding:0.5rem"></pre>
       </div>
       <div id="ruleSummaryCard" style="display:none"></div>
-      <div id="simulateFixtureRow" style="display:none;margin:0.5rem 0">
-        <p class="hint" style="margin:0 0 0.35rem">样例请求 fixture（JSON，仅用于模拟，不落库）：</p>
-        <div class="row" style="flex-wrap:wrap;align-items:center;gap:0.5rem;margin-bottom:0.35rem">
-          <label>预设
-            <select id="fSimFixturePreset">
-              <option value="clinical_chat">clinical_chat</option>
-              <option value="beta_chat">beta_chat</option>
-              <option value="l3_prior">L3 + prior_signals</option>
-              <option value="cum_over_limit">累计超限</option>
-              <option value="force_list_hit">强制名单命中</option>
-            </select>
-          </label>
-          <button type="button" class="secondary" id="btnSimFixtureApplyPreset">载入预设</button>
-          <button type="button" class="secondary" id="btnSimFixtureReset">重置为默认</button>
-          <button type="button" class="secondary" id="btnSimulateRule">模拟运行</button>
-        </div>
-        <textarea id="fSimFixture" spellcheck="false"></textarea>
-        <p id="simFixtureErr" class="hint script-validate-err" style="display:none;margin:0.35rem 0 0"></p>
-      </div>
-      <div id="simulatePanel" class="card" style="display:none;margin:0.5rem 0;padding:0.5rem;background:#fafafa">
-        <strong style="font-size:0.9rem">模拟 Trace</strong>
-        <ul id="simTraceList" class="sim-trace"></ul>
-        <p id="simSummary" class="hint" style="margin:0.35rem 0 0"></p>
-      </div>
       <p id="groovyHint" class="hint" style="display:none;margin:0 0 0.5rem">
         Groovy 脚本实现 <code>decide(ctx)</code>，返回 <code>true</code>（命中）/ <code>false</code>（未命中）。
         可用 <code>ctx.listMatch(name)</code>、<code>ctx.listMatch(name, value)</code>、<code>ctx.getCumulative(name)</code>、<code>ctx.var('logical')</code>。
@@ -596,6 +572,33 @@
         <button type="button" class="secondary" id="btnSnapshot">Engine 运行时快照</button>
         <button type="button" class="danger" id="btnDisableRule">停用规则</button>
         <button type="button" class="secondary" id="btnEnableRule" style="display:none">恢复为草稿</button>
+      </div>
+      <label id="chkEnableSimulateWrap" style="display:none;align-items:center;gap:0.35rem;margin:0.5rem 0;font-size:0.9rem;cursor:pointer">
+        <input type="checkbox" id="chkEnableSimulate" /> 模拟测试
+      </label>
+      <div id="simulateFixtureRow" style="display:none;margin:0.5rem 0">
+        <p class="hint" style="margin:0 0 0.35rem">样例请求 fixture（JSON，仅用于模拟，不落库）：</p>
+        <div class="row" style="flex-wrap:wrap;align-items:center;gap:0.5rem;margin-bottom:0.35rem">
+          <label>预设
+            <select id="fSimFixturePreset">
+              <option value="clinical_chat">clinical_chat</option>
+              <option value="beta_chat">beta_chat</option>
+              <option value="l3_prior">L3 + prior_signals</option>
+              <option value="cum_over_limit">累计超限</option>
+              <option value="force_list_hit">强制名单命中</option>
+            </select>
+          </label>
+          <button type="button" class="secondary" id="btnSimFixtureApplyPreset">载入预设</button>
+          <button type="button" class="secondary" id="btnSimFixtureReset">重置为默认</button>
+          <button type="button" class="secondary" id="btnSimulateRule">模拟运行</button>
+        </div>
+        <textarea id="fSimFixture" spellcheck="false"></textarea>
+        <p id="simFixtureErr" class="hint script-validate-err" style="display:none;margin:0.35rem 0 0"></p>
+      </div>
+      <div id="simulatePanel" class="card" style="display:none;margin:0.5rem 0;padding:0.5rem;background:#fafafa">
+        <strong style="font-size:0.9rem">模拟 Trace</strong>
+        <ul id="simTraceList" class="sim-trace"></ul>
+        <p id="simSummary" class="hint" style="margin:0.35rem 0 0"></p>
       </div>
     </div>
   </div>

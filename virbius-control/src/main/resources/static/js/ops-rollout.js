@@ -295,7 +295,19 @@
       try {
         const data = await admin('/gateway-artifacts/policy-version');
         const nodes = await admin('/gateway-artifacts/nodes');
-        el.textContent = JSON.stringify({ policy: data, nodes }, null, 2);
+        const okCount = data.nodes_ok ?? 0;
+        const totalCount = data.nodes_total ?? 0;
+        const rows = (nodes ?? []).map(n =>
+          `<tr><td>${esc(n.hostname)}</td><td>r${esc(n.artifact_revision)}</td><td>${ruleStatusTag(n.status)}</td><td style="font-size:0.75rem">${esc(n.loaded_at || '').replace('T',' ').slice(0,19)}</td></tr>`).join('');
+        el.innerHTML =
+          (rows ? `<table class="striped" style="font-size:0.8rem;width:auto">
+            <thead><tr><th>节点</th><th>版本</th><th>状态</th><th>加载时间</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>` : '') +
+          `<p style="margin:0.25rem 0 0;font-size:0.75rem;color:var(--text-muted)">
+            revision ${esc(String(data.artifact_revision))} · ${okCount}/${totalCount} nodes ok
+            ${data.published_at ? '· ' + esc(data.published_at).replace('T',' ').slice(0,19) : ''}
+          </p>`;
       } catch (e) {
         el.textContent = '不可用: ' + e.message;
       }

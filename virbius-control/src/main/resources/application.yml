@@ -90,7 +90,7 @@ audit:
 
 rollout:
   metrics:
-    rollup-ms: 900000
+    rollup-ms: 60000
   ladder:
     poll-ms: 900000
 
