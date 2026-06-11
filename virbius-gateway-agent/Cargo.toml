@@ -28,3 +28,4 @@ flexi_logger = { version = "0.29", features = ["compress"] }
 log = "0.4"
 sha2 = "0.10"
 hex = "0.4"
+rand = "0.8"

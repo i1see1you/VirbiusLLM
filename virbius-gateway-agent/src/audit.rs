@@ -1,4 +1,5 @@
 use chrono::Utc;
+use rand::Rng;
 use serde::Serialize;
 use std::{
     env,
@@ -36,6 +37,10 @@ pub struct AuditEvent {
     pub user_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sampled_allow: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sample_rate_allow: Option<f64>,
 }
 
 struct PublishJob {
@@ -54,6 +59,7 @@ struct AuditConfig {
     queue_max: usize,
     flush_batch: usize,
     flush_interval_ms: u64,
+    audit_sample_rate_allow: f64,
 }
 
 static CONFIG: OnceLock<RwLock<AuditConfig>> = OnceLock::new();
@@ -93,6 +99,10 @@ fn config() -> &'static RwLock<AuditConfig> {
         let queue_max = parse_usize("VIRBIUS_AUDIT_QUEUE_MAX", 2000);
         let flush_batch = parse_usize("VIRBIUS_AUDIT_FLUSH_BATCH", 64).max(1);
         let flush_interval_ms = parse_u64("VIRBIUS_AUDIT_FLUSH_INTERVAL_MS", 100);
+        let audit_sample_rate_allow = env::var("VIRBIUS_AUDIT_SAMPLE_RATE_ALLOW")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.1);
         let cfg = AuditConfig {
             redis_url: env::var("VIRBIUS_REDIS_URL").ok().filter(|s| !s.is_empty()),
             stream_key: env::var("VIRBIUS_AUDIT_STREAM_KEY")
@@ -104,6 +114,7 @@ fn config() -> &'static RwLock<AuditConfig> {
             queue_max,
             flush_batch,
             flush_interval_ms,
+            audit_sample_rate_allow,
         };
         if publish_async && cfg.redis_url.is_some() {
             start_publish_worker(&cfg);
@@ -179,16 +190,28 @@ pub fn tenant_id() -> String {
         .unwrap_or_else(|_| "default".into())
 }
 
-pub fn emit(event: AuditEvent) {
+pub fn emit(mut event: AuditEvent) {
     let cfg = match config().read() {
         Ok(c) => c.clone(),
         Err(_) => return,
+    };
+    let is_allow = event.effective_action.eq_ignore_ascii_case("allow");
+    let publish_to_redis = if is_allow {
+        let rate = cfg.audit_sample_rate_allow.clamp(0.0, 1.0);
+        if rate > 0.0 && rand::thread_rng().gen::<f64>() < rate {
+            event.sampled_allow = Some(true);
+            event.sample_rate_allow = Some(rate);
+            true
+        } else {
+            false
+        }
+    } else {
+        true
     };
     let payload = match serde_json::to_string(&event) {
         Ok(p) => p,
         Err(_) => return,
     };
-    let is_allow = event.effective_action.eq_ignore_ascii_case("allow");
     let log_path = if is_allow {
         &cfg.allow_jsonl_path
     } else {
@@ -200,7 +223,7 @@ pub fn emit(event: AuditEvent) {
     if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(log_path) {
         let _ = writeln!(f, "{}", payload);
     }
-    if !is_allow {
+    if publish_to_redis {
         publish_redis(&cfg, payload);
     }
 }
@@ -277,6 +300,8 @@ pub fn build_event(
         intercepted_at: Utc::now().to_rfc3339(),
         user_id: user_id.map(|s| s.to_string()),
         device_id: device_id.map(|s| s.to_string()),
+        sampled_allow: None,
+        sample_rate_allow: None,
     }
 }
 

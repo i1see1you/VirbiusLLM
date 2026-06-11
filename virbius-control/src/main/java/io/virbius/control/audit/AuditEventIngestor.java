@@ -23,10 +23,6 @@ public class AuditEventIngestor {
             if (traceId.isBlank() || tenantId.isBlank()) {
                 return IngestResult.rejected("missing trace_id or tenant_id");
             }
-            String effective = str(event.get("effective_action"));
-            if ("allow".equalsIgnoreCase(effective)) {
-                return IngestResult.skippedAllow();
-            }
             String eventId = traceId + ":" + str(event.get("rule_id")) + ":" + str(event.get("intercepted_at"));
             int updated = jdbc.update(
                     """
@@ -150,8 +146,5 @@ public class AuditEventIngestor {
             return new IngestResult("rejected", message);
         }
 
-        static IngestResult skippedAllow() {
-            return new IngestResult("skipped_allow", null);
-        }
     }
 }

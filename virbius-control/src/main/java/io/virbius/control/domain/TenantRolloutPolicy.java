@@ -14,14 +14,15 @@ public record TenantRolloutPolicy(
         int minBlockSamplesPerStep,
         boolean allowForce,
         double rollbackBlockSpikeRatio,
-        double edgeAuditSampleRateAllow) {
+        double edgeAuditSampleRateAllow,
+        int maxConcurrentRollouts) {
 
     public static TenantRolloutPolicy defaults(String tenantId) {
         return new TenantRolloutPolicy(
                 tenantId,
                 "assisted",
                 List.of(5, 20, 50, 100),
-                24,
+                1,
                 100,
                 0.05,
                 2.0,
@@ -29,6 +30,7 @@ public record TenantRolloutPolicy(
                 10,
                 true,
                 3.0,
-                0.1);
+                0.1,
+                10);
     }
 }

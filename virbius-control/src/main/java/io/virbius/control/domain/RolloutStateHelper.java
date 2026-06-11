@@ -13,6 +13,10 @@ public final class RolloutStateHelper {
         return rule.rolloutState();
     }
 
+    public static boolean inRollout(String rolloutState) {
+        return "dry_run".equals(rolloutState) || "canary".equals(rolloutState);
+    }
+
     public static boolean inExecutionPlane(RuleRevision rule) {
         return inExecutionPlane(stateOf(rule));
     }

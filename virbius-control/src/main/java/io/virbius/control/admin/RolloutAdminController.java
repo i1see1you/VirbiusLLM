@@ -107,7 +107,7 @@ public class RolloutAdminController {
                         tenantId,
                         body.autoMode() != null ? body.autoMode() : "assisted",
                         body.canaryLadder() != null ? body.canaryLadder() : TenantRolloutPolicy.defaults(tenantId).canaryLadder(),
-                        body.minDryRunHours() > 0 ? body.minDryRunHours() : 24,
+                        body.minDryRunHours() > 0 ? body.minDryRunHours() : 1,
                         body.minReviewCount() > 0 ? body.minReviewCount() : 100,
                         body.maxReviewRate() > 0 ? body.maxReviewRate() : 0.05,
                         body.maxReviewSpikeRatio() > 0 ? body.maxReviewSpikeRatio() : 2.0,
@@ -115,7 +115,8 @@ public class RolloutAdminController {
                         body.minBlockSamplesPerStep() > 0 ? body.minBlockSamplesPerStep() : 10,
                         body.allowForce(),
                         body.rollbackBlockSpikeRatio() > 0 ? body.rollbackBlockSpikeRatio() : 3.0,
-                        body.edgeAuditSampleRateAllow() > 0 ? body.edgeAuditSampleRateAllow() : 0.1);
+                        body.edgeAuditSampleRateAllow() > 0 ? body.edgeAuditSampleRateAllow() : 0.1,
+                        body.maxConcurrentRollouts() > 0 ? body.maxConcurrentRollouts() : 10);
         return ApiResult.ok(policyRepository.save(merged));
     }
 

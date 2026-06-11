@@ -291,6 +291,16 @@ public class JdbcRegistryRepository implements RegistryRepository {
     }
 
     @Override
+    public int countByRolloutStates(String tenantId, List<String> rolloutStates, String excludeRuleId) {
+        String states = String.join("','", rolloutStates);
+        String sql = "SELECT COUNT(*) FROM tb_rules_current"
+                + " WHERE tenant_id = ? AND rollout_state IN ('" + states + "')"
+                + " AND rule_id <> ?";
+        Integer count = jdbc.queryForObject(sql, Integer.class, tenantId, excludeRuleId);
+        return count != null ? count : 0;
+    }
+
+    @Override
     public void updateBundleMetadata(
             String tenantId, String bundleId, String version, Map<String, Object> metadata) {
         jdbc.update(

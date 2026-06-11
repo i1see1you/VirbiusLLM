@@ -448,9 +448,9 @@ INSERT INTO tb_tenant_rollout_policy (
     tenant_id, auto_mode, canary_ladder_json, min_dry_run_hours, min_review_count,
     max_review_rate, max_review_spike_ratio, min_hours_per_step,
     min_block_samples_per_step, allow_force, rollback_block_spike_ratio,
-    edge_audit_sample_rate_allow
+    edge_audit_sample_rate_allow, max_concurrent_rollouts
 )
-SELECT 'default', 'assisted', '[5,20,50,100]', 24, 100, 0.05, 2.0, 12, 10, 1, 3.0, 0.1
+SELECT 'default', 'assisted', '[5,20,50,100]', 1, 100, 0.05, 2.0, 12, 10, 1, 3.0, 0.1, 10
 FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_tenant_rollout_policy WHERE tenant_id = 'default');
 

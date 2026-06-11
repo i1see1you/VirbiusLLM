@@ -34,5 +34,7 @@ public interface RegistryRepository {
 
     List<RuleRevision> listRuleRevisions(String tenantId, String ruleId);
 
+    int countByRolloutStates(String tenantId, List<String> rolloutStates, String excludeRuleId);
+
     Optional<RuleRevision> getCurrentRule(String tenantId, String ruleId);
 }

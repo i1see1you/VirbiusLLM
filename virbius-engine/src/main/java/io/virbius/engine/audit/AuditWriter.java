@@ -13,6 +13,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,14 +29,17 @@ public class AuditWriter {
     private final Path allowAuditPath;
     private final AuditEventPublisher publisher;
     private final RuleCache ruleCache;
+    private final double auditSampleRateAllow;
 
     public AuditWriter(
             @Value("${virbius.audit.engine-path:/tmp/virbius/engine-audit.jsonl}") String path,
             @Value("${virbius.audit.engine-allow-path:/tmp/virbius/engine-audit-allow.jsonl}") String allowPath,
+            @Value("${virbius.audit.sample-rate-allow:0.1}") double auditSampleRateAllow,
             AuditEventPublisher publisher,
             RuleCache ruleCache) {
         this.auditPath = Path.of(path);
         this.allowAuditPath = Path.of(allowPath);
+        this.auditSampleRateAllow = auditSampleRateAllow;
         this.publisher = publisher;
         this.ruleCache = ruleCache;
     }
@@ -83,12 +87,19 @@ public class AuditWriter {
             if (req.deviceId() != null && !req.deviceId().isBlank()) {
                 event.put("device_id", req.deviceId());
             }
-            String json = mapper.writeValueAsString(event);
             boolean isAllow = "allow".equalsIgnoreCase(decision.effectiveAction());
+            if (isAllow && auditSampleRateAllow > 0) {
+                boolean sampled = ThreadLocalRandom.current().nextDouble() < auditSampleRateAllow;
+                if (sampled) {
+                    event.put("sampled_allow", true);
+                    event.put("sample_rate_allow", auditSampleRateAllow);
+                }
+            }
+            String json = mapper.writeValueAsString(event);
             Path logPath = isAllow ? allowAuditPath : auditPath;
             Files.createDirectories(logPath.getParent());
             Files.writeString(logPath, json + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-            if (!isAllow) {
+            if (!isAllow || event.containsKey("sampled_allow")) {
                 publisher.publish(Map.of("payload", json));
             }
         } catch (Exception e) {

@@ -135,7 +135,7 @@ CREATE TABLE IF NOT EXISTS tb_tenant_rollout_policy (
     tenant_id                   VARCHAR(64) PRIMARY KEY,
     auto_mode                   VARCHAR(16) NOT NULL DEFAULT 'assisted',
     canary_ladder_json          TEXT NOT NULL DEFAULT '[5,20,50,100]',
-    min_dry_run_hours           INTEGER NOT NULL DEFAULT 24,
+    min_dry_run_hours           INTEGER NOT NULL DEFAULT 1,
     min_review_count            INTEGER NOT NULL DEFAULT 100,
     max_review_rate             REAL NOT NULL DEFAULT 0.05,
     max_review_spike_ratio      REAL NOT NULL DEFAULT 2.0,
@@ -144,6 +144,7 @@ CREATE TABLE IF NOT EXISTS tb_tenant_rollout_policy (
     allow_force                 INTEGER NOT NULL DEFAULT 1,
     rollback_block_spike_ratio  REAL NOT NULL DEFAULT 3.0,
     edge_audit_sample_rate_allow REAL NOT NULL DEFAULT 0.1,
+    max_concurrent_rollouts     INTEGER NOT NULL DEFAULT 10,
     updated_at                  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

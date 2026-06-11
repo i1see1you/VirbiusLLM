@@ -26,7 +26,7 @@ public class JdbcTenantRolloutPolicyRepository implements TenantRolloutPolicyRep
                 SELECT tenant_id, auto_mode, canary_ladder_json, min_dry_run_hours, min_review_count,
                        max_review_rate, max_review_spike_ratio, min_hours_per_step,
                        min_block_samples_per_step, allow_force, rollback_block_spike_ratio,
-                       edge_audit_sample_rate_allow
+                       edge_audit_sample_rate_allow, max_concurrent_rollouts
                 FROM tb_tenant_rollout_policy WHERE tenant_id = ?
                 """,
                 (rs, i) ->
@@ -42,7 +42,8 @@ public class JdbcTenantRolloutPolicyRepository implements TenantRolloutPolicyRep
                                 rs.getInt("min_block_samples_per_step"),
                                 rs.getBoolean("allow_force"),
                                 rs.getDouble("rollback_block_spike_ratio"),
-                                rs.getDouble("edge_audit_sample_rate_allow")),
+                                rs.getDouble("edge_audit_sample_rate_allow"),
+                                rs.getInt("max_concurrent_rollouts")),
                 tenantId);
         return rows.isEmpty() ? TenantRolloutPolicy.defaults(tenantId) : rows.get(0);
     }
@@ -61,7 +62,7 @@ public class JdbcTenantRolloutPolicyRepository implements TenantRolloutPolicyRep
                   auto_mode = ?, canary_ladder_json = ?, min_dry_run_hours = ?, min_review_count = ?,
                   max_review_rate = ?, max_review_spike_ratio = ?, min_hours_per_step = ?,
                   min_block_samples_per_step = ?, allow_force = ?, rollback_block_spike_ratio = ?,
-                  edge_audit_sample_rate_allow = ?,
+                  edge_audit_sample_rate_allow = ?, max_concurrent_rollouts = ?,
                   updated_at = CURRENT_TIMESTAMP
                 WHERE tenant_id = ?
                 """,
@@ -76,6 +77,7 @@ public class JdbcTenantRolloutPolicyRepository implements TenantRolloutPolicyRep
                 policy.allowForce(),
                 policy.rollbackBlockSpikeRatio(),
                 policy.edgeAuditSampleRateAllow(),
+                policy.maxConcurrentRollouts(),
                 policy.tenantId());
         if (updated == 0) {
             jdbc.update(
@@ -84,8 +86,8 @@ public class JdbcTenantRolloutPolicyRepository implements TenantRolloutPolicyRep
                       tenant_id, auto_mode, canary_ladder_json, min_dry_run_hours, min_review_count,
                       max_review_rate, max_review_spike_ratio, min_hours_per_step,
                       min_block_samples_per_step, allow_force, rollback_block_spike_ratio,
-                      edge_audit_sample_rate_allow
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      edge_audit_sample_rate_allow, max_concurrent_rollouts
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     policy.tenantId(),
                     policy.autoMode(),
@@ -98,7 +100,8 @@ public class JdbcTenantRolloutPolicyRepository implements TenantRolloutPolicyRep
                     policy.minBlockSamplesPerStep(),
                     policy.allowForce(),
                     policy.rollbackBlockSpikeRatio(),
-                    policy.edgeAuditSampleRateAllow());
+                    policy.edgeAuditSampleRateAllow(),
+                    policy.maxConcurrentRollouts());
         }
         return getOrDefault(policy.tenantId());
     }

@@ -22,7 +22,7 @@ public class MetricsRollupJob {
                   cnt_review, cnt_block, cnt_captcha, cnt_allow, cnt_total_requests, cnt_degraded
                 )
                 SELECT tenant_id, rule_id,
-                       strftime('%%Y-%%m-%%d %%H:00:00', intercepted_at) AS hour_bucket,
+                       strftime('%Y-%m-%d %H:00:00', intercepted_at) AS hour_bucket,
                        rollout_state, canary_percent,
                        SUM(CASE WHEN effective_action = 'review' THEN 1 ELSE 0 END),
                        SUM(CASE WHEN effective_action = 'block' THEN 1 ELSE 0 END),

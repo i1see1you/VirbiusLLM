@@ -1,11 +1,15 @@
 package io.virbius.control.service;
 
+import io.virbius.control.common.exception.BusinessException;
 import io.virbius.control.domain.RuleRevision;
 import io.virbius.control.domain.RolloutStateHelper;
+import io.virbius.control.domain.TenantRolloutPolicy;
 import io.virbius.control.domain.dto.response.RuleResponseMapper;
 import io.virbius.control.domain.enums.RolloutState;
 import io.virbius.control.repository.RegistryRepository;
 import io.virbius.control.repository.RolloutEventRepository;
+import io.virbius.control.repository.TenantRolloutPolicyRepository;
+import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
 
@@ -16,16 +20,19 @@ public class RolloutService {
     private final PromotionGateService gateService;
     private final RolloutEventRepository eventRepository;
     private final RuleExecutionSync ruleExecutionSync;
+    private final TenantRolloutPolicyRepository policyRepository;
 
     public RolloutService(
             RegistryRepository store,
             PromotionGateService gateService,
             RolloutEventRepository eventRepository,
-            RuleExecutionSync ruleExecutionSync) {
+            RuleExecutionSync ruleExecutionSync,
+            TenantRolloutPolicyRepository policyRepository) {
         this.store = store;
         this.gateService = gateService;
         this.eventRepository = eventRepository;
         this.ruleExecutionSync = ruleExecutionSync;
+        this.policyRepository = policyRepository;
     }
 
     public Map<String, Object> applyRollout(
@@ -42,6 +49,17 @@ public class RolloutService {
         String to = RolloutStateHelper.normalize(rolloutState);
         RolloutStateHelper.validateTransition(from, to);
         RolloutStateHelper.validateCanaryPercent(to, canaryPercent);
+
+        if (shouldCheckConcurrentLimit(from, to)) {
+            TenantRolloutPolicy policy = policyRepository.getOrDefault(tenantId);
+            int active = store.countByRolloutStates(
+                    tenantId, List.of("dry_run", "canary"), ruleId);
+            if (active >= policy.maxConcurrentRollouts()) {
+                throw new BusinessException(429,
+                        "当前活跃上线数 " + active + " 已达上限 " + policy.maxConcurrentRollouts()
+                                + "，请先完成已有规则的上线再操作新规则。");
+            }
+        }
 
         if (RolloutState.CANARY.value().equals(to) && RolloutState.CANARY.value().equals(from)) {
             // percent step within canary
@@ -82,6 +100,11 @@ public class RolloutService {
         Map<String, Object> result = gateService.evaluate(tenantId, current, targetState, canaryPercent);
         gateService.recordEvaluateLog(tenantId, ruleId, result);
         return result;
+    }
+
+    private static boolean shouldCheckConcurrentLimit(String from, String to) {
+        return ("draft".equals(from) && "dry_run".equals(to))
+                || ("dry_run".equals(from) && "canary".equals(to));
     }
 
     private static boolean requiresGate(String from, String to) {
