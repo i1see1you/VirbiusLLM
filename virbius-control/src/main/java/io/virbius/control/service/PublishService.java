@@ -130,6 +130,10 @@ public class PublishService {
                 rule.put("intent_action", r.intentAction() != null ? r.intentAction() : "deny");
                 rule.put("enforce_mode", r.enforceMode());
                 rule.put("rollout_state", r.rolloutState() != null ? r.rolloutState() : "dry_run");
+                rule.put("is_async", r.isAsync());
+                if (r.asyncActionConfig() != null && !r.asyncActionConfig().isBlank()) {
+                    rule.put("async_action_config", r.asyncActionConfig());
+                }
                 if (r.exportedCanaryPercent() != null) {
                     rule.put("canary_percent", r.exportedCanaryPercent());
                 }

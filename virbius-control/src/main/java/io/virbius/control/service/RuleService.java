@@ -85,6 +85,11 @@ public class RuleService {
             }
         }
 
+        boolean isAsync = req.isAsync() != null && req.isAsync();
+        if (isAsync && !IntentAction.ALLOW.value().equals(intentAction)) {
+            throw new IllegalArgumentException("async rule must have intent_action=allow");
+        }
+
         RuleRevision draft = new RuleRevision(
                 tenantId,
                 req.ruleId(),
@@ -101,7 +106,9 @@ public class RuleService {
                 canaryPercent,
                 null,
                 null,
-                null);
+                null,
+                isAsync,
+                req.asyncActionConfig());
         if ("groovy".equals(req.runtime()) || "lua".equals(req.runtime())) {
             scriptRuleValidator.validateOrThrow(tenantId, req.runtime(), resolveBody(req));
         }
@@ -177,6 +184,11 @@ public class RuleService {
                 || !Objects.equals(existing.reasonCode(), req.reasonCode())
                 || existing.riskScore() != riskScore
                 || !Objects.equals(existing.intentAction(), intentAction)) {
+            return true;
+        }
+        boolean reqAsync = req.isAsync() != null && req.isAsync();
+        if (existing.isAsync() != reqAsync
+                || !Objects.equals(existing.asyncActionConfig(), req.asyncActionConfig())) {
             return true;
         }
         String oldBody = toJson(existing.body());

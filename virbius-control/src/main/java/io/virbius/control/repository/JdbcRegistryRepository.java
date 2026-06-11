@@ -104,9 +104,10 @@ public class JdbcRegistryRepository implements RegistryRepository {
                 """
                 INSERT INTO tb_rule_history (
                   tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
-                  reason_code, risk_score, intent_action, scope_json, body_json,
+                  reason_code, risk_score, intent_action, is_async, async_action_config,
+                  scope_json, body_json,
                   rollout_state, canary_percent, effective_from, modified_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 tenantId,
                 ruleId,
@@ -119,6 +120,8 @@ public class JdbcRegistryRepository implements RegistryRepository {
                 draft.intentAction() != null
                         ? draft.intentAction()
                         : io.virbius.policy.IntentAction.defaultForRisk(draft.riskScore()),
+                draft.isAsync(),
+                draft.asyncActionConfig(),
                 scopeJson,
                 bodyJson,
                 rollout,
@@ -224,7 +227,9 @@ public class JdbcRegistryRepository implements RegistryRepository {
                 canaryPercent,
                 null,
                 null,
-                null);
+                null,
+                current.isAsync(),
+                current.asyncActionConfig());
         return upsertRule(tenantId, draft);
     }
 
@@ -372,6 +377,8 @@ public class JdbcRegistryRepository implements RegistryRepository {
                 (Integer) rs.getObject("canary_percent"),
                 TimeHelper.parseInstant(rs.getString("modified_at")),
                 TimeHelper.parseInstant(rs.getString("effective_from")),
-                TimeHelper.parseInstant(rs.getString("effective_to")));
+                TimeHelper.parseInstant(rs.getString("effective_to")),
+                rs.getInt("is_async") != 0,
+                rs.getString("async_action_config"));
     }
 }

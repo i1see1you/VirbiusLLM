@@ -9,4 +9,5 @@ public record SignalDto(
         String reasonCode,
         String intentAction,
         String enforceMode,
-        Integer canaryPercent) {}
+        Integer canaryPercent,
+        String asyncActionConfig) {}

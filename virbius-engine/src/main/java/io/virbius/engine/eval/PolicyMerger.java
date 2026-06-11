@@ -65,7 +65,8 @@ public class PolicyMerger {
                 hit.reasonCode(),
                 hit.intentAction(),
                 hit.enforceMode(),
-                hit.canaryPercent());
+                hit.canaryPercent(),
+                null);
     }
 
     public record PolicyMergeResult(EngineDecisionDto decision, SignalDto primarySignal) {}

@@ -8,8 +8,10 @@ import io.virbius.policy.MatchContext;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -21,27 +23,70 @@ public class PromptRunner {
     private final PromptLlmProperties llmProps;
     private final PromptLlmClient llmClient;
     private final PromptAuditJsonParser auditParser;
+    private final ExecutorService asyncExecutor;
+    private final AsyncActionHandler asyncActionHandler;
 
     public PromptRunner(
             RuleCache cache,
             PromptLlmProperties llmProps,
             PromptLlmClient llmClient,
-            PromptAuditJsonParser auditParser) {
+            PromptAuditJsonParser auditParser,
+            @Qualifier("asyncRuleExecutor") ExecutorService asyncExecutor,
+            AsyncActionHandler asyncActionHandler) {
         this.cache = cache;
         this.llmProps = llmProps;
         this.llmClient = llmClient;
         this.auditParser = auditParser;
+        this.asyncExecutor = asyncExecutor;
+        this.asyncActionHandler = asyncActionHandler;
     }
 
     public List<SignalDto> run(String tenantId, MatchContext matchCtx) {
         if (matchCtx == null || matchCtx.content() == null || matchCtx.content().isBlank()) {
             return List.of();
         }
-        List<RuleEntry> promptRules = promptRulesBound(tenantId, matchCtx);
-        if (promptRules.isEmpty()) {
+        List<RuleEntry> allPromptRules = promptRulesBound(tenantId, matchCtx);
+        if (allPromptRules.isEmpty()) {
             return List.of();
         }
-        return runMatrixLlm(matchCtx.content(), promptRules);
+        List<RuleEntry> syncRules = new ArrayList<>();
+        List<RuleEntry> asyncRules = new ArrayList<>();
+        for (RuleEntry rule : allPromptRules) {
+            if (rule.isAsync()) {
+                asyncRules.add(rule);
+            } else {
+                syncRules.add(rule);
+            }
+        }
+        if (!asyncRules.isEmpty()) {
+            asyncExecutor.submit(() -> runPromptAsync(matchCtx, asyncRules));
+        }
+        if (!syncRules.isEmpty()) {
+            return runMatrixLlm(matchCtx.content(), syncRules);
+        }
+        return List.of();
+    }
+
+    private void runPromptAsync(MatchContext matchCtx, List<RuleEntry> promptRules) {
+        try {
+            List<SignalDto> signals = runMatrixLlm(matchCtx.content(), promptRules);
+            for (SignalDto signal : signals) {
+                RuleEntry matched = null;
+                for (RuleEntry r : promptRules) {
+                    if (r.ruleId().equals(signal.ruleId())) {
+                        matched = r;
+                        break;
+                    }
+                }
+                if (matched != null) {
+                    asyncActionHandler.executeIfConfigured(matched, signal, matchCtx);
+                    log.info("async prompt rule hit tenant={} rule={} revision={}",
+                            matched.tenantId(), matched.ruleId(), matched.ruleRevision());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("async prompt rule eval failed: {}", e.getMessage());
+        }
     }
 
     private List<SignalDto> runMatrixLlm(String content, List<RuleEntry> promptRules) {
@@ -117,6 +162,7 @@ public class PromptRunner {
                 reason,
                 rule.intentAction(),
                 rule.enforceMode(),
-                rule.canaryPercent() > 0 ? rule.canaryPercent() : null);
+                rule.canaryPercent() > 0 ? rule.canaryPercent() : null,
+                null);
     }
 }

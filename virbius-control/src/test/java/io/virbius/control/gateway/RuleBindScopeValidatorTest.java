@@ -27,6 +27,8 @@ class RuleBindScopeValidatorTest {
                 Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/chat/completions"))),
                 Map.of(),
                 null,
+                null,
+                null,
                 null);
         assertDoesNotThrow(() -> RuleBindScopeValidator.validateRouteUris(req, METADATA));
     }
@@ -44,6 +46,8 @@ class RuleBindScopeValidatorTest {
                 Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/embeddings"))),
                 Map.of(),
                 null,
+                null,
+                null,
                 null);
         assertThrows(IllegalArgumentException.class, () -> RuleBindScopeValidator.validateRouteUris(req, METADATA));
     }
@@ -60,6 +64,8 @@ class RuleBindScopeValidatorTest {
                 "deny",
                 Map.of("bind_scope", "route", "bind_ref", Map.of("scenes", List.of("beta_chat"))),
                 Map.of(),
+                null,
+                null,
                 null,
                 null);
         assertDoesNotThrow(() -> RuleBindScopeValidator.validateRouteUris(req, Map.of()));
@@ -86,6 +92,8 @@ class RuleBindScopeValidatorTest {
                 Map.of("bind_scope", "service", "bind_ref", Map.of("app_ids", List.of("unknown-app"))),
                 Map.of("list_type", "deny", "keywords", List.of("x")),
                 null,
+                null,
+                null,
                 null);
         assertThrows(
                 IllegalArgumentException.class,
@@ -104,6 +112,8 @@ class RuleBindScopeValidatorTest {
                 "deny",
                 Map.of("bind_scope", "route", "bind_ref", Map.of("scenes", List.of("beta_chat"))),
                 Map.of("list_type", "deny", "keywords", List.of("x")),
+                null,
+                null,
                 null,
                 null);
         assertThrows(

@@ -15,7 +15,9 @@ public record RuleEntry(
         @JsonProperty("canary_percent") int canaryPercent,
         @JsonProperty("rollout_state") String rolloutState,
         String body,
-        Object scope) {
+        Object scope,
+        @JsonProperty("is_async") boolean isAsync,
+        @JsonProperty("async_action_config") String asyncActionConfig) {
 
     public String rolloutStateOrDefault() {
         if (rolloutState != null && !rolloutState.isBlank()) {

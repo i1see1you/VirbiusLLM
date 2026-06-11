@@ -15,14 +15,17 @@ import io.virbius.policy.GatewayListRedisMatcher;
 import io.virbius.policy.IntentAction;
 import io.virbius.policy.MatchContext;
 import io.virbius.policy.ValueSource;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import redis.clients.jedis.JedisPool;
 
@@ -37,38 +40,33 @@ public class ScriptRuleRunner {
     private final GroovyL3Executor executor;
     private final Optional<CounterStore> counterStore;
     private final Optional<GatewayListRedisMatcher> listRedisMatcher;
+    private final ExecutorService asyncExecutor;
+    private final ExecutorService dryRunExecutor;
+    private final AsyncActionHandler asyncActionHandler;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public ScriptRuleRunner(
             RuleCache cache,
             PolicyDataCache policyData,
             Optional<JedisPool> jedisPool,
-            Optional<GatewayListRedisMatcher> listRedisMatcher) {
+            Optional<GatewayListRedisMatcher> listRedisMatcher,
+            @Qualifier("asyncRuleExecutor") ExecutorService asyncExecutor,
+            @Qualifier("dryRunRuleExecutor") ExecutorService dryRunExecutor,
+            AsyncActionHandler asyncActionHandler) {
         this.cache = cache;
         this.policyData = policyData;
         this.executor = new GroovyL3Executor();
         this.counterStore = jedisPool.map(CounterStore::new);
         this.listRedisMatcher = listRedisMatcher;
+        this.asyncExecutor = asyncExecutor;
+        this.dryRunExecutor = dryRunExecutor;
+        this.asyncActionHandler = asyncActionHandler;
     }
 
     public List<SignalDto> run(String tenantId, MatchContext matchCtx, List<SignalDto> priorSignals) {
-        List<SignalDto> signals = new ArrayList<>();
+        List<SignalDto> syncSignals = new ArrayList<>();
         PolicyDataCache.TenantPolicyData data = policyData.get(tenantId);
-        ScriptEnvironment.CumulativeReader reader = counterStore
-                .map(store -> (ScriptEnvironment.CumulativeReader) (t, name, value, wMin, kind, zone) ->
-                        store.read(t, name, value, wMin, kind, zone))
-                .orElse(null);
-        ScriptEnvironment.RedisListReader redisReader = listRedisMatcher
-                .map(m -> (ScriptEnvironment.RedisListReader) m::matches)
-                .orElse(null);
-        ScriptEnvironment scriptEnv = new ScriptEnvironment(
-                tenantId,
-                matchCtx,
-                data.memoryLists(),
-                data.redisLists(),
-                data.cumulatives(),
-                reader,
-                redisReader);
+        ScriptEnvironment scriptEnv = buildScriptEnv(tenantId, matchCtx, data);
 
         for (RuleEntry rule : cache.rulesForTenant(tenantId)) {
             if (!"groovy".equals(rule.runtime()) || !"cloud".equals(rule.layer())) {
@@ -80,17 +78,74 @@ public class ScriptRuleRunner {
             if (!RuleScopeSupport.matchesBind(rule, matchCtx)) {
                 continue;
             }
-            try {
-                PolicyContext ctx = buildContext(tenantId, matchCtx, rule, priorSignals, signals, scriptEnv);
-                boolean hit = executor.executeDecide(bodyText(rule.body()), ctx);
-                if (hit) {
-                    signals.add(toSignal(rule));
+            String rolloutState = rule.rolloutStateOrDefault();
+            if (rule.isAsync()) {
+                asyncExecutor.submit(() ->
+                        evaluateAsync(rule, tenantId, matchCtx, priorSignals, scriptEnv));
+            } else if ("dry_run".equalsIgnoreCase(rolloutState)) {
+                dryRunExecutor.submit(() ->
+                        evaluateDryRun(rule, tenantId, matchCtx, priorSignals, scriptEnv));
+            } else {
+                try {
+                    PolicyContext ctx = buildContext(tenantId, matchCtx, rule, priorSignals, syncSignals, scriptEnv);
+                    boolean hit = executor.executeDecide(bodyText(rule.body()), ctx);
+                    if (hit) {
+                        syncSignals.add(toSignal(rule));
+                    }
+                } catch (Exception e) {
+                    log.warn("groovy script failed tenant={} rule={}: {}", tenantId, rule.ruleId(), e.getMessage());
                 }
-            } catch (Exception e) {
-                log.warn("groovy script failed tenant={} rule={}: {}", tenantId, rule.ruleId(), e.getMessage());
             }
         }
-        return signals;
+        return syncSignals;
+    }
+
+    private void evaluateAsync(RuleEntry rule, String tenantId, MatchContext matchCtx,
+                                List<SignalDto> priorSignals, ScriptEnvironment scriptEnv) {
+        try {
+            PolicyContext ctx = buildContext(tenantId, matchCtx, rule, priorSignals, List.of(), scriptEnv);
+            boolean hit = executor.executeDecide(bodyText(rule.body()), ctx);
+            if (hit) {
+                SignalDto signal = toSignal(rule);
+                asyncActionHandler.executeIfConfigured(rule, signal, matchCtx);
+                log.info("async rule hit tenant={} rule={} revision={}", tenantId, rule.ruleId(), rule.ruleRevision());
+            }
+        } catch (Exception e) {
+            log.warn("async rule eval failed tenant={} rule={}: {}", tenantId, rule.ruleId(), e.getMessage());
+        }
+    }
+
+    private void evaluateDryRun(RuleEntry rule, String tenantId, MatchContext matchCtx,
+                                 List<SignalDto> priorSignals, ScriptEnvironment scriptEnv) {
+        try {
+            PolicyContext ctx = buildContext(tenantId, matchCtx, rule, priorSignals, List.of(), scriptEnv);
+            boolean hit = executor.executeDecide(bodyText(rule.body()), ctx);
+            if (hit) {
+                log.info("dry_run rule hit tenant={} rule={} revision={} riskScore={}",
+                        tenantId, rule.ruleId(), rule.ruleRevision(), rule.riskScore());
+            }
+        } catch (Exception e) {
+            log.warn("dry_run rule eval failed tenant={} rule={}: {}", tenantId, rule.ruleId(), e.getMessage());
+        }
+    }
+
+    private ScriptEnvironment buildScriptEnv(String tenantId, MatchContext matchCtx,
+                                              PolicyDataCache.TenantPolicyData data) {
+        ScriptEnvironment.CumulativeReader reader = counterStore
+                .map(store -> (ScriptEnvironment.CumulativeReader) (t, name, value, wMin, kind, zone) ->
+                        store.read(t, name, value, wMin, kind, zone))
+                .orElse(null);
+        ScriptEnvironment.RedisListReader redisReader = listRedisMatcher
+                .map(m -> (ScriptEnvironment.RedisListReader) m::matches)
+                .orElse(null);
+        return new ScriptEnvironment(
+                tenantId,
+                matchCtx,
+                data.memoryLists(),
+                data.redisLists(),
+                data.cumulatives(),
+                reader,
+                redisReader);
     }
 
     private PolicyContext buildContext(
@@ -161,7 +216,8 @@ public class ScriptRuleRunner {
                 rule.reasonCode(),
                 rule.intentAction(),
                 rule.enforceMode(),
-                rule.canaryPercent() > 0 ? rule.canaryPercent() : null);
+                rule.canaryPercent() > 0 ? rule.canaryPercent() : null,
+                rule.asyncActionConfig());
     }
 
     private static String bodyText(Object body) {

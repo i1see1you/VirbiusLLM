@@ -19,6 +19,10 @@ public final class RuleResponseMapper {
         m.put("enforce_mode", RolloutEnforceExport.enforceMode(r.rolloutState()));
         m.put("risk_score", r.riskScore());
         m.put("intent_action", r.intentAction() != null ? r.intentAction() : "deny");
+        m.put("is_async", r.isAsync());
+        if (r.asyncActionConfig() != null && !r.asyncActionConfig().isBlank()) {
+            m.put("async_action_config", r.asyncActionConfig());
+        }
         if (r.canaryPercent() != null) {
             m.put("canary_percent", r.canaryPercent());
         }
@@ -43,6 +47,10 @@ public final class RuleResponseMapper {
         m.put("scope", r.scope() != null ? r.scope() : Map.of());
         m.put("body", r.body());
         m.put("bundle_id", r.bundleId());
+        m.put("is_async", r.isAsync());
+        if (r.asyncActionConfig() != null && !r.asyncActionConfig().isBlank()) {
+            m.put("async_action_config", r.asyncActionConfig());
+        }
         if (r.canaryPercent() != null) {
             m.put("canary_percent", r.canaryPercent());
         }

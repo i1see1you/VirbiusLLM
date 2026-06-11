@@ -90,6 +90,8 @@ class ArtifactServiceTest {
                         null,
                         Instant.now(),
                         Instant.now(),
+                        null,
+                        false,
                         null);
         RuleRevision luaRule = scriptRule(
                 "rl_deny_keywords",
@@ -319,6 +321,8 @@ class ArtifactServiceTest {
                 null,
                 Instant.now(),
                 Instant.now(),
+                null,
+                false,
                 null);
     }
 
@@ -340,6 +344,8 @@ class ArtifactServiceTest {
                 null,
                 Instant.now(),
                 Instant.now(),
+                null,
+                false,
                 null);
     }
 
@@ -361,6 +367,8 @@ class ArtifactServiceTest {
                 null,
                 Instant.now(),
                 Instant.now(),
+                null,
+                false,
                 null);
     }
 }

@@ -19,7 +19,9 @@ public record RuleRevision(
         Integer canaryPercent,
         Instant modifiedAt,
         Instant effectiveFrom,
-        Instant effectiveTo) {
+        Instant effectiveTo,
+        boolean isAsync,
+        String asyncActionConfig) {
 
     public String enforceMode() {
         return RolloutEnforceExport.enforceMode(rolloutState);

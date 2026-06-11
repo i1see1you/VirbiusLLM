@@ -28,6 +28,8 @@ class DlpRuleValidatorTest {
                 Map.of(),
                 Map.of("entity_type", "phone_cn"),
                 "simple",
+                null,
+                null,
                 null);
         assertThrows(IllegalArgumentException.class, () -> DlpRuleValidator.validateUpsert(req));
     }
@@ -56,6 +58,8 @@ class DlpRuleValidatorTest {
                 Map.of(),
                 body,
                 "simple",
+                null,
+                null,
                 null);
     }
 }

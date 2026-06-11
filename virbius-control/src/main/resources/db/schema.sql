@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS tb_rule_history (
     body_json       TEXT,
     body_hash       VARCHAR(64),
     intent_action   VARCHAR(32) NOT NULL DEFAULT 'deny',
+    is_async        INTEGER NOT NULL DEFAULT 0,
+    async_action_config TEXT,
     rollout_state   VARCHAR(16) NOT NULL DEFAULT 'draft',
     canary_percent  INTEGER,
     effective_from  TIMESTAMP NOT NULL,

@@ -41,26 +41,28 @@ public class RuleCachePersistence {
                     loadedAt);
             jdbc.update("DELETE FROM tb_rule_cache_entry WHERE tenant_id = ?", tenantId);
             for (RuleEntry rule : rules) {
-                jdbc.update(
-                        """
-                        INSERT INTO tb_rule_cache_entry (
-                          tenant_id, rule_id, rule_revision, layer, runtime,
-                          reason_code, risk_score, intent_action, enforce_mode, rollout_state,
-                          canary_percent, body
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        rule.tenantId(),
-                        rule.ruleId(),
-                        rule.ruleRevision(),
-                        rule.layer(),
-                        rule.runtime(),
-                        rule.reasonCode(),
-                        rule.riskScore(),
-                        rule.intentAction() != null ? rule.intentAction() : "deny",
-                        rule.enforceMode(),
-                        rule.rolloutStateOrDefault(),
-                        rule.canaryPercent(),
-                        rule.body());
+                    jdbc.update(
+                            """
+                            INSERT INTO tb_rule_cache_entry (
+                              tenant_id, rule_id, rule_revision, layer, runtime,
+                              reason_code, risk_score, intent_action, enforce_mode, rollout_state,
+                              canary_percent, is_async, async_action_config, body
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            rule.tenantId(),
+                            rule.ruleId(),
+                            rule.ruleRevision(),
+                            rule.layer(),
+                            rule.runtime(),
+                            rule.reasonCode(),
+                            rule.riskScore(),
+                            rule.intentAction() != null ? rule.intentAction() : "deny",
+                            rule.enforceMode(),
+                            rule.rolloutStateOrDefault(),
+                            rule.canaryPercent(),
+                            rule.isAsync(),
+                            rule.asyncActionConfig(),
+                            rule.body());
             }
         }
     }

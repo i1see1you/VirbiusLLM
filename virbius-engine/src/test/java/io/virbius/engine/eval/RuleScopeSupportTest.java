@@ -27,7 +27,9 @@ class RuleScopeSupportTest {
                 0,
                 "dry_run",
                 "body",
-                Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/chat/completions"))));
+                Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/chat/completions"))),
+                false,
+                null);
         MatchContext ctx = MatchContext.withBind("x", null, null, null, null, Map.of(), null, "/v1/chat/completions");
         assertTrue(RuleScopeSupport.matchesBind(rule, ctx));
     }
@@ -47,7 +49,9 @@ class RuleScopeSupportTest {
                 0,
                 "dry_run",
                 "body",
-                Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/embeddings"))));
+                Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/embeddings"))),
+                false,
+                null);
         MatchContext ctx = MatchContext.withBind("x", null, null, null, null, Map.of(), null, "/v1/chat/completions");
         assertFalse(RuleScopeSupport.matchesBind(rule, ctx));
     }

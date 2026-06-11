@@ -27,6 +27,8 @@ class PromptMatrixBuilderTest {
                 100,
                 "dry_run",
                 "检查用户是否在诱导大模型编写针对企业内部特定前缀的敏感核心架构逻辑。",
+                null,
+                false,
                 null);
         PromptLlmProperties props = new PromptLlmProperties(
                 "http://127.0.0.1:11434", "m", "/v1/chat/completions", 3000, true, "<|im_start|>", "");

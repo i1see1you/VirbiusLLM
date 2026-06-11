@@ -14,4 +14,6 @@ public record UpsertRuleRequest(
         Map<String, Object> scope,
         Object body,
         String editorMode,
-        Map<String, Object> condition) {}
+        Map<String, Object> condition,
+        Boolean isAsync,
+        String asyncActionConfig) {}

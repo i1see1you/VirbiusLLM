@@ -85,6 +85,8 @@ class PromptRunnerBindTest {
                 0,
                 "dry_run",
                 "body",
-                scope);
+                scope,
+                false,
+                null);
     }
 }

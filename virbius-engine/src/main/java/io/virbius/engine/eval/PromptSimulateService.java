@@ -65,6 +65,8 @@ public class PromptSimulateService {
                 0,
                 "dry_run",
                 body != null ? body : "",
+                null,
+                false,
                 null);
     }
 
