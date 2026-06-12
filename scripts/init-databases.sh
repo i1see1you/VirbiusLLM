@@ -27,9 +27,5 @@ apply "$DATA_DIR/virbius-control.db" \
   "$ROOT/virbius-control/src/main/resources/db/schema.sql" \
   "$ROOT/virbius-control/src/main/resources/db/seed.sql"
 
-apply "$DATA_DIR/virbius-engine.db" \
-  "$ROOT/virbius-engine/src/main/resources/db/schema.sql" \
-  "$ROOT/virbius-engine/src/main/resources/db/seed.sql"
-
 echo "Databases initialized under $DATA_DIR"
 ls -la "$DATA_DIR"/*.db

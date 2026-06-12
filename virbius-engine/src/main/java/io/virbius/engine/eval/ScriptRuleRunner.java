@@ -17,7 +17,6 @@ import io.virbius.policy.MatchContext;
 import io.virbius.policy.ValueSource;
 import jakarta.annotation.PostConstruct;
 import java.time.Instant;
-import org.springframework.context.annotation.DependsOn;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -33,7 +32,6 @@ import redis.clients.jedis.JedisPool;
 
 /** Cloud {@code groovy} script rules: {@code decide(ctx)} → boolean; signal from rule row on hit. */
 @Component
-@DependsOn("ruleCacheSeeder")
 public class ScriptRuleRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ScriptRuleRunner.class);

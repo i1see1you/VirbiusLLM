@@ -4,7 +4,6 @@ import io.virbius.engine.cache.PolicyDataCache;
 import io.virbius.engine.cache.RuleCache;
 import io.virbius.engine.cache.RuleEntry;
 import io.virbius.engine.eval.ScriptRuleRunner;
-import io.virbius.engine.persist.PolicyDataPersistence;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -21,13 +20,10 @@ public class EngineAdminController {
 
     private final RuleCache cache;
     private final PolicyDataCache policyData;
-    private final PolicyDataPersistence policyDataPersistence;
 
-    public EngineAdminController(RuleCache cache, PolicyDataCache policyData,
-                                 PolicyDataPersistence policyDataPersistence) {
+    public EngineAdminController(RuleCache cache, PolicyDataCache policyData) {
         this.cache = cache;
         this.policyData = policyData;
-        this.policyDataPersistence = policyDataPersistence;
     }
 
     @GetMapping("/health")
@@ -63,7 +59,6 @@ public class EngineAdminController {
                     body.redisListIndex() != null ? body.redisListIndex() : List.of(),
                     body.cumulatives() != null ? body.cumulatives() : List.of());
             policyData.replace(tenant_id, data);
-            policyDataPersistence.save(tenant_id, data);
         }
         return Map.of(
                 "ok", true,

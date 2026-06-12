@@ -6,20 +6,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
-import io.virbius.engine.persist.RuleCachePersistence;
 import org.springframework.stereotype.Component;
 
 @Component
 public class RuleCache {
 
-    private final RuleCachePersistence persistence;
     private final Map<String, RuleEntry> rules = new ConcurrentHashMap<>();
     private final AtomicLong generation = new AtomicLong(0);
     private volatile String policyVersion = "0.0.0";
     private volatile Instant loadedAt = Instant.now();
 
-    public RuleCache(RuleCachePersistence persistence) {
-        this.persistence = persistence;
+    public RuleCache() {
     }
 
     public void replaceAll(String policyVersion, List<RuleEntry> entries) {
@@ -30,7 +27,6 @@ public class RuleCache {
         this.policyVersion = policyVersion;
         this.loadedAt = Instant.now();
         generation.incrementAndGet();
-        persistence.save(policyVersion, entries);
     }
 
     public List<RuleEntry> rulesForTenant(String tenantId) {
