@@ -1,18 +1,36 @@
 package io.virbius.engine.cache;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.virbius.engine.persist.PolicyDataPersistence;
 import io.virbius.groovy.l3.ScriptEnvironment;
 import io.virbius.policy.ValueSource;
+import jakarta.annotation.PostConstruct;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-/** Tenant list / cumulative definitions for script rules (loaded on cache reload). */
 @Component
 public class PolicyDataCache {
 
+    private static final Logger log = LoggerFactory.getLogger(PolicyDataCache.class);
+
     private final Map<String, TenantPolicyData> byTenant = new HashMap<>();
+    private final PolicyDataPersistence persistence;
+
+    public PolicyDataCache(PolicyDataPersistence persistence) {
+        this.persistence = persistence;
+    }
+
+    @PostConstruct
+    public void loadFromPersistence() {
+        persistence.load("default").ifPresent(data -> {
+            byTenant.put("default", data);
+            log.info("recovered policy data (lists/cumulatives) for tenant default");
+        });
+    }
 
     public void replace(String tenantId, TenantPolicyData data) {
         if (tenantId == null || tenantId.isBlank()) {

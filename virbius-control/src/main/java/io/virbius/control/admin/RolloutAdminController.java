@@ -176,6 +176,24 @@ public class RolloutAdminController {
         return ApiResult.ok(dashboardService.gateLogs(tenantId, ruleId, limit));
     }
 
+    @PostMapping("/rules/{ruleId}/rollout/deploy-pending")
+    public ApiResult<Map<String, Object>> deployPending(
+            @PathVariable("tenantId") String tenantId,
+            @PathVariable("ruleId") String ruleId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        String initialState = body != null ? (String) body.get("initial_state") : null;
+        Integer canaryPct = body != null ? (Integer) body.get("canary_percent") : null;
+        return ApiResult.ok(rolloutService.deployPending(tenantId, ruleId, initialState, canaryPct));
+    }
+
+    @GetMapping("/rules/{ruleId}/rollout/compare")
+    public ApiResult<Map<String, Object>> compare(
+            @PathVariable("tenantId") String tenantId,
+            @PathVariable("ruleId") String ruleId,
+            @RequestParam(value = "hours", defaultValue = "24") int hours) {
+        return ApiResult.ok(dashboardService.compare(tenantId, ruleId, hours));
+    }
+
     @PostMapping("/rules/{ruleId}/rollout/ladder/start")
     public ApiResult<Map<String, Object>> ladderStart(
             @PathVariable("tenantId") String tenantId, @PathVariable("ruleId") String ruleId) {

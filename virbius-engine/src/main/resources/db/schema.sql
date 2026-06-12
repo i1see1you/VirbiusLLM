@@ -25,3 +25,9 @@ CREATE TABLE IF NOT EXISTS tb_rule_cache_entry (
     PRIMARY KEY (tenant_id, rule_id),
     CHECK (risk_score >= 0 AND risk_score <= 100)
 );
+
+CREATE TABLE IF NOT EXISTS tb_policy_data_cache (
+    tenant_id       VARCHAR(64) PRIMARY KEY,
+    policy_data_json TEXT NOT NULL,
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

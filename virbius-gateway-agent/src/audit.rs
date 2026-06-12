@@ -261,6 +261,7 @@ fn publish_redis(cfg: &AuditConfig, payload: String) {
 pub fn build_event(
     trace_id: &str,
     scene: &str,
+    layer: &str,
     rule_id: Option<&str>,
     rule_revision: Option<i32>,
     reason_code: Option<&str>,
@@ -287,7 +288,7 @@ pub fn build_event(
         trace_id_source: "client".into(),
         tenant_id: tenant_id(),
         scene: scene.to_string(),
-        layer: "gateway".into(),
+        layer: layer.to_string(),
         rule_id: rule_id.unwrap_or("").to_string(),
         rule_revision: rule_revision.unwrap_or(0),
         reason_code: reason_code.unwrap_or("").to_string(),
@@ -318,6 +319,7 @@ pub fn emit_from_gateway(
     let event = build_event(
         trace_id,
         scene,
+        "gateway",
         primary.map(|p| p.rule_id.as_str()),
         primary.map(|p| p.rule_revision),
         primary.map(|p| p.reason_code.as_str()),
@@ -344,6 +346,7 @@ pub fn emit_allow(
     emit(build_event(
         trace_id,
         scene,
+        "engine",
         None,
         None,
         None,

@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS tb_rules_current (
     tenant_id         VARCHAR(64) NOT NULL,
     rule_id           VARCHAR(128) NOT NULL,
     current_revision  INTEGER NOT NULL,
+    pending_revision  INTEGER,
     bundle_id         VARCHAR(128) NOT NULL,
     layer             VARCHAR(32) NOT NULL,
     runtime           VARCHAR(32) NOT NULL,

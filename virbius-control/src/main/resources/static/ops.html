@@ -98,6 +98,12 @@
     .kpi-card .label { font-size: 0.72rem; color: #64748b; margin-bottom: 0.15rem; }
     .kpi-card .value { font-size: 1.15rem; font-weight: 600; }
     .rollout-section { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.5rem; }
+    .compare-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.65rem 0.75rem; }
+    .compare-card .card-title { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.35rem; }
+    .compare-card .stat-row { display: flex; justify-content: space-between; font-size: 0.78rem; padding: 0.15rem 0; }
+    .compare-card .stat-row .stat-label { color: #64748b; }
+    .compare-card .stat-row .stat-value { font-weight: 500; }
     .rollout-section h3 { font-size: 0.92rem; margin: 0 0 0.5rem; color: #334155; }
     .bar-cell { display: flex; align-items: flex-end; gap: 1px; height: 2rem; min-width: 3rem; }
     .bar-seg { width: 4px; border-radius: 1px; }
@@ -631,6 +637,12 @@
       </table>
     </div>
 
+    <div class="rollout-section" id="roCompareSection" style="display:none">
+      <h3>版本对比 (24h)</h3>
+      <p class="hint">active = 线上当前版本，pending = 待部署的草稿版本。</p>
+      <div id="roCompareCards" class="compare-grid"></div>
+    </div>
+
     <div class="rollout-section">
       <h3>放量变更时间线</h3>
       <table id="roTimelineTable">
@@ -658,6 +670,7 @@
         <button type="button" class="secondary" id="roRecover">恢复草稿</button>
         <button type="button" class="secondary" id="roLadderStart">启动阶梯 (auto)</button>
         <button type="button" class="secondary" id="roLadderPause">暂停阶梯</button>
+        <button type="button" class="primary" id="roDeployPending" style="display:none">部署新版本</button>
       </div>
     </div>
 

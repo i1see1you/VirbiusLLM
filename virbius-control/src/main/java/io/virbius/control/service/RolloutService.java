@@ -94,6 +94,23 @@ public class RolloutService {
                 tenantId, ruleId, RolloutState.DRAFT.value(), null, false, null, "recover", "admin");
     }
 
+    public Map<String, Object> deployPending(
+            String tenantId, String ruleId, String initialState, Integer canaryPercent) {
+        RuleRevision pending = store.getPendingRule(tenantId, ruleId)
+                .orElseThrow(() -> new IllegalArgumentException("no pending revision for rule " + ruleId));
+        String state = initialState != null ? RolloutStateHelper.normalize(initialState) : RolloutState.DRY_RUN.value();
+        if (!"dry_run".equals(state) && !"canary".equals(state)) {
+            throw new IllegalArgumentException("deploy pending initial state must be dry_run or canary");
+        }
+        RolloutStateHelper.validateCanaryPercent(state, canaryPercent);
+        RuleRevision before = store.getCurrentRule(tenantId, ruleId).orElseThrow();
+        RuleRevision activated = store.activatePending(tenantId, ruleId, state, canaryPercent);
+        eventRepository.recordEvent(
+                tenantId, ruleId, activated.ruleRevision(), state, canaryPercent, "deploy_pending", "admin");
+        ruleExecutionSync.afterRolloutChange(tenantId, before, activated);
+        return RuleResponseMapper.toDetail(activated);
+    }
+
     public Map<String, Object> evaluate(
             String tenantId, String ruleId, String targetState, Integer canaryPercent) {
         RuleRevision current = store.getCurrentRule(tenantId, ruleId).orElseThrow();

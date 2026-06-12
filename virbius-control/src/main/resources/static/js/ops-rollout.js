@@ -283,10 +283,51 @@
         renderRolloutMetrics(metrics.series || []);
         renderRolloutTimeline(timeline);
         renderRolloutSamples(samples);
+        const comparePromise = loadCompareData().catch(() => {});
       } finally {
         rolloutRefreshBusy = false;
         loadGatewayArtifactStatus().catch(() => {});
       }
+    }
+
+    async function loadCompareData() {
+      const ruleId = rolloutRuleId();
+      const el = document.getElementById('roCompareCards');
+      const section = document.getElementById('roCompareSection');
+      if (!ruleId || !el || !section) { if (section) section.style.display = 'none'; return; }
+      try {
+        const data = await admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/compare?hours=24');
+        if (data.pending) {
+          section.style.display = '';
+          renderCompareCards('active', data.active, 'pending', data.pending);
+          document.getElementById('roDeployPending').style.display = '';
+        } else {
+          section.style.display = 'none';
+          document.getElementById('roDeployPending').style.display = 'none';
+        }
+      } catch (e) {
+        section.style.display = 'none';
+        document.getElementById('roDeployPending').style.display = 'none';
+      }
+    }
+
+    function renderCompareCards(label1, data1, label2, data2) {
+      const el = document.getElementById('roCompareCards');
+      if (!el) return;
+      const card = (label, d) => {
+        const t = d.totals || {};
+        const total = t.total_requests || 1;
+        const pct = (v) => ((v / total) * 100).toFixed(2) + '%';
+        return `<div class="compare-card">
+          <div class="card-title"><span class="tag">${esc(label)}</span> rev=${esc(String(d.revision ?? '?'))}</div>
+          <div class="stat-row"><span class="stat-label">review</span><span class="stat-value">${t.review ?? 0} (${pct(t.review)})</span></div>
+          <div class="stat-row"><span class="stat-label">block</span><span class="stat-value">${t.block ?? 0} (${pct(t.block)})</span></div>
+          <div class="stat-row"><span class="stat-label">captcha</span><span class="stat-value">${t.captcha ?? 0} (${pct(t.captcha)})</span></div>
+          <div class="stat-row"><span class="stat-label">allow</span><span class="stat-value">${t.allow ?? 0} (${pct(t.allow)})</span></div>
+          <div class="stat-row"><span class="stat-label">total</span><span class="stat-value">${t.total_requests ?? 0}</span></div>
+        </div>`;
+      };
+      el.innerHTML = card(label1, data1) + card(label2, data2);
     }
 
     async function loadGatewayArtifactStatus() {
@@ -400,6 +441,33 @@
       if (!ruleId) return;
       admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/ladder/pause', { method: 'POST' })
         .then(log).catch(e => log(e.message, 'err'));
+    };
+    document.getElementById('roDeployPending').onclick = async () => {
+      const ruleId = rolloutRuleId();
+      if (!ruleId) return;
+      const state = prompt('部署初始状态：dry_run（默认）/ canary\n如选 canary 请输入 "canary@百分比"', 'dry_run');
+      if (state === null) return;
+      let initialState = 'dry_run';
+      let canaryPercent = null;
+      if (state.trim().toLowerCase().startsWith('canary')) {
+        const m = state.match(/canary@?(\d+)/i);
+        if (!m) { log('格式错误：canary@百分比，如 canary@5', 'err'); return; }
+        initialState = 'canary';
+        canaryPercent = parseInt(m[1]);
+      } else if (state.trim().toLowerCase() !== 'dry_run') {
+        log('请输入 dry_run 或 canary@百分比', 'err');
+        return;
+      }
+      try {
+        const data = await admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/deploy-pending', {
+          method: 'POST',
+          body: JSON.stringify({ initial_state: initialState, canary_percent: canaryPercent })
+        });
+        log('部署成功: ' + JSON.stringify(data));
+        await refreshRolloutDashboard();
+      } catch (e) {
+        log(e.message, 'err');
+      }
     };
     document.getElementById('roTraceClose').onclick = () => {
       document.getElementById('roTraceModal').style.display = 'none';

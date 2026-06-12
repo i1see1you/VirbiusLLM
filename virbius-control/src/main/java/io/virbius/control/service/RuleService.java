@@ -15,6 +15,7 @@ import io.virbius.control.groovy.GroovyRuleBodies;
 import io.virbius.control.ruleauthoring.ConditionCompiler;
 import io.virbius.control.repository.RegistryRepository;
 import io.virbius.control.repository.RolloutEventRepository;
+import java.time.Instant;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
@@ -123,23 +124,47 @@ public class RuleService {
                 .orElse(Map.of());
         RuleBindScopeValidator.validateRouteUris(req, bundleMetadata);
         RuleRevision before = existing.orElse(null);
-        RuleRevision saved = store.upsertRule(tenantId, draft);
-        if (before != null
+        boolean contentChangeInExecutionPlane = before != null
                 && RolloutStateHelper.inExecutionPlane(before)
-                && RolloutState.DRAFT.value().equals(saved.rolloutState())) {
+                && contentChanged(before, req, normalizedRisk, intentAction);
+
+        RuleRevision saved = store.upsertRule(tenantId, draft);
+
+        if (contentChangeInExecutionPlane) {
+            // Store draft as pending; keep current_revision on old revision so it keeps running
+            store.setPendingRevision(
+                    tenantId,
+                    saved.ruleId(),
+                    saved.ruleRevision(),
+                    before.ruleRevision(),
+                    before.rolloutState(),
+                    Instant.now().toString());
             eventRepository.recordEvent(
                     tenantId,
                     saved.ruleId(),
                     saved.ruleRevision(),
-                    saved.rolloutState(),
+                    "pending",
                     null,
                     "body_change",
                     "admin");
-        }
-        if (before != null) {
-            ruleExecutionSync.afterRolloutChange(tenantId, before, saved);
-        } else if (RolloutStateHelper.inExecutionPlane(saved)) {
-            ruleExecutionSync.afterContentChange(tenantId, saved);
+        } else {
+            if (before != null
+                    && RolloutStateHelper.inExecutionPlane(before)
+                    && RolloutState.DRAFT.value().equals(saved.rolloutState())) {
+                eventRepository.recordEvent(
+                        tenantId,
+                        saved.ruleId(),
+                        saved.ruleRevision(),
+                        saved.rolloutState(),
+                        null,
+                        "body_change",
+                        "admin");
+            }
+            if (before != null) {
+                ruleExecutionSync.afterRolloutChange(tenantId, before, saved);
+            } else if (RolloutStateHelper.inExecutionPlane(saved)) {
+                ruleExecutionSync.afterContentChange(tenantId, saved);
+            }
         }
         return RuleResponseMapper.toDetail(saved);
     }

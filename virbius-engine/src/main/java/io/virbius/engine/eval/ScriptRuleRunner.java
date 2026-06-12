@@ -15,7 +15,9 @@ import io.virbius.policy.GatewayListRedisMatcher;
 import io.virbius.policy.IntentAction;
 import io.virbius.policy.MatchContext;
 import io.virbius.policy.ValueSource;
+import jakarta.annotation.PostConstruct;
 import java.time.Instant;
+import org.springframework.context.annotation.DependsOn;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,6 +33,7 @@ import redis.clients.jedis.JedisPool;
 
 /** Cloud {@code groovy} script rules: {@code decide(ctx)} → boolean; signal from rule row on hit. */
 @Component
+@DependsOn("ruleCacheSeeder")
 public class ScriptRuleRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ScriptRuleRunner.class);
@@ -61,6 +64,24 @@ public class ScriptRuleRunner {
         this.asyncExecutor = asyncExecutor;
         this.dryRunExecutor = dryRunExecutor;
         this.asyncActionHandler = asyncActionHandler;
+    }
+
+    @PostConstruct
+    public void precompileGroovyRules() {
+        int count = 0;
+        for (RuleEntry rule : cache.rulesForTenant("default")) {
+            if (!"groovy".equals(rule.runtime()) || !"cloud".equals(rule.layer())) {
+                continue;
+            }
+            String body = bodyText(rule.body());
+            if (!body.isBlank()) {
+                executor.precompile(body);
+                count++;
+            }
+        }
+        if (count > 0) {
+            log.info("pre-compiled {} groovy rule(s)", count);
+        }
     }
 
     public List<SignalDto> run(String tenantId, MatchContext matchCtx, List<SignalDto> priorSignals) {

@@ -57,6 +57,13 @@ public final class GroovyL3Executor {
         return new GroovyL3Decision("block", mode);
     }
 
+    /** Pre-compile a script body into the cache. Idempotent — subsequent calls are no-ops. */
+    public void precompile(String scriptBody) {
+        String body = normalizeBody(scriptBody);
+        String cacheKey = Integer.toHexString(body.hashCode());
+        scriptClassCache.computeIfAbsent(cacheKey, k -> compileClass(body));
+    }
+
     /** Run {@code decide(ctx)} and return {@code true} when the rule hits. */
     public boolean executeDecide(String scriptBody, PolicyContext ctx) throws Exception {
         Objects.requireNonNull(ctx, "ctx");

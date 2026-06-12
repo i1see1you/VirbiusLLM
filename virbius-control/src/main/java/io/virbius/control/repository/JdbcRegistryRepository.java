@@ -209,6 +209,82 @@ public class JdbcRegistryRepository implements RegistryRepository {
     }
 
     @Override
+    public void setPendingRevision(String tenantId, String ruleId, int pendingRevision, int currentRevision, String rolloutState, String nowStr) {
+        jdbc.update(
+                """
+                UPDATE tb_rules_current SET
+                  current_revision = ?, pending_revision = ?, rollout_state = ?, updated_at = ?
+                WHERE tenant_id = ? AND rule_id = ?
+                """,
+                currentRevision,
+                pendingRevision,
+                rolloutState,
+                nowStr,
+                tenantId,
+                ruleId);
+    }
+
+    @Override
+    public void clearPendingRevision(String tenantId, String ruleId) {
+        jdbc.update(
+                "UPDATE tb_rules_current SET pending_revision = NULL, updated_at = ? WHERE tenant_id = ? AND rule_id = ?",
+                TimeHelper.nowIso(),
+                tenantId,
+                ruleId);
+    }
+
+    @Override
+    public Optional<RuleRevision> getPendingRule(String tenantId, String ruleId) {
+        List<Integer> revs = jdbc.query(
+                "SELECT pending_revision FROM tb_rules_current WHERE tenant_id = ? AND rule_id = ? AND pending_revision IS NOT NULL",
+                (rs, i) -> rs.getInt(1),
+                tenantId,
+                ruleId);
+        if (revs.isEmpty()) {
+            return Optional.empty();
+        }
+        return getRuleRevision(tenantId, ruleId, revs.get(0));
+    }
+
+    @Override
+    public RuleRevision activatePending(String tenantId, String ruleId, String rolloutState, Integer canaryPercent) {
+        List<Integer> revs = jdbc.query(
+                "SELECT pending_revision FROM tb_rules_current WHERE tenant_id = ? AND rule_id = ? AND pending_revision IS NOT NULL",
+                (rs, i) -> rs.getInt(1),
+                tenantId,
+                ruleId);
+        if (revs.isEmpty()) {
+            throw new IllegalStateException("no pending revision for " + ruleId);
+        }
+        int rev = revs.get(0);
+        String nowStr = TimeHelper.nowIso();
+        jdbc.update(
+                """
+                UPDATE tb_rules_current SET
+                  current_revision = ?, pending_revision = NULL, rollout_state = ?, updated_at = ?
+                WHERE tenant_id = ? AND rule_id = ?
+                """,
+                rev,
+                rolloutState,
+                nowStr,
+                tenantId,
+                ruleId);
+        // Update tb_rule_history rollout_state so getCurrentRule() reads correct state
+        jdbc.update(
+                """
+                UPDATE tb_rule_history SET rollout_state = ?, canary_percent = ?, modified_at = ?
+                WHERE tenant_id = ? AND rule_id = ? AND rule_revision = ?
+                """,
+                rolloutState,
+                canaryPercent,
+                nowStr,
+                tenantId,
+                ruleId,
+                rev);
+        return getCurrentRule(tenantId, ruleId).orElseThrow();
+    }
+
+    @Override
     public RuleRevision updateRollout(String tenantId, String ruleId, String rolloutState, Integer canaryPercent) {
         RuleRevision current = getCurrentRule(tenantId, ruleId).orElseThrow();
         RuleRevision draft = new RuleRevision(

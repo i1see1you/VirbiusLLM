@@ -75,12 +75,11 @@
     });
 
     document.getElementById('navRulesHead').onclick = (e) => {
-      showPanel('rules');
       const group = document.getElementById('navGroupRules');
       if (e.target.classList.contains('nav-chevron')) {
         group.classList.toggle('expanded');
       } else {
-        group.classList.add('expanded');
+        showPanel('rules');
       }
     };
 

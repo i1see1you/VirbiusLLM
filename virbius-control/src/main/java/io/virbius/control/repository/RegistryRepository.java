@@ -22,6 +22,16 @@ public interface RegistryRepository {
 
     RuleRevision updateRollout(String tenantId, String ruleId, String rolloutState, Integer canaryPercent);
 
+    /** After upsertRule created a new revision, revert current_revision and set pending_revision instead. */
+    void setPendingRevision(String tenantId, String ruleId, int pendingRevision, int currentRevision, String rolloutState, String nowStr);
+
+    void clearPendingRevision(String tenantId, String ruleId);
+
+    Optional<RuleRevision> getPendingRule(String tenantId, String ruleId);
+
+    /** Switch current_revision to pending_revision, clear pending, set rollout_state. */
+    RuleRevision activatePending(String tenantId, String ruleId, String rolloutState, Integer canaryPercent);
+
     @Deprecated
     RuleRevision updateRuntime(String tenantId, String ruleId, String enforceMode, Integer canaryPercent);
 

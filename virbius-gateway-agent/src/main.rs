@@ -239,6 +239,7 @@ fn build_engine_audit(
     audit::build_event(
         trace_id,
         scene,
+        "engine",
         agent.rule_id.as_deref(),
         agent.rule_revision,
         agent.reason_code.as_deref(),

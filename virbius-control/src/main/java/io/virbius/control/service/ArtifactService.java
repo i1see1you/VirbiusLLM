@@ -237,28 +237,40 @@ public class ArtifactService {
             if (!RolloutStateHelper.inExecutionPlane(rule) || !"lua".equals(rule.runtime())) {
                 continue;
             }
-            Map<String, Object> block = new LinkedHashMap<>();
-            block.put("rule_id", rule.ruleId());
-            block.put("rule_revision", rule.ruleRevision());
-            block.put("reason_code", rule.reasonCode());
-            block.put("risk_score", rule.riskScore());
-            block.put("intent_action", rule.intentAction() != null ? rule.intentAction() : "deny");
-            block.put("enforce_mode", rule.enforceMode());
-            if (rule.canaryPercent() != null) {
-                block.put("canary_percent", rule.canaryPercent());
-            } else if (rule.exportedCanaryPercent() != null) {
-                block.put("canary_percent", rule.exportedCanaryPercent());
-            }
-            String scriptBody = ScriptRuleBodies.asArtifactScript(rule.body(), rule.runtime());
-            if (scriptBody.isBlank()) {
-                continue;
-            }
-            block.put("body", scriptBody);
-            BindScopeExport.putBindFields(block, rule.scope());
-            blocks.add(block);
+            blocks.add(toScriptRuleBlock(rule, "active"));
+        }
+        // Include pending rules that are in execution plane (dry_run/canary)
+        for (RuleRevision rule : registryRepo.listCurrentRules(tenantId, "gateway")) {
+            registryRepo.getPendingRule(tenantId, rule.ruleId()).ifPresent(pending -> {
+                if (RolloutStateHelper.inExecutionPlane(pending) && "lua".equals(pending.runtime())) {
+                    blocks.add(toScriptRuleBlock(pending, "pending"));
+                }
+            });
         }
         blocks.sort((a, b) -> Integer.compare((int) b.get("risk_score"), (int) a.get("risk_score")));
         return blocks;
+    }
+
+    private Map<String, Object> toScriptRuleBlock(RuleRevision rule, String tag) {
+        Map<String, Object> block = new LinkedHashMap<>();
+        block.put("rule_id", rule.ruleId());
+        block.put("rule_revision", rule.ruleRevision());
+        block.put("revision_tag", tag);
+        block.put("reason_code", rule.reasonCode());
+        block.put("risk_score", rule.riskScore());
+        block.put("intent_action", rule.intentAction() != null ? rule.intentAction() : "deny");
+        block.put("enforce_mode", rule.enforceMode());
+        if (rule.canaryPercent() != null) {
+            block.put("canary_percent", rule.canaryPercent());
+        } else if (rule.exportedCanaryPercent() != null) {
+            block.put("canary_percent", rule.exportedCanaryPercent());
+        }
+        String scriptBody = ScriptRuleBodies.asArtifactScript(rule.body(), rule.runtime());
+        if (!scriptBody.isBlank()) {
+            block.put("body", scriptBody);
+        }
+        BindScopeExport.putBindFields(block, rule.scope());
+        return block;
     }
 
     private List<RuleRevision> listScriptBindingRules(String tenantId, String cumulativeName) {
