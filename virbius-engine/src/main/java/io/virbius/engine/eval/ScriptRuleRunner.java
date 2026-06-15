@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.virbius.engine.cache.PolicyDataCache;
 import io.virbius.engine.cache.RuleCache;
 import io.virbius.engine.cache.RuleEntry;
+import io.virbius.engine.config.TenantAwareTaskExecutor;
 import io.virbius.groovy.l3.GroovyL3Executor;
 import io.virbius.groovy.l3.L3RuleView;
 import io.virbius.groovy.l3.L3SignalView;
@@ -23,10 +24,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ExecutorService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import redis.clients.jedis.JedisPool;
 
@@ -41,8 +40,7 @@ public class ScriptRuleRunner {
     private final GroovyL3Executor executor;
     private final Optional<CounterStore> counterStore;
     private final Optional<GatewayListRedisMatcher> listRedisMatcher;
-    private final ExecutorService asyncExecutor;
-    private final ExecutorService dryRunExecutor;
+    private final TenantAwareTaskExecutor tenantTaskExecutor;
     private final AsyncActionHandler asyncActionHandler;
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -51,16 +49,14 @@ public class ScriptRuleRunner {
             PolicyDataCache policyData,
             Optional<JedisPool> jedisPool,
             Optional<GatewayListRedisMatcher> listRedisMatcher,
-            @Qualifier("asyncRuleExecutor") ExecutorService asyncExecutor,
-            @Qualifier("dryRunRuleExecutor") ExecutorService dryRunExecutor,
+            TenantAwareTaskExecutor tenantTaskExecutor,
             AsyncActionHandler asyncActionHandler) {
         this.cache = cache;
         this.policyData = policyData;
         this.executor = new GroovyL3Executor();
         this.counterStore = jedisPool.map(CounterStore::new);
         this.listRedisMatcher = listRedisMatcher;
-        this.asyncExecutor = asyncExecutor;
-        this.dryRunExecutor = dryRunExecutor;
+        this.tenantTaskExecutor = tenantTaskExecutor;
         this.asyncActionHandler = asyncActionHandler;
     }
 
@@ -99,10 +95,10 @@ public class ScriptRuleRunner {
             }
             String rolloutState = rule.rolloutStateOrDefault();
             if (rule.isAsync()) {
-                asyncExecutor.submit(() ->
+                tenantTaskExecutor.submit(tenantId, () ->
                         evaluateAsync(rule, tenantId, matchCtx, priorSignals, scriptEnv));
             } else if ("dry_run".equalsIgnoreCase(rolloutState)) {
-                dryRunExecutor.submit(() ->
+                tenantTaskExecutor.submit(tenantId, () ->
                         evaluateDryRun(rule, tenantId, matchCtx, priorSignals, scriptEnv));
             } else {
                 try {

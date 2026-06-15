@@ -3,15 +3,14 @@ package io.virbius.engine.eval;
 import io.virbius.engine.cache.RuleCache;
 import io.virbius.engine.cache.RuleEntry;
 import io.virbius.engine.config.PromptLlmProperties;
+import io.virbius.engine.config.TenantAwareTaskExecutor;
 import io.virbius.engine.eval.PromptAuditJsonParser.PromptAuditResult;
 import io.virbius.policy.MatchContext;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.ExecutorService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -23,7 +22,7 @@ public class PromptRunner {
     private final PromptLlmProperties llmProps;
     private final PromptLlmClient llmClient;
     private final PromptAuditJsonParser auditParser;
-    private final ExecutorService asyncExecutor;
+    private final TenantAwareTaskExecutor tenantTaskExecutor;
     private final AsyncActionHandler asyncActionHandler;
 
     public PromptRunner(
@@ -31,13 +30,13 @@ public class PromptRunner {
             PromptLlmProperties llmProps,
             PromptLlmClient llmClient,
             PromptAuditJsonParser auditParser,
-            @Qualifier("asyncRuleExecutor") ExecutorService asyncExecutor,
+            TenantAwareTaskExecutor tenantTaskExecutor,
             AsyncActionHandler asyncActionHandler) {
         this.cache = cache;
         this.llmProps = llmProps;
         this.llmClient = llmClient;
         this.auditParser = auditParser;
-        this.asyncExecutor = asyncExecutor;
+        this.tenantTaskExecutor = tenantTaskExecutor;
         this.asyncActionHandler = asyncActionHandler;
     }
 
@@ -59,7 +58,7 @@ public class PromptRunner {
             }
         }
         if (!asyncRules.isEmpty()) {
-            asyncExecutor.submit(() -> runPromptAsync(matchCtx, asyncRules));
+            tenantTaskExecutor.submit(tenantId, () -> runPromptAsync(matchCtx, asyncRules));
         }
         if (!syncRules.isEmpty()) {
             return runMatrixLlm(matchCtx.content(), syncRules);
