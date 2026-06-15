@@ -15,7 +15,7 @@ public final class RuleBindScopeValidator {
 
     private RuleBindScopeValidator() {}
 
-    public static void validateRouteUris(
+    public static void validateRouteScenes(
             Map<String, Object> bundleMetadata, Map<String, Object> ruleScope, String ruleId) {
         if (ruleScope == null || ruleScope.isEmpty()) {
             return;
@@ -24,32 +24,36 @@ public final class RuleBindScopeValidator {
             return;
         }
         Map<String, Object> bindRef = BindScope.bindRefFromScope(ruleScope);
-        List<String> ruleUris = BindScope.urisFromBindRef(bindRef);
-        if (ruleUris.isEmpty()) {
-            return;
-        }
-        List<String> gatewayUris = GatewayRoutesHelper.parseRoutes(bundleMetadata).stream()
-                .map(r -> r.uri().trim())
-                .toList();
-        if (gatewayUris.isEmpty()) {
-            throw new IllegalArgumentException("gateway.routes required before route bind_ref.uris (rule "
+        Object scenesObj = bindRef.get("scenes");
+        if (!(scenesObj instanceof List<?> sceneList) || sceneList.isEmpty()) {
+            throw new IllegalArgumentException("bind_ref.scenes required for route bind (rule "
                     + ruleId
                     + ")");
         }
-        for (String ruleUri : ruleUris) {
-            BindScope.validateUriPattern(ruleUri);
-            if (!BindScope.coveredByAny(ruleUri, gatewayUris)) {
-                throw new IllegalArgumentException("bind_ref.uris not covered by gateway.routes: "
-                        + ruleUri
+        SceneRegistry registry = SceneRegistryHelper.parseRegistry(bundleMetadata);
+        if (registry == null) {
+            return;
+        }
+        for (Object raw : sceneList) {
+            if (raw == null) {
+                continue;
+            }
+            String sid = String.valueOf(raw).trim();
+            if (sid.isEmpty() || "*".equals(sid)) {
+                continue;
+            }
+            if (!registry.hasScene(sid)) {
+                throw new IllegalArgumentException("bind_ref.scenes contains unknown scene: "
+                        + sid
                         + " (rule "
                         + ruleId
-                        + "); register entry in gateway.routes first");
+                        + ")");
             }
         }
     }
 
-    public static void validateRouteUris(UpsertRuleRequest req, Map<String, Object> bundleMetadata) {
-        validateRouteUris(bundleMetadata, req.scope(), req.ruleId());
+    public static void validateRouteScenes(UpsertRuleRequest req, Map<String, Object> bundleMetadata) {
+        validateRouteScenes(bundleMetadata, req.scope(), req.ruleId());
         if ("edge".equalsIgnoreCase(req.layer())) {
             validateEdgeBind(req, bundleMetadata);
         }

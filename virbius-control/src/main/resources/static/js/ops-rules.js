@@ -115,7 +115,7 @@ end`;
     function setRuleEditorReadOnly(disabled) {
       const ro = !!disabled;
       ['fReason', 'fRisk', 'fIntent', 'fEnforce', 'fCanary', 'fBody', 'fRuleId', 'fRuntime',
-        'fBindScope', 'fBindUris', 'fBindScenes', 'fBindAppIds', 'fEdgeListType', 'fEdgeKeywords',
+        'fBindScope', 'fBindScenes', 'fBindAppIds', 'fEdgeListType', 'fEdgeKeywords',
         'fDlpEntityType', 'fDlpPattern', 'fDlpMaskTemplate', 'fDlpPriority',
         'fIsAsync', 'fActionType', 'fActionStreamKey', 'fActionWebhookUrl', 'fActionMessage', 'fAsyncActionConfig',
         'fBindUpstream', 'fBindConsumer', 'fBindApiKeyGroup',
@@ -1045,7 +1045,7 @@ end`;
         ? '<option value="global">global（全部 App manifest）</option>'
           + '<option value="service">service（指定 app_ids）</option>'
         : '<option value="global">global（租户内全流量）</option>'
-          + '<option value="route">route（URI 优先）</option>'
+          + '<option value="route">route（Scene 匹配）</option>'
           + '<option value="service">service（app_ids）</option>';
       sel.value = [...sel.options].some(o => o.value === current) ? current : 'global';
     }
@@ -1055,7 +1055,6 @@ end`;
       const edge = isEdgeFormRuntime(currentEditorRuntime());
       const route = !edge && bs === 'route';
       const service = bs === 'service';
-      document.getElementById('bindUriWrap').style.display = route ? '' : 'none';
       document.getElementById('bindSceneWrap').style.display = route ? '' : 'none';
       document.getElementById('bindServiceWrap').style.display = service ? '' : 'none';
     }
@@ -1079,9 +1078,7 @@ end`;
       const scope = { bind_scope: bs };
       const ref = {};
       if (bs === 'route') {
-        const uris = document.getElementById('fBindUris').value.split(',').map(s => s.trim()).filter(Boolean);
         const scenes = document.getElementById('fBindScenes').value.split(',').map(s => s.trim()).filter(Boolean);
-        if (uris.length) ref.uris = uris;
         if (scenes.length) ref.scenes = scenes;
       } else if (bs === 'service') {
         const ids = document.getElementById('fBindAppIds').value.split(',').map(s => s.trim()).filter(Boolean);
@@ -1101,7 +1098,6 @@ end`;
       }
       document.getElementById('fBindScope').value = bs;
       const ref = s.bind_ref || {};
-      document.getElementById('fBindUris').value = Array.isArray(ref.uris) ? ref.uris.join(', ') : '';
       document.getElementById('fBindScenes').value = Array.isArray(ref.scenes) ? ref.scenes.join(', ') : '';
       document.getElementById('fBindAppIds').value = Array.isArray(ref.app_ids) ? ref.app_ids.join(', ') : '';
       syncBindScopeFieldsUi();

@@ -100,19 +100,6 @@ public final class BindScope {
         if (ref == null) {
             return false;
         }
-        List<String> uris = stringList(ref.get("uris"));
-        if (!uris.isEmpty()) {
-            String routeUri = normalizeUri(ctx.routeUri());
-            if (routeUri == null) {
-                return false;
-            }
-            for (String pattern : uris) {
-                if (uriMatches(routeUri, pattern)) {
-                    return true;
-                }
-            }
-            return false;
-        }
         List<String> scenes = stringList(ref.get("scenes"));
         if (scenes.isEmpty()) {
             return false;
@@ -129,7 +116,7 @@ public final class BindScope {
         return false;
     }
 
-    /** Validates URI pattern grammar shared by gateway.routes, scene_registry.uris, bind_ref.uris. */
+    /** Validates URI pattern grammar shared by gateway.routes and scene_registry.uris. */
     public static void validateUriPattern(String pattern) {
         if (pattern == null || pattern.isBlank()) {
             throw new IllegalArgumentException("uri pattern required");
@@ -182,27 +169,6 @@ public final class BindScope {
             }
         }
         return false;
-    }
-
-    @SuppressWarnings("unchecked")
-    public static List<String> urisFromBindRef(Map<String, Object> bindRef) {
-        if (bindRef == null) {
-            return List.of();
-        }
-        Object uris = bindRef.get("uris");
-        if (!(uris instanceof List<?> list)) {
-            return List.of();
-        }
-        List<String> out = new ArrayList<>();
-        for (Object item : list) {
-            if (item != null) {
-                String s = String.valueOf(item).trim();
-                if (!s.isEmpty()) {
-                    out.add(s);
-                }
-            }
-        }
-        return out;
     }
 
     public static boolean uriMatches(String routeUri, String pattern) {

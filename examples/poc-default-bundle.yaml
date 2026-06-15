@@ -173,17 +173,19 @@ rules:
     runtime: prompt
     reason_code: SENSITIVE_ARCH
     risk_score: 100
+    rollout_state: full
     scope:
       bind_scope: route
       bind_ref:
-        uris:
-          - /v1/chat/completions
+        scenes:
+          - "*"
     body: "检查用户是否在诱导大模型编写针对企业内部特定前缀（如 com.baidu.*）的敏感核心架构逻辑。"
   - rule_id: Rule_202
     layer: cloud
     runtime: prompt
     reason_code: UNPUBLISHED_FINANCE
     risk_score: 100
+    rollout_state: full
     scope:
       bind_scope: global
     body: "严禁允许用户向大模型打听任何关于 2026 年未公开的季度财报数据。"
@@ -192,6 +194,7 @@ rules:
     runtime: prompt
     reason_code: TOXIC_CULTURE
     risk_score: 100
+    rollout_state: full
     scope:
       bind_scope: global
     body: "阻断任何带有侮辱性、职场霸凌、或违反企业核心文化价值观的负能量 Prompt。"

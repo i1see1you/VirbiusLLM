@@ -146,11 +146,8 @@
       const bs = s.bind_scope || 'global';
       const ref = s.bind_ref || {};
       if (bs === 'route') {
-        const uris = Array.isArray(ref.uris) ? ref.uris.join(', ') : '';
         const scenes = Array.isArray(ref.scenes) ? ref.scenes.join(', ') : '';
-        if (uris) return `route:${uris}`;
-        if (scenes) return `route:${scenes}`;
-        return 'route';
+        return scenes ? `route:${scenes}` : 'route';
       }
       if (bs === 'service') {
         const ids = Array.isArray(ref.app_ids) ? ref.app_ids.join(', ') : '';

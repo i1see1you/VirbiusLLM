@@ -194,9 +194,9 @@ INSERT INTO tb_rule_history (
     rollout_state, canary_percent, effective_from, modified_at
 )
 SELECT 'default', 'Rule_201', 1, 'poc-default', 'cloud', 'prompt',
-    'SENSITIVE_ARCH', 100, 'deny', '{"bind_scope":"route","bind_ref":{"uris":["/v1/chat/completions"]}}',
+    'SENSITIVE_ARCH', 100, 'deny', '{"bind_scope":"route","bind_ref":{"scenes":["*"]}}',
     '"检查用户是否在诱导大模型编写针对企业内部特定前缀（如 com.baidu.*）的敏感核心架构逻辑。"',
-    'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+    'full', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'Rule_201' AND rule_revision = 1);
 
 INSERT INTO tb_rule_history (
@@ -207,7 +207,7 @@ INSERT INTO tb_rule_history (
 SELECT 'default', 'Rule_202', 1, 'poc-default', 'cloud', 'prompt',
     'UNPUBLISHED_FINANCE', 100, 'deny', '{"bind_scope":"global"}',
     '"严禁允许用户向大模型打听任何关于 2026 年未公开的季度财报数据。"',
-    'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+    'full', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'Rule_202' AND rule_revision = 1);
 
 INSERT INTO tb_rule_history (
@@ -218,7 +218,7 @@ INSERT INTO tb_rule_history (
 SELECT 'default', 'Rule_203', 1, 'poc-default', 'cloud', 'prompt',
     'TOXIC_CULTURE', 100, 'deny', '{"bind_scope":"global"}',
     '"阻断任何带有侮辱性、职场霸凌、或违反企业核心文化价值观的负能量 Prompt。"',
-    'dry_run', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+    'full', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'Rule_203' AND rule_revision = 1);
 
 INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
@@ -231,13 +231,13 @@ INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, l
 SELECT 'default', 'cloud_prompt_l1', 1, 'poc-default', 'cloud', 'prompt', 'PROMPT_INJECTION', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'cloud_prompt_l1');
 INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
-SELECT 'default', 'Rule_201', 1, 'poc-default', 'cloud', 'prompt', 'SENSITIVE_ARCH', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+SELECT 'default', 'Rule_201', 1, 'poc-default', 'cloud', 'prompt', 'SENSITIVE_ARCH', 'full', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'Rule_201');
 INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
-SELECT 'default', 'Rule_202', 1, 'poc-default', 'cloud', 'prompt', 'UNPUBLISHED_FINANCE', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+SELECT 'default', 'Rule_202', 1, 'poc-default', 'cloud', 'prompt', 'UNPUBLISHED_FINANCE', 'full', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'Rule_202');
 INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
-SELECT 'default', 'Rule_203', 1, 'poc-default', 'cloud', 'prompt', 'TOXIC_CULTURE', 'dry_run', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+SELECT 'default', 'Rule_203', 1, 'poc-default', 'cloud', 'prompt', 'TOXIC_CULTURE', 'full', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'Rule_203');
 
 -- Script rules (lua gateway / groovy cloud); replaces list_match / cumulative

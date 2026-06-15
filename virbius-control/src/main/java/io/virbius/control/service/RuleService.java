@@ -122,7 +122,7 @@ public class RuleService {
                         tenantId, bundleId, RuleBindScopeValidator.defaultBundleVersion())
                 .map(b -> b.metadata() != null ? b.metadata() : Map.<String, Object>of())
                 .orElse(Map.of());
-        RuleBindScopeValidator.validateRouteUris(req, bundleMetadata);
+        RuleBindScopeValidator.validateRouteScenes(req, bundleMetadata);
         RuleRevision before = existing.orElse(null);
         boolean contentChangeInExecutionPlane = before != null
                 && RolloutStateHelper.inExecutionPlane(before)

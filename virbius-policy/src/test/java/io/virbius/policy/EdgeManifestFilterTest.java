@@ -55,10 +55,10 @@ class EdgeManifestFilterTest {
     }
 
     @Test
-    void routeRuleWithUrisExcludedFromEdgeManifest() {
+    void routeRuleWithUnregisteredSceneExcludedFromEdgeManifest() {
         SceneRegistry reg = registry();
         Map<String, Object> scope = Map.of(
-                "bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/chat/completions")));
+                "bind_scope", "route", "bind_ref", Map.of("scenes", List.of("nonexistent_scene")));
         assertFalse(EdgeManifestFilter.includesForApp(scope, "beta", reg));
         assertFalse(EdgeManifestFilter.includesForApp(scope, "medical-prod", reg));
     }

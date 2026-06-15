@@ -39,11 +39,11 @@ class PromptRunnerBindTest {
     void skipsLlmWhenNoBindMatchedPromptRules() {
         RuleEntry routeOnly = promptRule(
                 "Rule_201",
-                Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/embeddings"))));
+                Map.of("bind_scope", "route", "bind_ref", Map.of("scenes", List.of("sse"))));
         when(cache.rulesForTenant("default")).thenReturn(List.of(routeOnly));
 
         MatchContext ctx = MatchContext.withBind(
-                "hello", null, null, null, "sess", Map.of(), "beta_chat", "/v1/chat/completions");
+                "hello", null, null, null, "sess", Map.of(), "chat", "/v1/chat/completions");
 
         List<SignalDto> signals = runner.run("default", ctx);
 
@@ -56,13 +56,13 @@ class PromptRunnerBindTest {
         RuleEntry global = promptRule("Rule_202", Map.of("bind_scope", "global"));
         RuleEntry routeChat = promptRule(
                 "Rule_201",
-                Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/chat/completions"))));
+                Map.of("bind_scope", "route", "bind_ref", Map.of("scenes", List.of("chat"))));
         when(cache.rulesForTenant("default")).thenReturn(List.of(global, routeChat));
         when(llmClient.complete(anyString()))
                 .thenReturn("{\"hit_rule\": true, \"triggered_id\": \"Rule_201\", \"reason\": \"arch\"}");
 
         MatchContext ctx = MatchContext.withBind(
-                "com.baidu.internal auth", null, null, null, "sess", Map.of(), "beta_chat", "/v1/chat/completions");
+                "com.baidu.internal auth", null, null, null, "sess", Map.of(), "chat", "/v1/chat/completions");
 
         List<SignalDto> signals = runner.run("default", ctx);
 

@@ -282,7 +282,6 @@ fn to_agent_response(resp: EvaluateResponse, degraded: bool) -> AgentEvaluateRes
 fn bind_context(req: &AgentEvaluateRequest, vars: &HashMap<String, String>) -> bind_scope::BindContext {
     bind_scope::BindContext {
         scene: req.scene.clone(),
-        route_uri: req.route_uri.clone(),
         app_id: vars.get("app_id").cloned(),
     }
 }

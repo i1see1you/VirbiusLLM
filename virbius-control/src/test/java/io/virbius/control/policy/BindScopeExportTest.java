@@ -31,7 +31,7 @@ class BindScopeExportTest {
     void bindEntryFromScope() {
         Map<String, Object> entry = BindScopeExport.bindEntry(Map.of(
                 "bind_scope", "route",
-                "bind_ref", Map.of("uris", List.of("/v1/chat/completions"))));
+                "bind_ref", Map.of("scenes", List.of("chat"))));
         assertEquals("route", entry.get("bind_scope"));
         assertTrue(entry.containsKey("bind_ref"));
     }

@@ -57,10 +57,6 @@ public final class EdgeManifestFilter {
         if (ref == null || ref.isEmpty()) {
             return false;
         }
-        List<String> uris = BindScope.urisFromBindRef(ref);
-        if (!uris.isEmpty()) {
-            return false;
-        }
         Object scenesObj = ref.get("scenes");
         if (!(scenesObj instanceof List<?> scenes) || scenes.isEmpty()) {
             return false;

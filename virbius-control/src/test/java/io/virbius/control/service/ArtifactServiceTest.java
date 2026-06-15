@@ -137,7 +137,7 @@ class ArtifactServiceTest {
                 "rl_chat",
                 "gateway",
                 "function decide(ctx)\n  return getCumulative('chat_user_req_1h') >= 5\nend",
-                Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/chat/completions"))),
+                Map.of("bind_scope", "route", "bind_ref", Map.of("scenes", List.of("chat"))),
                 120);
         RuleRevision cloudRule = scriptRule(
                 "cloud_rl",
@@ -167,7 +167,7 @@ class ArtifactServiceTest {
         assertEquals("route", rules.get(0).get("bind_scope"));
         @SuppressWarnings("unchecked")
         Map<String, Object> routeRef = (Map<String, Object>) rules.get(0).get("bind_ref");
-        assertEquals(List.of("/v1/chat/completions"), routeRef.get("uris"));
+        assertEquals(List.of("chat"), routeRef.get("scenes"));
     }
 
     @Test
@@ -181,7 +181,7 @@ class ArtifactServiceTest {
                 "rl_gw",
                 "gateway",
                 "function decide(ctx)\n  return getCumulative('chat_user_req_1h') >= 1\nend",
-                Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/chat/completions"))),
+                Map.of("bind_scope", "route", "bind_ref", Map.of("scenes", List.of("chat"))),
                 100);
         RuleRevision cloud = scriptRule(
                 "rl_cloud",

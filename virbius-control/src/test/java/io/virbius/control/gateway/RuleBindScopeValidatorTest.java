@@ -10,50 +10,18 @@ import org.junit.jupiter.api.Test;
 
 class RuleBindScopeValidatorTest {
 
-    private static final Map<String, Object> METADATA = Map.of(
-            "gateway",
-            Map.of("routes", List.of(Map.of("uri", "/v1/chat/*", "methods", List.of("POST")))));
+    private static final Map<String, Object> SCENE_METADATA = Map.of(
+            "scene_registry",
+            Map.of(
+                    "version",
+                    1,
+                    "scenes",
+                    Map.of(
+                            "beta_chat", Map.of("app_id", "beta", "default", true),
+                            "beta_sse", Map.of("app_id", "beta", "default", false))));
 
     @Test
-    void acceptsUriCoveredByGatewayWildcard() {
-        UpsertRuleRequest req = new UpsertRuleRequest(
-                "r1",
-                "poc-default",
-                "cloud",
-                "groovy",
-                "X",
-                100,
-                "deny",
-                Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/chat/completions"))),
-                Map.of(),
-                null,
-                null,
-                null,
-                null);
-        assertDoesNotThrow(() -> RuleBindScopeValidator.validateRouteUris(req, METADATA));
-    }
-
-    @Test
-    void rejectsUriNotCoveredByGateway() {
-        UpsertRuleRequest req = new UpsertRuleRequest(
-                "r1",
-                "poc-default",
-                "cloud",
-                "groovy",
-                "X",
-                100,
-                "deny",
-                Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/embeddings"))),
-                Map.of(),
-                null,
-                null,
-                null,
-                null);
-        assertThrows(IllegalArgumentException.class, () -> RuleBindScopeValidator.validateRouteUris(req, METADATA));
-    }
-
-    @Test
-    void skipsWhenOnlyScenes() {
+    void acceptsSceneInRegistry() {
         UpsertRuleRequest req = new UpsertRuleRequest(
                 "r1",
                 "poc-default",
@@ -68,16 +36,96 @@ class RuleBindScopeValidatorTest {
                 null,
                 null,
                 null);
-        assertDoesNotThrow(() -> RuleBindScopeValidator.validateRouteUris(req, Map.of()));
+        assertDoesNotThrow(() -> RuleBindScopeValidator.validateRouteScenes(req, SCENE_METADATA));
     }
 
-    private static final Map<String, Object> SCENE_METADATA = Map.of(
-            "scene_registry",
-            Map.of(
-                    "version",
-                    1,
-                    "scenes",
-                    Map.of("beta_chat", Map.of("app_id", "beta", "default", true))));
+    @Test
+    void rejectsUnknownScene() {
+        UpsertRuleRequest req = new UpsertRuleRequest(
+                "r1",
+                "poc-default",
+                "cloud",
+                "groovy",
+                "X",
+                100,
+                "deny",
+                Map.of("bind_scope", "route", "bind_ref", Map.of("scenes", List.of("unknown"))),
+                Map.of(),
+                null,
+                null,
+                null,
+                null);
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> RuleBindScopeValidator.validateRouteScenes(req, SCENE_METADATA));
+    }
+
+    @Test
+    void rejectsEmptyScenes() {
+        UpsertRuleRequest req = new UpsertRuleRequest(
+                "r1",
+                "poc-default",
+                "cloud",
+                "groovy",
+                "X",
+                100,
+                "deny",
+                Map.of("bind_scope", "route", "bind_ref", Map.of()),
+                Map.of(),
+                null,
+                null,
+                null,
+                null);
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> RuleBindScopeValidator.validateRouteScenes(req, SCENE_METADATA));
+    }
+
+    @Test
+    void acceptsWildcardSceneWithoutRegistryCheck() {
+        UpsertRuleRequest req = new UpsertRuleRequest(
+                "r1",
+                "poc-default",
+                "cloud",
+                "groovy",
+                "X",
+                100,
+                "deny",
+                Map.of("bind_scope", "route", "bind_ref", Map.of("scenes", List.of("*"))),
+                Map.of(),
+                null,
+                null,
+                null,
+                null);
+        assertDoesNotThrow(() -> RuleBindScopeValidator.validateRouteScenes(req, SCENE_METADATA));
+    }
+
+    @Test
+    void skipsWhenNoScope() {
+        UpsertRuleRequest req = new UpsertRuleRequest(
+                "r1", "poc-default", "cloud", "groovy", "X", 100, "deny", null, Map.of(), null, null, null, null);
+        assertDoesNotThrow(() -> RuleBindScopeValidator.validateRouteScenes(req, SCENE_METADATA));
+    }
+
+    @Test
+    void acceptsMultipleScenes() {
+        UpsertRuleRequest req = new UpsertRuleRequest(
+                "r1",
+                "poc-default",
+                "cloud",
+                "groovy",
+                "X",
+                100,
+                "deny",
+                Map.of("bind_scope", "route", "bind_ref",
+                        Map.of("scenes", List.of("beta_chat", "beta_sse"))),
+                Map.of(),
+                null,
+                null,
+                null,
+                null);
+        assertDoesNotThrow(() -> RuleBindScopeValidator.validateRouteScenes(req, SCENE_METADATA));
+    }
 
     @Test
     void edgeServiceBindRequiresKnownAppId() {
@@ -97,7 +145,7 @@ class RuleBindScopeValidatorTest {
                 null);
         assertThrows(
                 IllegalArgumentException.class,
-                () -> RuleBindScopeValidator.validateRouteUris(req, SCENE_METADATA));
+                () -> RuleBindScopeValidator.validateRouteScenes(req, SCENE_METADATA));
     }
 
     @Test
@@ -118,6 +166,6 @@ class RuleBindScopeValidatorTest {
                 null);
         assertThrows(
                 IllegalArgumentException.class,
-                () -> RuleBindScopeValidator.validateRouteUris(req, SCENE_METADATA));
+                () -> RuleBindScopeValidator.validateRouteScenes(req, SCENE_METADATA));
     }
 }

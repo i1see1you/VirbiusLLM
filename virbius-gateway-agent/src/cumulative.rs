@@ -389,8 +389,8 @@ mod tests {
         let script_rules: Vec<ScriptRuleBlock> =
             serde_json::from_value(v.get("script_rules").cloned().unwrap()).unwrap();
         let bind = BindContext {
-            route_uri: Some("/v1/chat/completions".into()),
-            ..Default::default()
+            scene: "chat".into(),
+            app_id: None,
         };
         let vars = HashMap::new();
         let req = RequestCtx {
@@ -439,8 +439,8 @@ mod tests {
         let defs: Vec<CumulativeDefBlock> =
             serde_json::from_value(v.get("cumulatives").cloned().unwrap()).unwrap();
         let bind = BindContext {
-            route_uri: Some("/v1/other".into()),
-            ..Default::default()
+            scene: "other".into(),
+            app_id: None,
         };
         let vars = HashMap::new();
         let req = RequestCtx {

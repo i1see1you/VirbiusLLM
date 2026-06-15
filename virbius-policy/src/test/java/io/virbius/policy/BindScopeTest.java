@@ -14,28 +14,28 @@ class BindScopeTest {
     }
 
     @Test
-    void routeUriExactMatch() {
-        MatchContext ctx = MatchContext.withBind("hi", "u1", null, null, null, null, "x", "/v1/chat/completions");
-        assertTrue(BindScope.matches("route", java.util.Map.of("uris", java.util.List.of("/v1/chat/completions")), ctx));
-        assertFalse(BindScope.matches("route", java.util.Map.of("uris", java.util.List.of("/v1/other")), ctx));
+    void routeSceneExactMatch() {
+        MatchContext ctx = MatchContext.withBind("hi", "u1", null, null, null, null, "chat", null);
+        assertTrue(BindScope.matches("route", java.util.Map.of("scenes", java.util.List.of("chat")), ctx));
+        assertFalse(BindScope.matches("route", java.util.Map.of("scenes", java.util.List.of("sse")), ctx));
     }
 
     @Test
-    void routeUriPrefixMatch() {
-        MatchContext ctx = MatchContext.withBind("hi", "u1", null, null, null, null, "x", "/v1/chat/completions");
-        assertTrue(BindScope.matches("route", java.util.Map.of("uris", java.util.List.of("/v1/chat/*")), ctx));
+    void routeSceneWildcard() {
+        MatchContext ctx = MatchContext.withBind("hi", "u1", null, null, null, null, "any_scene", null);
+        assertTrue(BindScope.matches("route", java.util.Map.of("scenes", java.util.List.of("*")), ctx));
     }
 
     @Test
-    void routeUriPriorityOverScene() {
-        MatchContext ctx = MatchContext.withBind("hi", "u1", null, null, null, null, "general_chat", "/v1/other");
-        assertFalse(BindScope.matches("route", java.util.Map.of("uris", java.util.List.of("/v1/chat/completions"), "scenes", java.util.List.of("general_chat")), ctx));
+    void routeSceneNoScenes() {
+        MatchContext ctx = MatchContext.withBind("hi", "u1", null, null, null, null, "chat", null);
+        assertFalse(BindScope.matches("route", java.util.Map.of(), ctx));
     }
 
     @Test
-    void routeSceneFallbackWhenNoUris() {
-        MatchContext ctx = MatchContext.withBind("hi", "u1", null, null, null, null, "medical-prod_clinical", null);
-        assertTrue(BindScope.matches("route", java.util.Map.of("scenes", java.util.List.of("medical-prod_clinical")), ctx));
+    void routeSceneMissingContextScene() {
+        MatchContext ctx = MatchContext.withBind("hi", "u1", null, null, null, null, "", null);
+        assertFalse(BindScope.matches("route", java.util.Map.of("scenes", java.util.List.of("chat")), ctx));
     }
 
     @Test

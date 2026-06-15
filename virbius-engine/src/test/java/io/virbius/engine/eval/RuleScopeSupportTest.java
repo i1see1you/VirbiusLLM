@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 class RuleScopeSupportTest {
 
     @Test
-    void routeUriBindMatchesPromptRule() {
+    void routeSceneBindMatchesPromptRule() {
         RuleEntry rule = new RuleEntry(
                 "default",
                 "Rule_201",
@@ -27,15 +27,15 @@ class RuleScopeSupportTest {
                 0,
                 "dry_run",
                 "body",
-                Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/chat/completions"))),
+                Map.of("bind_scope", "route", "bind_ref", Map.of("scenes", List.of("chat"))),
                 false,
                 null);
-        MatchContext ctx = MatchContext.withBind("x", null, null, null, null, Map.of(), null, "/v1/chat/completions");
+        MatchContext ctx = MatchContext.withBind("x", null, null, null, null, Map.of(), "chat", null);
         assertTrue(RuleScopeSupport.matchesBind(rule, ctx));
     }
 
     @Test
-    void routeUriBindRejectsOtherPath() {
+    void routeSceneBindRejectsOtherScene() {
         RuleEntry rule = new RuleEntry(
                 "default",
                 "Rule_201",
@@ -49,10 +49,10 @@ class RuleScopeSupportTest {
                 0,
                 "dry_run",
                 "body",
-                Map.of("bind_scope", "route", "bind_ref", Map.of("uris", List.of("/v1/embeddings"))),
+                Map.of("bind_scope", "route", "bind_ref", Map.of("scenes", List.of("sse"))),
                 false,
                 null);
-        MatchContext ctx = MatchContext.withBind("x", null, null, null, null, Map.of(), null, "/v1/chat/completions");
+        MatchContext ctx = MatchContext.withBind("x", null, null, null, null, Map.of(), "chat", null);
         assertFalse(RuleScopeSupport.matchesBind(rule, ctx));
     }
 

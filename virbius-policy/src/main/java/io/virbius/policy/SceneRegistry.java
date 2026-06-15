@@ -38,6 +38,13 @@ public final class SceneRegistry {
         return scenes;
     }
 
+    public boolean hasScene(String sceneId) {
+        if (sceneId == null || sceneId.isBlank()) {
+            return false;
+        }
+        return scenes.stream().anyMatch(e -> sceneId.equals(e.sceneId()));
+    }
+
     public boolean failOnUnknownApp() {
         return failOnUnknownApp;
     }

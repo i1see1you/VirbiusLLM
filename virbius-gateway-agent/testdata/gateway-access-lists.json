@@ -22,7 +22,7 @@
       "binding_rules": [
         {
           "bind_scope": "route",
-          "bind_ref": { "uris": ["/v1/chat/completions"] }
+          "bind_ref": { "scenes": ["chat"] }
         }
       ]
     }
@@ -46,7 +46,7 @@
       "intent_action": "captcha",
       "enforce_mode": "dry_run",
       "bind_scope": "route",
-      "bind_ref": { "uris": ["/v1/chat/completions"] },
+      "bind_ref": { "scenes": ["chat"] },
       "body": "function decide(ctx)\n  return getCumulative('chat_user_req_1h') >= 5\nend"
     }
   ]

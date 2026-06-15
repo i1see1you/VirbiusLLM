@@ -3,7 +3,6 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Default)]
 pub struct BindContext {
     pub scene: String,
-    pub route_uri: Option<String>,
     pub app_id: Option<String>,
 }
 
@@ -11,8 +10,6 @@ pub struct BindContext {
 pub struct BindRefBlock {
     #[serde(default)]
     pub scenes: Vec<String>,
-    #[serde(default)]
-    pub uris: Vec<String>,
     #[serde(default)]
     pub app_ids: Vec<String>,
 }
@@ -58,86 +55,83 @@ fn matches_route(bind_ref: Option<&BindRefBlock>, ctx: &BindContext) -> bool {
     let Some(r) = bind_ref else {
         return false;
     };
-    if !r.uris.is_empty() {
-        let Some(uri) = normalize_uri(ctx.route_uri.as_deref()) else {
-            return false;
-        };
-        return r.uris.iter().any(|pat| uri_matches(&uri, pat));
-    }
-    if !r.scenes.is_empty() {
-        if ctx.scene.is_empty() {
-            return false;
-        }
-        return r
-            .scenes
-            .iter()
-            .any(|s| s == "*" || s == &ctx.scene);
-    }
-    false
-}
-
-pub fn normalize_uri(raw: Option<&str>) -> Option<String> {
-    let mut s = raw?.trim();
-    if s.is_empty() {
-        return None;
-    }
-    if let Some(q) = s.find('?') {
-        s = &s[..q];
-    }
-    if let Some(h) = s.find('#') {
-        s = &s[..h];
-    }
-    let mut out = s.to_string();
-    if !out.starts_with('/') {
-        out.insert(0, '/');
-    }
-    Some(out)
-}
-
-pub fn uri_matches(route_uri: &str, pattern: &str) -> bool {
-    let Some(uri) = normalize_uri(Some(route_uri)) else {
+    if r.scenes.is_empty() {
         return false;
-    };
-    let Some(pat) = normalize_uri(Some(pattern)) else {
-        return false;
-    };
-    if let Some(prefix) = pat.strip_suffix('*') {
-        return uri.starts_with(prefix);
     }
-    uri == pat
+    if ctx.scene.is_empty() {
+        return false;
+    }
+    r.scenes.iter().any(|s| s == "*" || s == &ctx.scene)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // ── Scene path (primary) ──
+
     #[test]
-    fn route_uri_priority() {
+    fn route_scene_match() {
         let ctx = BindContext {
-            scene: "beta_chat".into(),
-            route_uri: Some("/v1/other".into()),
+            scene: "chat".into(),
             ..Default::default()
         };
         let bind_ref = BindRefBlock {
-            uris: vec!["/v1/chat/completions".into()],
-            scenes: vec!["beta_chat".into()],
+            scenes: vec!["chat".into(), "sse".into()],
+            ..Default::default()
+        };
+        assert!(matches_route(Some(&bind_ref), &ctx));
+    }
+
+    #[test]
+    fn route_scene_wildcard() {
+        let ctx = BindContext {
+            scene: "any_scene".into(),
+            ..Default::default()
+        };
+        let bind_ref = BindRefBlock {
+            scenes: vec!["*".into()],
+            ..Default::default()
+        };
+        assert!(matches_route(Some(&bind_ref), &ctx));
+    }
+
+    #[test]
+    fn route_scene_no_match() {
+        let ctx = BindContext {
+            scene: "chat".into(),
+            ..Default::default()
+        };
+        let bind_ref = BindRefBlock {
+            scenes: vec!["sse".into(), "streaming".into()],
             ..Default::default()
         };
         assert!(!matches_route(Some(&bind_ref), &ctx));
     }
 
     #[test]
-    fn route_uri_prefix() {
+    fn route_scene_missing() {
         let ctx = BindContext {
-            route_uri: Some("/v1/chat/completions".into()),
+            scene: String::new(),
             ..Default::default()
         };
         let bind_ref = BindRefBlock {
-            uris: vec!["/v1/chat/*".into()],
+            scenes: vec!["chat".into()],
             ..Default::default()
         };
-        assert!(matches_route(Some(&bind_ref), &ctx));
+        assert!(!matches_route(Some(&bind_ref), &ctx));
     }
+
+    #[test]
+    fn route_no_bind_ref() {
+        let ctx = BindContext {
+            scene: "chat".into(),
+            ..Default::default()
+        };
+        assert!(!matches_route(None, &ctx));
+    }
+
+    // ── Service ──
 
     #[test]
     fn service_app_ids() {
