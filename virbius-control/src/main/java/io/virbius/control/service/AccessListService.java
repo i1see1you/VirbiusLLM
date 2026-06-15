@@ -145,19 +145,6 @@ public class AccessListService {
         return refreshArtifactsAndPush(tenantId, Map.of());
     }
 
-    public Map<String, Object> syncAndPublish(String tenantId, String bundleId, String version) {
-        Map<String, Object> sync = new LinkedHashMap<>(refreshArtifacts(tenantId));
-        if (registryRepo.listBundles(tenantId).isEmpty()) {
-            registryRepo.createBundle(tenantId, bundleId);
-        }
-        try {
-            sync.put("publish", publishService.publish(tenantId, bundleId, version));
-        } catch (IllegalStateException alreadyActive) {
-            sync.put("engine_reload", publishService.runtimeSnapshot(tenantId));
-        }
-        return sync;
-    }
-
     public Map<String, Object> refreshArtifactsAndPush(String tenantId) {
         return refreshArtifactsAndPush(tenantId, Map.of());
     }

@@ -4,6 +4,7 @@ import io.virbius.control.common.response.ApiResult;
 import io.virbius.control.domain.BundleVersion;
 import io.virbius.control.service.AccessListService;
 import io.virbius.control.service.BundleMetadataService;
+import io.virbius.control.service.DeployStateService;
 import io.virbius.control.repository.RegistryRepository;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -21,12 +22,15 @@ public class DashboardAdminController {
     private final RegistryRepository store;
     private final AccessListService accessListService;
     private final BundleMetadataService metadataService;
+    private final DeployStateService deployStateService;
 
     public DashboardAdminController(
-            RegistryRepository store, AccessListService accessListService, BundleMetadataService metadataService) {
+            RegistryRepository store, AccessListService accessListService,
+            BundleMetadataService metadataService, DeployStateService deployStateService) {
         this.store = store;
         this.accessListService = accessListService;
         this.metadataService = metadataService;
+        this.deployStateService = deployStateService;
     }
 
     @GetMapping("/overview")
@@ -34,12 +38,12 @@ public class DashboardAdminController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("tenant_id", tenantId);
         out.put("ui", Map.of("console", "/ui"));
+        out.put("deploy_status", deployStateService.status(tenantId));
         List<Map<String, Object>> bundles = new ArrayList<>();
         for (BundleVersion b : store.listBundles(tenantId)) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("bundle_id", b.bundleId());
             item.put("version", b.version());
-            item.put("status", b.status());
             bundles.add(item);
         }
         out.put("bundles", bundles);

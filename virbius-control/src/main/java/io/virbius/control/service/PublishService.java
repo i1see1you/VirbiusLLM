@@ -1,16 +1,13 @@
 package io.virbius.control.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.virbius.control.domain.BundleVersion;
 import io.virbius.control.domain.RuleRevision;
 import io.virbius.control.domain.RolloutStateHelper;
-import io.virbius.control.groovy.GroovyRuleValidator;
 import io.virbius.control.policy.PolicyDataBuilder;
 import io.virbius.control.policy.PolicyMaterializer;
 import io.virbius.control.repository.RegistryRepository;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -21,70 +18,19 @@ public class PublishService {
     private static final Logger log = LoggerFactory.getLogger(PublishService.class);
 
     private final RegistryRepository store;
-    private final GroovyRuleValidator groovyRuleValidator;
     private final PolicyMaterializer policyMaterializer;
     private final PolicyDataBuilder policyDataBuilder;
     private final CacheReloadNotifier reloadNotifier;
-    private final ObjectMapper mapper = new ObjectMapper();
 
     public PublishService(
             RegistryRepository store,
-            GroovyRuleValidator groovyRuleValidator,
             PolicyMaterializer policyMaterializer,
             PolicyDataBuilder policyDataBuilder,
             CacheReloadNotifier reloadNotifier) {
         this.store = store;
-        this.groovyRuleValidator = groovyRuleValidator;
         this.policyMaterializer = policyMaterializer;
         this.policyDataBuilder = policyDataBuilder;
         this.reloadNotifier = reloadNotifier;
-    }
-
-    public Map<String, Object> publish(String tenantId, String bundleId, String version) {
-        BundleVersion bundle = store.getBundle(tenantId, bundleId, version)
-                .orElseThrow(() -> new IllegalArgumentException("bundle not found"));
-        if ("active".equals(bundle.status())) {
-            throw new IllegalStateException("bundle already active");
-        }
-        String publishId = UUID.randomUUID().toString();
-        for (String status : List.of("validating", "eval_running", "compiling", "syncing")) {
-            store.updateBundleStatus(tenantId, bundleId, version, status, publishId, Map.of());
-        }
-        List<RuleRevision> rules = store.listCurrentRules(tenantId, null);
-        for (RuleRevision r : rules) {
-            if (!RolloutStateHelper.inExecutionPlane(r)) {
-                continue;
-            }
-            try {
-                groovyRuleValidator.validateRevision(r);
-            } catch (IllegalArgumentException e) {
-                throw new IllegalStateException("groovy validation failed for " + r.ruleId() + ": " + e.getMessage());
-            }
-        }
-        boolean hasGroovy = rules.stream()
-                .anyMatch(r -> RolloutStateHelper.inExecutionPlane(r) && "groovy".equals(r.runtime()));
-        if (!hasGroovy) {
-            throw new IllegalStateException("publish requires at least one active runtime=groovy rule");
-        }
-        Map<String, Object> syncAck = reloadEngineCache(tenantId, version);
-        store.updateBundleStatus(tenantId, bundleId, version, "active", publishId, syncAck);
-        return Map.of(
-                "bundle_id", bundleId,
-                "bundle_version", version,
-                "status", "active",
-                "publish_id", publishId,
-                "sync_ack", syncAck);
-    }
-
-    public Map<String, Object> status(String tenantId, String bundleId, String version) {
-        BundleVersion bundle = store.getBundle(tenantId, bundleId, version)
-                .orElseThrow(() -> new IllegalArgumentException("bundle not found"));
-        return Map.of(
-                "bundle_id", bundle.bundleId(),
-                "bundle_version", bundle.version(),
-                "status", bundle.status(),
-                "publish_id", bundle.publishId() != null ? bundle.publishId() : "",
-                "sync_ack", bundle.syncAck() != null ? bundle.syncAck() : Map.of());
     }
 
     public Map<String, Object> runtimeSnapshot(String tenantId) {

@@ -126,11 +126,5 @@ public class ListMetaAdminController {
         return ApiResult.ok(accessListService.pushToEngine(tenantId));
     }
 
-    @PostMapping("/sync-and-publish")
-    public ApiResult<Map<String, Object>> syncAndPublish(
-            @PathVariable("tenantId") String tenantId,
-            @RequestParam(value = "bundleId", defaultValue = "poc-default") String bundleId,
-            @RequestParam(value = "version", defaultValue = "0.1.0") String version) {
-        return ApiResult.ok(accessListService.syncAndPublish(tenantId, bundleId, version));
-    }
+
 }

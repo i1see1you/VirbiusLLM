@@ -610,13 +610,19 @@
 
   <div id="panel-rollout" class="panel card">
     <h2 style="margin:0 0 0.5rem;font-size:1rem">策略上线</h2>
-    <p class="hint">draft 须先 <code>上线</code> 进入 dry_run；达标后点 <code>升级 / 下一步</code>（后端仍校验门禁，未过可 force）。看板每 5 秒自动刷新。</p>
-    <div class="rollout-section" style="margin-bottom:0.75rem">
-      <h3 style="margin:0 0 0.35rem;font-size:0.95rem">网关产物（Redis + Sidecar）</h3>
-      <p class="hint" style="margin:0 0 0.35rem">revision / 节点 ACK；Sidecar 同步至本地 <code>lists_file</code>。</p>
-      <button type="button" class="secondary" id="btnGatewayArtifact">刷新网关产物状态</button>
-      <pre id="gatewayArtifactStatus" class="hint" style="margin:0.35rem 0 0;white-space:pre-wrap;font-size:0.8rem">—</pre>
+    <p class="hint">draft 须先 <code>上线</code> 进入 dry_run；达标后点 <code>升级 / 下一步</code>（后端仍校验门禁，未过可 force）。<strong>编辑和放量操作仅写 DB，须点「部署」推送到执行面才生效。</strong>看板每 5 秒自动刷新。</p>
+
+    <div class="rollout-section">
+      <h3 style="margin:0 0 0.35rem;font-size:0.95rem">部署引擎</h3>
+      <p class="hint" style="margin:0 0 0.35rem">规则变更（编辑/放量/停用）默认只写 DB；点击下发将最新配置推送到各层执行面。</p>
+      <div id="deployStatusBar" class="kpi-grid" style="margin-bottom:0.5rem"></div>
+      <div class="row" style="flex-wrap:wrap;gap:0.4rem">
+        <button type="button" class="secondary" data-deploy="gateway">🔄 部署网关</button>
+        <button type="button" class="secondary" data-deploy="cloud">🔄 部署引擎</button>
+        <button type="button" class="secondary" data-deploy="edge">🔄 部署端侧</button>
+      </div>
     </div>
+
     <div class="row">
       <label>规则
         <select id="roRuleSelect" style="min-width:16rem"><option value="">— 选择规则 —</option></select>
@@ -634,12 +640,6 @@
         <thead><tr><th>时段</th><th>分布</th><th>review</th><th>block</th><th>captcha</th><th>allow</th><th>total</th></tr></thead>
         <tbody></tbody>
       </table>
-    </div>
-
-    <div class="rollout-section" id="roCompareSection" style="display:none">
-      <h3>版本对比 (24h)</h3>
-      <p class="hint">active = 线上当前版本，pending = 待部署的草稿版本。</p>
-      <div id="roCompareCards" class="compare-grid"></div>
     </div>
 
     <div class="rollout-section">
@@ -669,7 +669,6 @@
         <button type="button" class="secondary" id="roRecover">恢复草稿</button>
         <button type="button" class="secondary" id="roLadderStart">启动阶梯 (auto)</button>
         <button type="button" class="secondary" id="roLadderPause">暂停阶梯</button>
-        <button type="button" class="primary" id="roDeployPending" style="display:none">部署新版本</button>
       </div>
     </div>
 

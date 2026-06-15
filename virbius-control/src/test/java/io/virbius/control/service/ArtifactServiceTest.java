@@ -110,11 +110,15 @@ class ArtifactServiceTest {
         Map<String, Object> snap = artifactService.buildGatewaySnapshot(TENANT);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rules = (List<Map<String, Object>>) snap.get("script_rules");
-        assertEquals(1, rules.size());
-        assertEquals("rl_deny_keywords", rules.get(0).get("rule_id"));
-        String body = (String) rules.get(0).get("body");
-        assertTrue(body.contains("listMatch('deny_keyword'"));
-        assertFalse(body.startsWith("{"));
+        assertEquals(2, rules.size());
+        Map<String, Object> legacyBlock = rules.stream()
+                .filter(r -> "gw_content_deny".equals(r.get("rule_id")))
+                .findFirst().orElseThrow();
+        assertEquals("deny", legacyBlock.get("intent_action"));
+        Map<String, Object> luaBlock = rules.stream()
+                .filter(r -> "rl_deny_keywords".equals(r.get("rule_id")))
+                .findFirst().orElseThrow();
+        assertTrue(((String) luaBlock.get("body")).contains("listMatch('deny_keyword'"));
     }
 
     @Test

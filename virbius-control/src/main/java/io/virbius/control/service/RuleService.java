@@ -14,8 +14,6 @@ import io.virbius.control.gateway.RuleBindScopeValidator;
 import io.virbius.control.groovy.GroovyRuleBodies;
 import io.virbius.control.ruleauthoring.ConditionCompiler;
 import io.virbius.control.repository.RegistryRepository;
-import io.virbius.control.repository.RolloutEventRepository;
-import java.time.Instant;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
@@ -30,18 +28,12 @@ public class RuleService {
 
     private final RegistryRepository store;
     private final ScriptRuleValidator scriptRuleValidator;
-    private final RolloutEventRepository eventRepository;
-    private final RuleExecutionSync ruleExecutionSync;
 
     public RuleService(
             RegistryRepository store,
-            ScriptRuleValidator scriptRuleValidator,
-            RolloutEventRepository eventRepository,
-            RuleExecutionSync ruleExecutionSync) {
+            ScriptRuleValidator scriptRuleValidator) {
         this.store = store;
         this.scriptRuleValidator = scriptRuleValidator;
-        this.eventRepository = eventRepository;
-        this.ruleExecutionSync = ruleExecutionSync;
     }
 
     public Map<String, Object> validateScript(String tenantId, ValidateScriptRequest req) {
@@ -123,49 +115,7 @@ public class RuleService {
                 .map(b -> b.metadata() != null ? b.metadata() : Map.<String, Object>of())
                 .orElse(Map.of());
         RuleBindScopeValidator.validateRouteScenes(req, bundleMetadata);
-        RuleRevision before = existing.orElse(null);
-        boolean contentChangeInExecutionPlane = before != null
-                && RolloutStateHelper.inExecutionPlane(before)
-                && contentChanged(before, req, normalizedRisk, intentAction);
-
         RuleRevision saved = store.upsertRule(tenantId, draft);
-
-        if (contentChangeInExecutionPlane) {
-            // Store draft as pending; keep current_revision on old revision so it keeps running
-            store.setPendingRevision(
-                    tenantId,
-                    saved.ruleId(),
-                    saved.ruleRevision(),
-                    before.ruleRevision(),
-                    before.rolloutState(),
-                    Instant.now().toString());
-            eventRepository.recordEvent(
-                    tenantId,
-                    saved.ruleId(),
-                    saved.ruleRevision(),
-                    "pending",
-                    null,
-                    "body_change",
-                    "admin");
-        } else {
-            if (before != null
-                    && RolloutStateHelper.inExecutionPlane(before)
-                    && RolloutState.DRAFT.value().equals(saved.rolloutState())) {
-                eventRepository.recordEvent(
-                        tenantId,
-                        saved.ruleId(),
-                        saved.ruleRevision(),
-                        saved.rolloutState(),
-                        null,
-                        "body_change",
-                        "admin");
-            }
-            if (before != null) {
-                ruleExecutionSync.afterRolloutChange(tenantId, before, saved);
-            } else if (RolloutStateHelper.inExecutionPlane(saved)) {
-                ruleExecutionSync.afterContentChange(tenantId, saved);
-            }
-        }
         return RuleResponseMapper.toDetail(saved);
     }
 
@@ -190,7 +140,6 @@ public class RuleService {
     @Deprecated
     public Map<String, Object> updateRuntime(String tenantId, String ruleId, String enforceMode, Integer canaryPercent) {
         RuleRevision r = store.updateRuntime(tenantId, ruleId, enforceMode, canaryPercent);
-        ruleExecutionSync.afterRolloutChange(tenantId, r, r);
         return RuleResponseMapper.toDetail(r);
     }
 
@@ -198,7 +147,6 @@ public class RuleService {
     public Map<String, Object> updateRuleStatus(String tenantId, String ruleId, String ruleStatus) {
         RuleRevision current = store.getCurrentRule(tenantId, ruleId).orElseThrow();
         RuleRevision updated = store.updateRuleStatus(tenantId, ruleId, ruleStatus);
-        ruleExecutionSync.afterRolloutChange(tenantId, current, updated);
         return RuleResponseMapper.toDetail(updated);
     }
 

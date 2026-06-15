@@ -270,6 +270,15 @@ CREATE TABLE IF NOT EXISTS tb_tenant_api_credential (
 CREATE INDEX IF NOT EXISTS idx_tb_tenant_api_cred_tenant
     ON tb_tenant_api_credential (tenant_id, status);
 
+CREATE TABLE IF NOT EXISTS tb_deploy_state (
+    tenant_id   VARCHAR(64) NOT NULL,
+    layer       VARCHAR(16) NOT NULL,
+    deployed_at TIMESTAMP NOT NULL,
+    artifact    TEXT,
+    PRIMARY KEY (tenant_id, layer),
+    CHECK (layer IN ('gateway', 'cloud', 'edge'))
+);
+
 CREATE TABLE IF NOT EXISTS tb_gateway_artifact_meta (
     tenant_id              VARCHAR(64) PRIMARY KEY,
     artifact_revision      BIGINT       NOT NULL DEFAULT 0,

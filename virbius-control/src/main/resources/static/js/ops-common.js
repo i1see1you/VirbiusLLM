@@ -132,6 +132,23 @@
       return String(s).replace('T', ' ').slice(0, 19);
     }
 
+    function fmtTimeAgo(s) {
+      if (!s) return '尚未部署';
+      const t = Date.parse(String(s));
+      if (Number.isNaN(t)) return '—';
+      const diff = Date.now() - t;
+      if (diff < 60000) return '刚刚';
+      if (diff < 3600000) return Math.floor(diff / 60000) + ' 分钟前';
+      if (diff < 86400000) return Math.floor(diff / 3600000) + ' 小时前';
+      return Math.floor(diff / 86400000) + ' 天前';
+    }
+
+    const LAYER_LABELS = {
+      gateway: '网关 Gateway',
+      cloud: '引擎 Engine',
+      edge: '端 Edge'
+    };
+
     function formatMatchHeaders(h) {
       if (!h || typeof h !== 'object' || !Object.keys(h).length) return '—';
       return Object.entries(h).map(([k, v]) => `${k}=${v}`).join(', ');

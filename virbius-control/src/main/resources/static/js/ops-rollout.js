@@ -197,6 +197,7 @@
       document.getElementById('roLadderStart').style.display = exec && st !== 'full' ? '' : 'none';
       document.getElementById('roLadderPause').style.display = exec ? '' : 'none';
       updateRolloutSuggestedHint(meta);
+      loadDeployStatus().catch(() => {});
     }
 
     function rolloutEvaluateTarget(meta) {
@@ -283,74 +284,81 @@
         renderRolloutMetrics(metrics.series || []);
         renderRolloutTimeline(timeline);
         renderRolloutSamples(samples);
-        const comparePromise = loadCompareData().catch(() => {});
       } finally {
         rolloutRefreshBusy = false;
         loadGatewayArtifactStatus().catch(() => {});
+        loadDeployStatus().catch(() => {});
       }
     }
 
-    async function loadCompareData() {
-      const ruleId = rolloutRuleId();
-      const el = document.getElementById('roCompareCards');
-      const section = document.getElementById('roCompareSection');
-      if (!ruleId || !el || !section) { if (section) section.style.display = 'none'; return; }
-      try {
-        const data = await admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/compare?hours=24');
-        if (data.pending) {
-          section.style.display = '';
-          renderCompareCards('active', data.active, 'pending', data.pending);
-          document.getElementById('roDeployPending').style.display = '';
-        } else {
-          section.style.display = 'none';
-          document.getElementById('roDeployPending').style.display = 'none';
-        }
-      } catch (e) {
-        section.style.display = 'none';
-        document.getElementById('roDeployPending').style.display = 'none';
-      }
-    }
-
-    function renderCompareCards(label1, data1, label2, data2) {
-      const el = document.getElementById('roCompareCards');
+    async function loadDeployStatus() {
+      const el = document.getElementById('deployStatusBar');
       if (!el) return;
-      const card = (label, d) => {
-        const t = d.totals || {};
-        const total = t.total_requests || 1;
-        const pct = (v) => ((v / total) * 100).toFixed(2) + '%';
-        return `<div class="compare-card">
-          <div class="card-title"><span class="tag">${esc(label)}</span> rev=${esc(String(d.revision ?? '?'))}</div>
-          <div class="stat-row"><span class="stat-label">review</span><span class="stat-value">${t.review ?? 0} (${pct(t.review)})</span></div>
-          <div class="stat-row"><span class="stat-label">block</span><span class="stat-value">${t.block ?? 0} (${pct(t.block)})</span></div>
-          <div class="stat-row"><span class="stat-label">captcha</span><span class="stat-value">${t.captcha ?? 0} (${pct(t.captcha)})</span></div>
-          <div class="stat-row"><span class="stat-label">allow</span><span class="stat-value">${t.allow ?? 0} (${pct(t.allow)})</span></div>
-          <div class="stat-row"><span class="stat-label">total</span><span class="stat-value">${t.total_requests ?? 0}</span></div>
-        </div>`;
-      };
-      el.innerHTML = card(label1, data1) + card(label2, data2);
+      try {
+        const data = await admin('/dashboard/overview');
+        const ds = data.deploy_status || {};
+        const cards = Object.entries(ds).map(([layer, st]) => {
+          const hasUnpub = st.has_unpublished;
+          const label = LAYER_LABELS[layer] || layer;
+          const dot = hasUnpub
+            ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;margin-right:4px"></span>'
+            : '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;margin-right:4px"></span>';
+          const rules = st.pending_rules || [];
+          const count = rules.length;
+          let statusText, pendingHtml;
+          if (!st.deployed_at) {
+            statusText = count > 0 ? `尚未部署（${count} 条规则在线上未推送）` : '尚未部署';
+          } else if (hasUnpub) {
+            statusText = `${count} 条规则待部署`;
+          } else {
+            statusText = '已同步，无待部署变更';
+          }
+          if (hasUnpub && count > 0) {
+            const maxShow = 3;
+            const shown = rules.slice(0, maxShow).map(r => `<code style="font-size:0.7rem">${esc(r)}</code>`).join(' · ');
+            const extra = count > maxShow ? `另外 ${count - maxShow} 条` : '';
+            pendingHtml = `<div style="font-size:0.72rem;color:#64748b;margin-top:2px">${shown}${extra ? ' · ' + extra : ''}</div>`;
+          } else {
+            pendingHtml = '';
+          }
+          const timeAgo = fmtTimeAgo(st.deployed_at);
+          let gwNodeHtml = '';
+          if (layer === 'gateway') {
+            gwNodeHtml = '<div id="gwNodeStatus" style="font-size:0.72rem;color:#94a3b8;margin-top:2px">—</div>';
+          }
+          return `<div class="kpi-card" id="deployCard_${layer}"><div class="label">${dot}${esc(label)}</div><div class="value" style="font-size:0.82rem">${esc(statusText)}</div><div style="font-size:0.72rem;color:#94a3b8">${esc(timeAgo)}</div>${pendingHtml}${gwNodeHtml}</div>`;
+        });
+        el.innerHTML = cards.join('');
+        loadGatewayArtifactStatus().catch(() => {});
+      } catch (e) {
+        el.innerHTML = '<div class="kpi-card"><div class="label">部署状态</div><div class="value" style="font-size:0.85rem;color:#dc2626">不可用</div></div>';
+      }
+    }
+
+    async function doDeploy(layer) {
+      try {
+        const data = await admin('/deploy/' + encodeURIComponent(layer), { method: 'POST' });
+        log(data, 'ok');
+        await loadDeployStatus();
+      } catch (e) {
+        log(e.message, 'err');
+      }
     }
 
     async function loadGatewayArtifactStatus() {
-      const el = document.getElementById('gatewayArtifactStatus');
+      const el = document.getElementById('gwNodeStatus');
       if (!el) return;
       try {
         const data = await admin('/gateway-artifacts/policy-version');
         const nodes = await admin('/gateway-artifacts/nodes');
         const okCount = data.nodes_ok ?? 0;
         const totalCount = data.nodes_total ?? 0;
-        const rows = (nodes ?? []).map(n =>
-          `<tr><td>${esc(n.hostname)}</td><td>r${esc(n.artifact_revision)}</td><td>${ruleStatusTag(n.status)}</td><td style="font-size:0.75rem">${esc(n.loaded_at || '').replace('T',' ').slice(0,19)}</td></tr>`).join('');
-        el.innerHTML =
-          (rows ? `<table class="striped" style="font-size:0.8rem;width:auto">
-            <thead><tr><th>节点</th><th>版本</th><th>状态</th><th>加载时间</th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>` : '') +
-          `<p style="margin:0.25rem 0 0;font-size:0.75rem;color:var(--text-muted)">
-            revision ${esc(String(data.artifact_revision))} · ${okCount}/${totalCount} nodes ok
-            ${data.published_at ? '· ' + esc(data.published_at).replace('T',' ').slice(0,19) : ''}
-          </p>`;
+        const rev = data.artifact_revision ?? '?';
+        const summary = `${okCount}/${totalCount} 节点已加载 r${esc(String(rev))}`;
+        const color = okCount >= totalCount && totalCount > 0 ? '#22c55e' : '#f59e0b';
+        el.innerHTML = `<span style="color:${color}">${summary}</span>`;
       } catch (e) {
-        el.textContent = '不可用: ' + e.message;
+        el.textContent = '节点状态不可用';
       }
     }
 
@@ -442,33 +450,9 @@
       admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/ladder/pause', { method: 'POST' })
         .then(log).catch(e => log(e.message, 'err'));
     };
-    document.getElementById('roDeployPending').onclick = async () => {
-      const ruleId = rolloutRuleId();
-      if (!ruleId) return;
-      const state = prompt('部署初始状态：dry_run（默认）/ canary\n如选 canary 请输入 "canary@百分比"', 'dry_run');
-      if (state === null) return;
-      let initialState = 'dry_run';
-      let canaryPercent = null;
-      if (state.trim().toLowerCase().startsWith('canary')) {
-        const m = state.match(/canary@?(\d+)/i);
-        if (!m) { log('格式错误：canary@百分比，如 canary@5', 'err'); return; }
-        initialState = 'canary';
-        canaryPercent = parseInt(m[1]);
-      } else if (state.trim().toLowerCase() !== 'dry_run') {
-        log('请输入 dry_run 或 canary@百分比', 'err');
-        return;
-      }
-      try {
-        const data = await admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/deploy-pending', {
-          method: 'POST',
-          body: JSON.stringify({ initial_state: initialState, canary_percent: canaryPercent })
-        });
-        log('部署成功: ' + JSON.stringify(data));
-        await refreshRolloutDashboard();
-      } catch (e) {
-        log(e.message, 'err');
-      }
-    };
+    document.querySelectorAll('[data-deploy]').forEach(btn => {
+      btn.onclick = () => doDeploy(btn.dataset.deploy);
+    });
     document.getElementById('roTraceClose').onclick = () => {
       document.getElementById('roTraceModal').style.display = 'none';
     };

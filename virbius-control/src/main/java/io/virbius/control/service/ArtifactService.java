@@ -90,6 +90,21 @@ public class ArtifactService {
         return paths;
     }
 
+    public Map<String, String> writeEdgeOnly(String tenantId) {
+        Map<String, String> paths = new LinkedHashMap<>();
+        try {
+            Map<String, Object> metadata = registryRepo
+                    .getBundle(tenantId, "poc-default", "0.1.0")
+                    .map(b -> b.metadata() != null ? b.metadata() : Map.<String, Object>of())
+                    .orElse(Map.of());
+            paths.putAll(writeEdge(tenantId, metadata));
+        } catch (Exception e) {
+            log.warn("failed to write edge manifests: {}", e.getMessage());
+            paths.put("error", e.getMessage());
+        }
+        return paths;
+    }
+
     public void writeGatewayLocalFiles(String tenantId, Map<String, Object> bundleMetadata) {
         try {
             writeGateway(tenantId, bundleMetadata);
@@ -237,25 +252,16 @@ public class ArtifactService {
             if (!RolloutStateHelper.inExecutionPlane(rule) || !"lua".equals(rule.runtime())) {
                 continue;
             }
-            blocks.add(toScriptRuleBlock(rule, "active"));
-        }
-        // Include pending rules that are in execution plane (dry_run/canary)
-        for (RuleRevision rule : registryRepo.listCurrentRules(tenantId, "gateway")) {
-            registryRepo.getPendingRule(tenantId, rule.ruleId()).ifPresent(pending -> {
-                if (RolloutStateHelper.inExecutionPlane(pending) && "lua".equals(pending.runtime())) {
-                    blocks.add(toScriptRuleBlock(pending, "pending"));
-                }
-            });
+            blocks.add(toScriptRuleBlock(rule));
         }
         blocks.sort((a, b) -> Integer.compare((int) b.get("risk_score"), (int) a.get("risk_score")));
         return blocks;
     }
 
-    private Map<String, Object> toScriptRuleBlock(RuleRevision rule, String tag) {
+    private Map<String, Object> toScriptRuleBlock(RuleRevision rule) {
         Map<String, Object> block = new LinkedHashMap<>();
         block.put("rule_id", rule.ruleId());
         block.put("rule_revision", rule.ruleRevision());
-        block.put("revision_tag", tag);
         block.put("reason_code", rule.reasonCode());
         block.put("risk_score", rule.riskScore());
         block.put("intent_action", rule.intentAction() != null ? rule.intentAction() : "deny");

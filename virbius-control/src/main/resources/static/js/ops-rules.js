@@ -1293,27 +1293,31 @@ end`;
       }
       const isAsync = document.getElementById('fIsAsync').checked;
       const asyncActionConfig = isAsync ? buildAsyncActionConfig() : null;
-      await admin('/rules', {
-        method: 'POST',
-        body: JSON.stringify({
-          rule_id: ruleId,
-          bundle_id: bundleId(),
-          layer,
-          runtime,
-          reason_code: document.getElementById('fReason').value,
-          risk_score: isDlpRuntime(runtime) ? 0 : Number(document.getElementById('fRisk').value),
-          intent_action: isAsync ? 'allow' : (isDlpRuntime(runtime) ? 'allow' : document.getElementById('fIntent').value),
-          scope,
-          body,
-          editor_mode: isPromptRuntime(runtime) ? null : (isSimpleEditorMode() ? 'simple' : 'advanced'),
-          condition: (isPromptRuntime(runtime) || isEdgeFormRuntime(runtime) || !isSimpleEditorMode()) ? null : readConditionPayload(),
-          is_async: isAsync,
-          async_action_config: asyncActionConfig
-        })
-      });
-      log(isNewRule ? '规则已创建' : '规则已保存', 'ok');
-      isNewRule = false;
-      await selectRule(ruleId);
+      try {
+        await admin('/rules', {
+          method: 'POST',
+          body: JSON.stringify({
+            rule_id: ruleId,
+            bundle_id: bundleId(),
+            layer,
+            runtime,
+            reason_code: document.getElementById('fReason').value,
+            risk_score: isDlpRuntime(runtime) ? 0 : Number(document.getElementById('fRisk').value),
+            intent_action: isAsync ? 'allow' : (isDlpRuntime(runtime) ? 'allow' : document.getElementById('fIntent').value),
+            scope,
+            body,
+            editor_mode: isPromptRuntime(runtime) ? null : (isSimpleEditorMode() ? 'simple' : 'advanced'),
+            condition: (isPromptRuntime(runtime) || isEdgeFormRuntime(runtime) || !isSimpleEditorMode()) ? null : readConditionPayload(),
+            is_async: isAsync,
+            async_action_config: asyncActionConfig
+          })
+        });
+        log(isNewRule ? '规则已创建' : '规则已保存', 'ok');
+        isNewRule = false;
+        await selectRule(ruleId);
+      } catch (e) {
+        log('保存失败：' + e.message, 'err');
+      }
     };
     document.getElementById('btnSaveRuntime').onclick = () => {
       if (!editRuleMeta || !inExecutionPlane(editRuleMeta.rollout_state)) {
