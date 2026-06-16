@@ -350,15 +350,10 @@
       if (!el) return;
       try {
         const data = await admin('/gateway-artifacts/policy-version');
-        const nodes = await admin('/gateway-artifacts/nodes');
-        const okCount = data.nodes_ok ?? 0;
-        const totalCount = data.nodes_total ?? 0;
         const rev = data.artifact_revision ?? '?';
-        const summary = `${okCount}/${totalCount} 节点已加载 r${esc(String(rev))}`;
-        const color = okCount >= totalCount && totalCount > 0 ? '#22c55e' : '#f59e0b';
-        el.innerHTML = `<span style="color:${color}">${summary}</span>`;
+        el.innerHTML = `<span style="color:#22c55e">配置已发布到 Redis (r${esc(String(rev))})</span>`;
       } catch (e) {
-        el.textContent = '节点状态不可用';
+        el.textContent = '配置状态不可用';
       }
     }
 

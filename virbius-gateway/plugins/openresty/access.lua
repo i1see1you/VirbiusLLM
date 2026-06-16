@@ -23,6 +23,7 @@ local prompt = require("prompt")
 local context_vars = require("context_vars")
 local scene_registry = require("scene_registry")
 local access_lists = require("access_lists")
+local config_redis = require("config_redis")
 local http = require("resty.http")
 
 local function get_header(name)
@@ -73,8 +74,14 @@ local route_uri = ngx.var.uri
 local query = context_vars.query_args()
 local headers_map = {}
 
+local config_cache = config_redis.load(conf.tenant_id)
+if not config_cache then
+    ngx.log(ngx.WARN, "virbius openresty config_redis unavailable, falling back to file")
+end
+local lists_source = config_cache and config_cache.access_lists or conf.lists_file
+
 local hits, vars_ctx = access_lists.check(
-    conf.lists_file,
+    lists_source,
     get_header,
     content,
     user_id,
@@ -83,7 +90,9 @@ local hits, vars_ctx = access_lists.check(
 )
 
 local scene_id = nil
-local registry = scene_registry.load_from_file(conf.scene_registry_file, conf.lists_file)
+local registry = config_cache
+    and scene_registry.load_from_cache(config_cache)
+    or scene_registry.load_from_file(conf.scene_registry_file, conf.lists_file)
 if registry then
     local resolved, src = scene_registry.resolve(registry, vars_ctx and vars_ctx.app_id, route_uri, query, headers_map)
     if resolved then

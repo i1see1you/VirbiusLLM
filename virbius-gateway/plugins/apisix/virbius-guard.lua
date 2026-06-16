@@ -26,6 +26,7 @@ local json_util = require("json_util")
 local context_vars_mod = require("context_vars")
 local scene_registry_mod = require("scene_registry")
 local access_lists_mod = require("access_lists")
+local config_redis_mod = require("config_redis")
 local prompt_mod = require("prompt")
 local trace_mod = require("trace")
 
@@ -72,9 +73,11 @@ local function read_prompt_content()
     return prompt_mod.extract(ngx.req.get_body_data() or "", core.json.decode)
 end
 
-local function check_access_lists(conf, ctx, content, user_id, device_id, client_ip)
+local function check_access_lists(lists_source, ctx, content, user_id, device_id, client_ip)
+    local file = type(lists_source) == "string" and lists_source or nil
+    local data = type(lists_source) == "table" and lists_source or nil
     return access_lists_mod.check(
-        conf.lists_file or "./data/gateway/default-access-lists.json",
+        data or file or "./data/gateway/default-access-lists.json",
         function(name)
             return get_header(ctx, name)
         end,
@@ -115,13 +118,21 @@ function _M.access(conf, ctx)
     local query = context_vars_mod.query_args()
     local headers_map = {}
 
-    local hits, vars_ctx = check_access_lists(conf, ctx, content, user_id, device_id, client_ip)
+    local config_cache = config_redis_mod.load(conf.tenant_id)
+    if not config_cache then
+        core.log.warn(plugin_name, " config_redis unavailable, falling back to file")
+    end
+    local lists_source = config_cache and config_cache.access_lists or conf.lists_file
+
+    local hits, vars_ctx = check_access_lists(lists_source, ctx, content, user_id, device_id, client_ip)
 
     local scene_id = nil
-    local registry = scene_registry_mod.load_from_file(
-        conf.scene_registry_file,
-        conf.lists_file or "./data/gateway/default-access-lists.json"
-    )
+    local registry = config_cache
+        and scene_registry_mod.load_from_cache(config_cache)
+        or scene_registry_mod.load_from_file(
+            conf.scene_registry_file,
+            conf.lists_file or "./data/gateway/default-access-lists.json"
+        )
     if registry then
         local resolved, src = scene_registry_mod.resolve(
             registry,

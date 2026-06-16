@@ -81,24 +81,6 @@ public class GatewayDeliveryService {
             out.put("publish_id", p.publishId());
             out.put("trigger", p.trigger());
         });
-        if (publisher.isEnabled()) {
-            List<Map<String, String>> acks = publisher.listNodeAcks(tenantId);
-            long rev = ((Number) out.get("artifact_revision")).longValue();
-            int ok = 0;
-            List<String> pending = new java.util.ArrayList<>();
-            for (Map<String, String> ack : acks) {
-                String r = ack.get("artifact_revision");
-                String nodeId = ack.get("node_id");
-                if (r != null && Long.parseLong(r) >= rev && !"error".equals(ack.get("status"))) {
-                    ok++;
-                } else if (nodeId != null) {
-                    pending.add(nodeId);
-                }
-            }
-            out.put("nodes_ok", ok);
-            out.put("nodes_total", acks.size());
-            out.put("nodes_pending", pending);
-        }
         return out;
     }
 

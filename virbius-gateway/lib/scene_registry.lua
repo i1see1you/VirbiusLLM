@@ -22,6 +22,21 @@ function _M.load_from_file(path, lists_file_fallback)
     return nil
 end
 
+function _M.load_from_cache(config_cache)
+    if not config_cache then
+        return nil
+    end
+    local sr = config_cache.scene_registry
+    if sr then
+        return sr.scene_registry or sr
+    end
+    local al = config_cache.access_lists
+    if al and al.scene_registry then
+        return al.scene_registry
+    end
+    return nil
+end
+
 local function default_scene_for_app(scenes, app_id)
     for scene_id, def in pairs(scenes or {}) do
         if def.app_id == app_id and def.default then

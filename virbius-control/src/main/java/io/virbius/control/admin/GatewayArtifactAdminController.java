@@ -50,7 +50,6 @@ public class GatewayArtifactAdminController {
         if (gw instanceof GatewayArtifactPublishResult result) {
             out.put("artifact_revision", result.artifactRevision());
             out.put("storage", result.storage());
-            out.put("gateway_sync_ack", result.syncAck());
         }
         return ApiResult.ok(out);
     }

@@ -133,7 +133,7 @@
     }
 
     function fmtTimeAgo(s) {
-      if (!s) return '尚未部署';
+      if (!s) return '—';
       const t = Date.parse(String(s));
       if (Number.isNaN(t)) return '—';
       const diff = Date.now() - t;

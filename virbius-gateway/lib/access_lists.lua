@@ -417,8 +417,13 @@ local function collect_named_list_hits(lists, content, user_id, device_id, clien
     return hits
 end
 
-function _M.check(lists_file, get_header, content, user_id, device_id, client_ip)
-    local lists = file_cache.load_json(lists_file, "access_lists:" .. lists_file)
+function _M.check(lists_source, get_header, content, user_id, device_id, client_ip)
+    local lists
+    if type(lists_source) == "table" then
+        lists = lists_source
+    else
+        lists = file_cache.load_json(lists_source, "access_lists:" .. lists_source)
+    end
     if not lists then
         return nil, {}
     end
