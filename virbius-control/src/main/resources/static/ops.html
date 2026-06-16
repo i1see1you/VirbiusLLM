@@ -98,12 +98,6 @@
     .kpi-card .label { font-size: 0.72rem; color: #64748b; margin-bottom: 0.15rem; }
     .kpi-card .value { font-size: 1.15rem; font-weight: 600; }
     .rollout-section { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; }
-    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.5rem; }
-    .compare-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.65rem 0.75rem; }
-    .compare-card .card-title { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.35rem; }
-    .compare-card .stat-row { display: flex; justify-content: space-between; font-size: 0.78rem; padding: 0.15rem 0; }
-    .compare-card .stat-row .stat-label { color: #64748b; }
-    .compare-card .stat-row .stat-value { font-weight: 500; }
     .rollout-section h3 { font-size: 0.92rem; margin: 0 0 0.5rem; color: #334155; }
     .bar-cell { display: flex; align-items: flex-end; gap: 1px; height: 2rem; min-width: 3rem; }
     .bar-seg { width: 4px; border-radius: 1px; }
@@ -129,7 +123,16 @@
     #ruleSummaryCard { margin: 0.5rem 0; padding: 0.5rem; background: #f0f9ff; border-radius: 4px; font-size: 0.9rem; }
     .async-var-chip { display: inline-block; cursor: pointer; padding: 0.12rem 0.35rem; margin: 0.15rem 0.2rem 0.15rem 0; border-radius: 3px; background: #e0e7ff; color: #3730a3; font-family: ui-monospace,monospace; font-size: 0.72rem; white-space: nowrap; }
     .async-var-chip:hover { background: #c7d2fe; }
+    .big-kpi-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 0.75rem; text-align: center; }
+    .big-kpi-card .label { font-size: 0.8rem; color: #64748b; margin-bottom: 0.25rem; }
+    .big-kpi-card .value { font-size: 2rem; font-weight: 700; }
+    .big-kpi-card .value.rate-low  { color: #16a34a; background: #dcfce7; padding: 0.15rem 1rem; border-radius: 6px; display: inline-block; }
+    .big-kpi-card .value.rate-mid  { color: #d97706; background: #fef3c7; padding: 0.15rem 1rem; border-radius: 6px; display: inline-block; }
+    .big-kpi-card .value.rate-high { color: #dc2626; background: #fee2e2; padding: 0.15rem 1rem; border-radius: 6px; display: inline-block; }
+    .chart-wrap { position: relative; width: 100%; margin: 0.5rem 0 0; }
+    .chart-wrap canvas { width: 100% !important; max-height: 300px; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body>
   <div class="app-layout">
@@ -401,10 +404,7 @@
           </select>
         </label>
         <label id="asyncWrap" style="display:none"><input type="checkbox" id="fIsAsync" /> 异步规则</label>
-        <label id="enforceWrap">enforce
-          <select id="fEnforce"><option>dry_run</option><option>canary</option><option>full</option></select>
-        </label>
-        <label id="canaryWrap">canary% <input id="fCanary" type="number" min="0" max="100" value="5" style="width:3rem" /></label>
+
       </div>
       <div id="asyncConfigRow" class="card" style="display:none;padding:0.75rem;margin:0.5rem 0;background:#f8fafc;border:1px dashed #cbd5e1">
         <div class="row" style="margin-bottom:0.5rem">
@@ -573,8 +573,6 @@
       <div class="row">
         <button type="button" id="btnSaveRule">保存规则（新 revision）</button>
         <button type="button" class="secondary" id="btnActivateRule" style="display:none">启用（上线）</button>
-        <button type="button" class="secondary" id="btnSaveRuntime">仅更新 enforce</button>
-        <button type="button" class="secondary" id="btnSnapshot">Engine 运行时快照</button>
         <button type="button" class="danger" id="btnDisableRule">停用规则</button>
         <button type="button" class="secondary" id="btnEnableRule" style="display:none">恢复为草稿</button>
       </div>
@@ -636,6 +634,13 @@
 
     <div class="rollout-section">
       <h3>24h 按小时指标</h3>
+      <div id="roBlockRateCard" class="big-kpi-card">
+        <div class="label">24h 拦截率 (block_rate)</div>
+        <div class="value" id="roBlockRateValue">—</div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="roCombinedChart"></canvas>
+      </div>
       <table id="roMetricsTable">
         <thead><tr><th>时段</th><th>分布</th><th>review</th><th>block</th><th>captcha</th><th>allow</th><th>total</th></tr></thead>
         <tbody></tbody>

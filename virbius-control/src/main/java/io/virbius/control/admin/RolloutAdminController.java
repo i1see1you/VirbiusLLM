@@ -176,14 +176,6 @@ public class RolloutAdminController {
         return ApiResult.ok(dashboardService.gateLogs(tenantId, ruleId, limit));
     }
 
-    @GetMapping("/rules/{ruleId}/rollout/compare")
-    public ApiResult<Map<String, Object>> compare(
-            @PathVariable("tenantId") String tenantId,
-            @PathVariable("ruleId") String ruleId,
-            @RequestParam(value = "hours", defaultValue = "24") int hours) {
-        return ApiResult.ok(dashboardService.compare(tenantId, ruleId, hours));
-    }
-
     @PostMapping("/rules/{ruleId}/rollout/ladder/start")
     public ApiResult<Map<String, Object>> ladderStart(
             @PathVariable("tenantId") String tenantId, @PathVariable("ruleId") String ruleId) {

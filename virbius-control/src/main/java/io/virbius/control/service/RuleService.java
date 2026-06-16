@@ -1,5 +1,6 @@
 package io.virbius.control.service;
 
+import io.virbius.control.common.exception.BusinessException;
 import io.virbius.control.domain.RuleRevision;
 import io.virbius.control.domain.RiskScore;
 import io.virbius.control.domain.RolloutStateHelper;
@@ -73,8 +74,10 @@ public class RuleService {
 
         if (existing.isPresent() && contentChanged(existing.get(), req, normalizedRisk, intentAction)) {
             if (RolloutStateHelper.inExecutionPlane(existing.get())) {
-                rolloutState = RolloutState.DRAFT.value();
-                canaryPercent = null;
+                String state = existing.get().rolloutState();
+                String hint = "dry_run".equals(state) ? "先下线（禁用）再编辑" : "先回滚到 dry_run，收集足够数据后下线再编辑";
+                throw new BusinessException(409,
+                        "规则当前为 " + state + " 状态，正在线上运行，不允许编辑。请" + hint + "。");
             }
         }
 

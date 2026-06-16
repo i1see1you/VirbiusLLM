@@ -42,16 +42,26 @@ public class DeployStateService {
         return out;
     }
 
-    private java.util.List<String> pendingRules(String tenantId, String layer, String deployedAtStr) {
+    private java.util.List<java.util.Map<String, Object>> pendingRules(String tenantId, String layer, String deployedAtStr) {
         if (deployedAtStr == null) {
             return jdbc.query(
-                    "SELECT rule_id FROM tb_rules_current WHERE tenant_id = ? AND layer = ? AND rollout_state IN ('dry_run','canary','full') ORDER BY rule_id",
-                    (rs, i) -> rs.getString("rule_id"),
+                    "SELECT rule_id, rollout_state FROM tb_rules_current WHERE tenant_id = ? AND layer = ? AND rollout_state IN ('dry_run','canary','full') ORDER BY rule_id",
+                    (rs, i) -> {
+                        java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+                        row.put("rule_id", rs.getString("rule_id"));
+                        row.put("rollout_state", rs.getString("rollout_state"));
+                        return row;
+                    },
                     tenantId, layer);
         }
         return jdbc.query(
-                "SELECT rule_id FROM tb_rules_current WHERE tenant_id = ? AND layer = ? AND updated_at > ? ORDER BY rule_id",
-                (rs, i) -> rs.getString("rule_id"),
+                "SELECT rule_id, rollout_state FROM tb_rules_current WHERE tenant_id = ? AND layer = ? AND updated_at > ? ORDER BY rule_id",
+                (rs, i) -> {
+                    java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+                    row.put("rule_id", rs.getString("rule_id"));
+                    row.put("rollout_state", rs.getString("rollout_state"));
+                    return row;
+                },
                 tenantId, layer, deployedAtStr);
     }
 

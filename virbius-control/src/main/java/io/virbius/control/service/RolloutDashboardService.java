@@ -39,9 +39,37 @@ public class RolloutDashboardService {
                 ruleId,
                 "-" + hours + " hours");
 
+        List<Map<String, Object>> series1m = jdbc.query(
+                """
+                SELECT strftime('%%Y-%%m-%%d %%H:%%M:00', intercepted_at) AS bucket,
+                       SUM(CASE WHEN effective_action = 'review'  THEN 1 ELSE 0 END) AS review,
+                       SUM(CASE WHEN effective_action = 'block'   THEN 1 ELSE 0 END) AS block,
+                       SUM(CASE WHEN effective_action = 'captcha' THEN 1 ELSE 0 END) AS captcha,
+                       SUM(CASE WHEN effective_action = 'allow'   THEN 1 ELSE 0 END) AS allow,
+                       COUNT(*) AS total_requests
+                FROM tb_audit_events
+                WHERE tenant_id = ? AND rule_id = ?
+                  AND intercepted_at >= datetime('now', '-2 hours')
+                GROUP BY bucket
+                ORDER BY bucket
+                """,
+                (rs, i) -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("bucket", rs.getString("bucket"));
+                    row.put("review", rs.getInt("review"));
+                    row.put("block", rs.getInt("block"));
+                    row.put("captcha", rs.getInt("captcha"));
+                    row.put("allow", rs.getInt("allow"));
+                    row.put("total_requests", rs.getInt("total_requests"));
+                    return row;
+                },
+                tenantId,
+                ruleId);
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("rule_id", ruleId);
         out.put("series", series);
+        out.put("series_1m", series1m);
         int review = 0;
         int block = 0;
         int captcha = 0;
@@ -212,90 +240,6 @@ public class RolloutDashboardService {
         out.put("audit_events", events != null ? events : 0L);
         out.put("estimated_requests", total != null ? total : 0L);
         out.put("hours", hours);
-        return out;
-    }
-
-    public Map<String, Object> compare(String tenantId, String ruleId, int hours) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("rule_id", ruleId);
-        Map<String, Object> active = metricsForRevision(tenantId, ruleId, "current", hours);
-        List<Map<String, Object>> currentRevisions = jdbc.query(
-                "SELECT current_revision, rollout_state FROM tb_rules_current WHERE tenant_id = ? AND rule_id = ?",
-                (rs, i) -> Map.of("revision", rs.getInt("current_revision"), "rollout_state", rs.getString("rollout_state")),
-                tenantId,
-                ruleId);
-        if (!currentRevisions.isEmpty()) {
-            active.put("revision", currentRevisions.get(0).get("revision"));
-            active.put("rollout_state", currentRevisions.get(0).get("rollout_state"));
-        }
-        out.put("active", active);
-
-        List<Integer> pendingRevList = jdbc.query(
-                "SELECT pending_revision FROM tb_rules_current WHERE tenant_id = ? AND rule_id = ? AND pending_revision IS NOT NULL",
-                (rs, i) -> rs.getInt(1),
-                tenantId,
-                ruleId);
-        Integer pendingRev = pendingRevList.isEmpty() ? null : pendingRevList.get(0);
-        if (pendingRev != null) {
-            Map<String, Object> pending = metricsForRevision(tenantId, ruleId, "pending", hours);
-            pending.put("revision", pendingRev);
-            out.put("pending", pending);
-        }
-        return out;
-    }
-
-    private Map<String, Object> metricsForRevision(String tenantId, String ruleId, String revSource, int hours) {
-        String revSql = "current".equals(revSource)
-                ? "(SELECT current_revision FROM tb_rules_current WHERE tenant_id = ? AND rule_id = ?)"
-                : "(SELECT pending_revision FROM tb_rules_current WHERE tenant_id = ? AND rule_id = ?)";
-        List<Map<String, Object>> series = jdbc.query(
-                """
-                SELECT hour_bucket, rollout_state, canary_percent,
-                       cnt_review, cnt_block, cnt_captcha, cnt_allow, cnt_total_requests
-                FROM tb_rule_metrics_1h
-                WHERE tenant_id = ? AND rule_id = ? AND rule_revision = (""" + revSql + """
-                  )
-                  AND hour_bucket >= datetime('now', ?)
-                ORDER BY hour_bucket
-                """,
-                (rs, i) -> {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("bucket", rs.getString("hour_bucket"));
-                    row.put("review", rs.getInt("cnt_review"));
-                    row.put("block", rs.getInt("cnt_block"));
-                    row.put("captcha", rs.getInt("cnt_captcha"));
-                    row.put("allow", rs.getInt("cnt_allow"));
-                    row.put("total_requests", rs.getInt("cnt_total_requests"));
-                    row.put("rollout_state", rs.getString("rollout_state"));
-                    return row;
-                },
-                tenantId,
-                ruleId,
-                tenantId,
-                ruleId,
-                "-" + hours + " hours");
-        Map<String, Object> totals = new LinkedHashMap<>();
-        int review = 0, block = 0, captcha = 0, allow = 0, total = 0;
-        for (Map<String, Object> row : series) {
-            review += (int) row.get("review");
-            block += (int) row.get("block");
-            captcha += (int) row.get("captcha");
-            allow += (int) row.get("allow");
-            total += (int) row.get("total_requests");
-        }
-        totals.put("review", review);
-        totals.put("block", block);
-        totals.put("captcha", captcha);
-        totals.put("allow", allow);
-        totals.put("total_requests", total);
-        if (total > 0) {
-            totals.put("hit_rate", (review + block + captcha) / (double) total);
-            totals.put("review_rate", review / (double) total);
-            totals.put("block_rate", block / (double) total);
-        }
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("series", series);
-        out.put("totals", totals);
         return out;
     }
 

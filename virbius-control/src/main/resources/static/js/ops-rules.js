@@ -114,7 +114,7 @@ end`;
 
     function setRuleEditorReadOnly(disabled) {
       const ro = !!disabled;
-      ['fReason', 'fRisk', 'fIntent', 'fEnforce', 'fCanary', 'fBody', 'fRuleId', 'fRuntime',
+      ['fReason', 'fRisk', 'fIntent', 'fBody', 'fRuleId', 'fRuntime',
         'fBindScope', 'fBindScenes', 'fBindAppIds', 'fEdgeListType', 'fEdgeKeywords',
         'fDlpEntityType', 'fDlpPattern', 'fDlpMaskTemplate', 'fDlpPriority',
         'fIsAsync', 'fActionType', 'fActionStreamKey', 'fActionWebhookUrl', 'fActionMessage', 'fAsyncActionConfig',
@@ -132,7 +132,7 @@ end`;
       const exec = inExecutionPlane(st);
       setRuleEditorReadOnly(isDisabled);
       syncDlpIntentReadonly();
-      document.getElementById('btnSaveRule').style.display = isDisabled ? 'none' : '';
+      document.getElementById('btnSaveRule').style.display = (isDisabled || exec) ? 'none' : '';
       document.getElementById('btnSaveRule').textContent =
         isNewRule ? '创建规则' : '保存规则（新 revision）';
       document.getElementById('btnActivateRule').style.display = (!isNewRule && isDraft) ? '' : 'none';
@@ -145,9 +145,7 @@ end`;
       const showRuntime = !isNewRule && selectedRuleId && exec;
       document.getElementById('enforceWrap').style.display = showRuntime ? '' : 'none';
       document.getElementById('canaryWrap').style.display = showRuntime ? '' : 'none';
-      document.getElementById('btnSaveRuntime').style.display = showRuntime ? '' : 'none';
-      document.getElementById('btnSnapshot').style.display =
-        showRuntime && editRuleMeta && editRuleMeta.layer === 'cloud' ? '' : 'none';
+
     }
 
     function setRuleEditorCloudOnly(layer) {
@@ -396,8 +394,7 @@ end`;
       document.getElementById('fReason').value = 'CUSTOM_RULE';
       document.getElementById('fRisk').value = 100;
       document.getElementById('fIntent').value = 'deny';
-      document.getElementById('fEnforce').value = 'dry_run';
-      document.getElementById('fCanary').value = '';
+
       document.getElementById('fIsAsync').checked = false;
       loadAsyncActionConfig('');
       syncAsyncUi();
@@ -1143,9 +1140,7 @@ end`;
       document.getElementById('fReason').value = r.reason_code || '';
       document.getElementById('fRisk').value = r.risk_score ?? 100;
       document.getElementById('fIntent').value = r.intent_action || 'deny';
-      document.getElementById('fEnforce').value = r.rollout_state === 'canary' || r.rollout_state === 'full'
-        ? r.rollout_state : (r.rollout_state === 'dry_run' ? 'dry_run' : 'dry_run');
-      document.getElementById('fCanary').value = r.canary_percent ?? '';
+
       document.getElementById('fIsAsync').checked = !!r.is_async;
       loadAsyncActionConfig(r.async_action_config || '');
       syncAsyncUi();
@@ -1256,6 +1251,10 @@ end`;
         log('规则已停用，不可修改', 'warn');
         return;
       }
+      if (editRuleMeta && inExecutionPlane(editRuleMeta.rollout_state)) {
+        log('规则为 ' + editRuleMeta.rollout_state + '，正在线上运行中。请先下线再编辑', 'warn');
+        return;
+      }
       const ruleId = isNewRule
         ? document.getElementById('fRuleId').value.trim()
         : selectedRuleId;
@@ -1319,27 +1318,6 @@ end`;
         log('保存失败：' + e.message, 'err');
       }
     };
-    document.getElementById('btnSaveRuntime').onclick = () => {
-      if (!editRuleMeta || !inExecutionPlane(editRuleMeta.rollout_state)) {
-        log('仅 dry_run/canary/full 规则可更新放量', 'warn');
-        return;
-      }
-      const mode = document.getElementById('fEnforce').value;
-      let rollout_state = mode;
-      let canary_percent = null;
-      if (mode === 'canary') {
-        rollout_state = 'canary';
-        canary_percent = Number(document.getElementById('fCanary').value);
-      } else if (mode === 'full') {
-        rollout_state = 'full';
-      } else {
-        rollout_state = 'dry_run';
-      }
-      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/rollout', {
-        method: 'PATCH',
-        body: JSON.stringify({ rollout_state, canary_percent })
-      }).then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message, 'err'));
-    };
     document.getElementById('btnDisableRule').onclick = () =>
       admin('/rules/' + encodeURIComponent(selectedRuleId) + '/rollout/disable', { method: 'POST' })
         .then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message, 'err'));
@@ -1349,8 +1327,5 @@ end`;
     document.getElementById('btnEnableRule').onclick = () =>
       admin('/rules/' + encodeURIComponent(selectedRuleId) + '/rollout/recover', { method: 'POST' })
         .then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message, 'err'));
-    document.getElementById('btnSnapshot').onclick = () =>
-      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/runtime/publish-snapshot', { method: 'POST' })
-        .then(log).catch(e => log(e.message, 'err'));
 
     initScriptAutocomplete();

@@ -24,7 +24,6 @@ CREATE TABLE IF NOT EXISTS tb_rules_current (
     tenant_id         VARCHAR(64) NOT NULL,
     rule_id           VARCHAR(128) NOT NULL,
     current_revision  INTEGER NOT NULL,
-    pending_revision  INTEGER,
     bundle_id         VARCHAR(128) NOT NULL,
     layer             VARCHAR(32) NOT NULL,
     runtime           VARCHAR(32) NOT NULL,
@@ -215,6 +214,9 @@ CREATE TABLE IF NOT EXISTS tb_audit_ingest_checkpoint (
     last_entry_id   VARCHAR(64) NOT NULL,
     updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_audit_tenant_rule_time
+  ON tb_audit_events(tenant_id, rule_id, intercepted_at);
 
 CREATE TABLE IF NOT EXISTS tb_rule_metrics_1h (
     tenant_id           VARCHAR(64) NOT NULL,

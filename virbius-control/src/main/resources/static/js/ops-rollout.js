@@ -62,6 +62,68 @@
       }).join('') + '</div>';
     }
 
+    function renderRolloutBlockRate(totals) {
+      const el = document.getElementById('roBlockRateValue');
+      const rate = totals && totals.block_rate != null ? totals.block_rate : null;
+      if (rate == null) {
+        el.textContent = '—';
+        el.className = 'value';
+        return;
+      }
+      el.textContent = fmtPct(rate);
+      el.className = 'value ' + (rate < 0.01 ? 'rate-low' : rate < 0.05 ? 'rate-mid' : 'rate-high');
+    }
+
+    let roChart = null;
+
+    function renderRolloutCombinedChart(series, series1m) {
+      const cutoff = Date.now() - 2 * 3600 * 1000;
+      const hourPoints = (series || []).filter(p => {
+        const t = new Date(p.bucket.replace(' ', 'T')).getTime();
+        return !isNaN(t) && t < cutoff;
+      });
+      const minPoints = series1m || [];
+      const merged = hourPoints.concat(minPoints).sort((a, b) => {
+        return new Date(a.bucket.replace(' ', 'T')) - new Date(b.bucket.replace(' ', 'T'));
+      });
+      if (!merged.length) {
+        if (roChart) { roChart.destroy(); roChart = null; }
+        return;
+      }
+      const labels = merged.map(p => {
+        const d = new Date(p.bucket.replace(' ', 'T'));
+        return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      });
+      const datasets = [
+        { label: 'total_requests', data: merged.map(p => p.total_requests ?? 0), yAxisID: 'y', borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.2, pointRadius: 0 },
+        { label: 'review',  data: merged.map(p => p.review ?? 0),  yAxisID: 'y1', borderColor: '#fbbf24', tension: 0.2, pointRadius: 0 },
+        { label: 'block',   data: merged.map(p => p.block ?? 0),   yAxisID: 'y1', borderColor: '#ef4444', tension: 0.2, pointRadius: 0 },
+        { label: 'captcha', data: merged.map(p => p.captcha ?? 0), yAxisID: 'y1', borderColor: '#a855f7', tension: 0.2, pointRadius: 0 },
+        { label: 'allow',   data: merged.map(p => p.allow ?? 0),   yAxisID: 'y1', borderColor: '#22c55e', tension: 0.2, pointRadius: 0 },
+      ];
+      if (roChart) {
+        roChart.data.labels = labels;
+        roChart.data.datasets.forEach((ds, i) => ds.data = datasets[i].data);
+        roChart.update('none');
+      } else {
+        roChart = new Chart(document.getElementById('roCombinedChart'), {
+          type: 'line',
+          data: { labels, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            spanGaps: true,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+              y: { type: 'linear', position: 'left', title: { display: true, text: 'total_requests' } },
+              y1: { type: 'linear', position: 'right', title: { display: true, text: 'action count' }, grid: { drawOnChartArea: false } }
+            },
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 10 } } } }
+          }
+        });
+      }
+    }
+
     function renderRolloutMetrics(series) {
       const tbody = document.querySelector('#roMetricsTable tbody');
       tbody.innerHTML = '';
@@ -254,6 +316,8 @@
           document.getElementById('roBadge').innerHTML = '';
           renderRolloutFlow('draft');
           renderRolloutKpi({});
+          renderRolloutBlockRate(null);
+          renderRolloutCombinedChart(null, null);
           renderRolloutMetrics([]);
           renderRolloutTimeline([]);
           renderRolloutSamples([]);
@@ -281,6 +345,8 @@
           admin('/rules/' + encodeURIComponent(ruleId) + '/audit-samples?effective_action=review&limit=30').catch(() => [])
         ]);
         renderRolloutKpi(metrics.totals || {});
+        renderRolloutBlockRate(metrics.totals || null);
+        renderRolloutCombinedChart(metrics.series || [], metrics.series_1m || []);
         renderRolloutMetrics(metrics.series || []);
         renderRolloutTimeline(timeline);
         renderRolloutSamples(samples);
@@ -314,10 +380,23 @@
             statusText = '已同步，无待部署变更';
           }
           if (hasUnpub && count > 0) {
-            const maxShow = 3;
-            const shown = rules.slice(0, maxShow).map(r => `<code style="font-size:0.7rem">${esc(r)}</code>`).join(' · ');
-            const extra = count > maxShow ? `另外 ${count - maxShow} 条` : '';
-            pendingHtml = `<div style="font-size:0.72rem;color:#64748b;margin-top:2px">${shown}${extra ? ' · ' + extra : ''}</div>`;
+            const groups = { dry_run: [], canary: [], full: [], disabled: [] };
+            rules.forEach(r => {
+              const g = groups[r.rollout_state];
+              if (g) g.push(r.rule_id);
+            });
+            const labels = { dry_run: '待上线', canary: '灰度中', full: '已全量', disabled: '待下线' };
+            const parts = [];
+            ['dry_run', 'canary', 'full', 'disabled'].forEach(st => {
+              const ids = groups[st];
+              if (!ids || !ids.length) return;
+              const tag = labels[st] || st;
+              const maxShow = 2;
+              const shown = ids.slice(0, maxShow).map(id => `<code style="font-size:0.7rem">${esc(id)}</code>`).join(' · ');
+              const extra = ids.length > maxShow ? ` 等${ids.length}条` : '';
+              parts.push(`<span style="font-size:0.68rem;color:#64748b;margin-right:0.25rem">[${esc(tag)}]</span>${shown}${extra}`);
+            });
+            pendingHtml = `<div style="font-size:0.72rem;color:#64748b;margin-top:2px">${parts.join('&nbsp;&nbsp;|&nbsp;&nbsp;')}</div>`;
           } else {
             pendingHtml = '';
           }
