@@ -20,16 +20,19 @@ public class RolloutService {
     private final PromotionGateService gateService;
     private final RolloutEventRepository eventRepository;
     private final TenantRolloutPolicyRepository policyRepository;
+    private final BundleStagingService stagingService;
 
     public RolloutService(
             RegistryRepository store,
             PromotionGateService gateService,
             RolloutEventRepository eventRepository,
-            TenantRolloutPolicyRepository policyRepository) {
+            TenantRolloutPolicyRepository policyRepository,
+            BundleStagingService stagingService) {
         this.store = store;
         this.gateService = gateService;
         this.eventRepository = eventRepository;
         this.policyRepository = policyRepository;
+        this.stagingService = stagingService;
     }
 
     public Map<String, Object> applyRollout(
@@ -67,6 +70,16 @@ public class RolloutService {
         RuleRevision updated = store.updateRollout(tenantId, ruleId, to, canaryPercent);
         eventRepository.recordEvent(
                 tenantId, ruleId, updated.ruleRevision(), to, canaryPercent, trigger, operator);
+
+        String layer = resolveLayer(updated);
+        String diffType = "rollout_only";
+        try {
+            stagingService.applyRuleChange(tenantId, "poc-default", layer, ruleId, diffType);
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(RolloutService.class)
+                    .warn("auto-deploy staging failed for rule {}: {}", ruleId, e.getMessage());
+        }
+
         return RuleResponseMapper.toDetail(updated);
     }
 
@@ -112,5 +125,13 @@ public class RolloutService {
             return true;
         }
         return false;
+    }
+
+    private static String resolveLayer(RuleRevision rule) {
+        String layer = rule.layer();
+        if (layer != null && !layer.isBlank()) {
+            return layer;
+        }
+        return "cloud";
     }
 }

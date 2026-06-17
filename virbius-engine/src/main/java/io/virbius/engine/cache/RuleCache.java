@@ -29,6 +29,16 @@ public class RuleCache {
         generation.incrementAndGet();
     }
 
+    public void upsert(String tenantId, RuleEntry entry) {
+        rules.put(key(tenantId, entry.ruleId()), entry);
+        generation.incrementAndGet();
+    }
+
+    public void remove(String tenantId, String ruleId) {
+        rules.remove(key(tenantId, ruleId));
+        generation.incrementAndGet();
+    }
+
     public List<RuleEntry> rulesForTenant(String tenantId) {
         List<RuleEntry> out = new ArrayList<>();
         for (RuleEntry e : rules.values()) {

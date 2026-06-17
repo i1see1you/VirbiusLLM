@@ -138,7 +138,7 @@ public class RolloutAdminController {
     public ApiResult<List<Map<String, Object>>> auditSamples(
             @PathVariable("tenantId") String tenantId,
             @PathVariable("ruleId") String ruleId,
-            @RequestParam(value = "effective_action", defaultValue = "review") String effectiveAction,
+            @RequestParam(value = "effective_action", defaultValue = "") String effectiveAction,
             @RequestParam(value = "limit", defaultValue = "30") int limit) {
         return ApiResult.ok(dashboardService.auditSamples(tenantId, ruleId, effectiveAction, limit));
     }

@@ -107,27 +107,44 @@ public class CacheReloadSubscriber {
                 return;
             }
             Map<String, Object> payload = JSON.readValue(payloadJson, new TypeReference<>() {});
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> rawRules = (List<Map<String, Object>>) payload.get("rules");
-            if (rawRules != null) {
-                List<RuleEntry> rules = rawRules.stream().map(RuleEntry::fromMap).toList();
-                cache.replaceAll(policyVersion, rules);
+            String action = payload.get("_action") instanceof String s ? s : null;
+
+            if ("upsert".equals(action)) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> ruleMap = (Map<String, Object>) payload.get("rule");
+                if (ruleMap != null) {
+                    cache.upsert(tenantId, RuleEntry.fromMap(ruleMap));
+                    log.info("cache upsert from stream: tenant={} rule={}", tenantId, ruleMap.get("rule_id"));
+                }
+            } else if ("remove".equals(action)) {
+                String removeRuleId = (String) payload.get("remove_rule_id");
+                if (removeRuleId != null) {
+                    cache.remove(tenantId, removeRuleId);
+                    log.info("cache remove from stream: tenant={} rule={}", tenantId, removeRuleId);
+                }
+            } else {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> rawRules = (List<Map<String, Object>>) payload.get("rules");
+                if (rawRules != null) {
+                    List<RuleEntry> rules = rawRules.stream().map(RuleEntry::fromMap).toList();
+                    cache.replaceAll(policyVersion, rules);
+                }
+                List<PolicyDataCache.ListBlock> rawLists = JSON.convertValue(
+                        payload.get("lists"), new TypeReference<>() {});
+                List<PolicyDataCache.RedisListIndexBlock> rawRedisIndex = JSON.convertValue(
+                        payload.get("redis_list_index"), new TypeReference<>() {});
+                List<PolicyDataCache.CumulativeBlock> rawCumulatives = JSON.convertValue(
+                        payload.get("cumulatives"), new TypeReference<>() {});
+                if (rawLists != null || rawCumulatives != null) {
+                    PolicyDataCache.TenantPolicyData data = ScriptRuleRunner.fromBlocks(
+                            rawLists != null ? rawLists : List.of(),
+                            rawRedisIndex != null ? rawRedisIndex : List.of(),
+                            rawCumulatives != null ? rawCumulatives : List.of());
+                    policyData.replace(tenantId, data);
+                }
+                log.info("cache reloaded from stream: tenant={} version={} rules={}", tenantId, policyVersion,
+                        rawRules != null ? rawRules.size() : 0);
             }
-            List<PolicyDataCache.ListBlock> rawLists = JSON.convertValue(
-                    payload.get("lists"), new TypeReference<>() {});
-            List<PolicyDataCache.RedisListIndexBlock> rawRedisIndex = JSON.convertValue(
-                    payload.get("redis_list_index"), new TypeReference<>() {});
-            List<PolicyDataCache.CumulativeBlock> rawCumulatives = JSON.convertValue(
-                    payload.get("cumulatives"), new TypeReference<>() {});
-            if (rawLists != null || rawCumulatives != null) {
-                PolicyDataCache.TenantPolicyData data = ScriptRuleRunner.fromBlocks(
-                        rawLists != null ? rawLists : List.of(),
-                        rawRedisIndex != null ? rawRedisIndex : List.of(),
-                        rawCumulatives != null ? rawCumulatives : List.of());
-                policyData.replace(tenantId, data);
-            }
-            log.info("cache reloaded from stream: tenant={} version={} rules={}", tenantId, policyVersion,
-                    rawRules != null ? rawRules.size() : 0);
         } catch (Exception e) {
             log.warn("failed to process cache-reload message: {}", e.getMessage());
         }

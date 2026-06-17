@@ -25,6 +25,24 @@ public class RedisStreamNotifier implements CacheReloadNotifier {
 
     @Override
     public Map<String, Object> publish(String tenantId, String policyVersion, Map<String, Object> payload) {
+        return doPublish(tenantId, policyVersion, payload);
+    }
+
+    @Override
+    public Map<String, Object> publishUpsert(String tenantId, String policyVersion, Map<String, Object> rule) {
+        Map<String, Object> payload = Map.of("_action", "upsert", "rule", rule);
+        return doPublish(tenantId, policyVersion, payload);
+    }
+
+    @Override
+    public Map<String, Object> publishRemove(String tenantId, String policyVersion, String ruleId) {
+        java.util.LinkedHashMap<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("_action", "remove");
+        payload.put("remove_rule_id", ruleId);
+        return doPublish(tenantId, policyVersion, payload);
+    }
+
+    private Map<String, Object> doPublish(String tenantId, String policyVersion, Map<String, Object> payload) {
         try {
             StreamEntryID messageId;
             try (var jedis = jedisPool.getResource()) {

@@ -342,7 +342,7 @@
         const [metrics, timeline, samples] = await Promise.all([
           admin('/rules/' + encodeURIComponent(ruleId) + '/metrics?hours=24').catch(() => ({ series: [], totals: {} })),
           admin('/rules/' + encodeURIComponent(ruleId) + '/rollout/timeline').catch(() => []),
-          admin('/rules/' + encodeURIComponent(ruleId) + '/audit-samples?effective_action=review&limit=30').catch(() => [])
+          admin('/rules/' + encodeURIComponent(ruleId) + '/audit-samples?limit=30').catch(() => [])
         ]);
         renderRolloutKpi(metrics.totals || {});
         renderRolloutBlockRate(metrics.totals || null);

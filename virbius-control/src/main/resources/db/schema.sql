@@ -281,6 +281,40 @@ CREATE TABLE IF NOT EXISTS tb_deploy_state (
     CHECK (layer IN ('gateway', 'cloud', 'edge'))
 );
 
+CREATE TABLE IF NOT EXISTS tb_bundle_releases (
+    tenant_id        VARCHAR(64) NOT NULL,
+    bundle_id        VARCHAR(128) NOT NULL,
+    version          VARCHAR(64) NOT NULL,
+    status           VARCHAR(32) NOT NULL DEFAULT 'deploying',
+    frozen_snapshot  TEXT NOT NULL,
+    created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deployed_at      TIMESTAMP,
+    PRIMARY KEY (tenant_id, bundle_id, version),
+    CHECK (status IN ('deploying', 'active', 'superseded', 'failed'))
+);
+
+CREATE TABLE IF NOT EXISTS tb_bundle_active (
+    tenant_id        VARCHAR(64) NOT NULL,
+    bundle_id        VARCHAR(128) NOT NULL,
+    release_version  VARCHAR(64) NOT NULL,
+    updated_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, bundle_id)
+);
+
+CREATE TABLE IF NOT EXISTS tb_bundle_staging (
+    tenant_id        VARCHAR(64) NOT NULL,
+    bundle_id        VARCHAR(128) NOT NULL,
+    layer            VARCHAR(16) NOT NULL,
+    base_version     VARCHAR(64) NOT NULL,
+    status           VARCHAR(16) NOT NULL DEFAULT 'editing',
+    rule_diffs       TEXT NOT NULL DEFAULT '{}',
+    version          INTEGER NOT NULL DEFAULT 1,
+    updated_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, bundle_id, layer),
+    CHECK (layer IN ('edge', 'gateway', 'cloud')),
+    CHECK (status IN ('editing', 'deploying', 'deployed'))
+);
+
 CREATE TABLE IF NOT EXISTS tb_gateway_artifact_meta (
     tenant_id              VARCHAR(64) PRIMARY KEY,
     artifact_revision      BIGINT       NOT NULL DEFAULT 0,
