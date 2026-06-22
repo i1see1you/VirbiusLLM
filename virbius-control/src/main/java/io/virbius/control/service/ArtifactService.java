@@ -166,6 +166,130 @@ public class ArtifactService {
         return file;
     }
 
+    /**
+     * Writes the edge manifest for the given pool. The STABLE pool uses the backward-compatible
+     * filename ({@code edge-manifest.json}); the CANARY pool uses a suffixed filename
+     * ({@code edge-manifest-canary.json}) that exists only during an active deploy-rollout.
+     */
+    public Map<String, String> writeEdgeForPool(String tenantId, String pool) {
+        Map<String, Object> metadata = registryRepo
+                .getBundle(tenantId, "poc-default", "0.1.0")
+                .map(b -> b.metadata() != null ? b.metadata() : Map.<String, Object>of())
+                .orElse(Map.of());
+        return writeEdgeWithPool(tenantId, metadata, pool);
+    }
+
+    Map<String, String> writeEdgeWithPool(String tenantId, Map<String, Object> bundleMetadata, String pool) {
+        try {
+            SceneRegistry registry =
+                    io.virbius.control.gateway.SceneRegistryHelper.parseRegistry(bundleMetadata);
+            List<RuleRevision> allRules = listEdgeRulesInExecutionPlane(tenantId);
+            List<Map<String, Object>> scopes = allRules.stream()
+                    .map(r -> r.scope() != null ? r.scope() : Map.<String, Object>of())
+                    .toList();
+            List<String> appIds = EdgeManifestFilter.collectAppIds(registry, scopes);
+
+            Map<String, String> paths = new LinkedHashMap<>();
+            java.nio.file.Path edgeBase = dataDir.resolve("edge");
+            java.nio.file.Files.createDirectories(edgeBase);
+
+            if (appIds.isEmpty()) {
+                log.warn(
+                        "skip edge manifests for tenant={}: scene_registry has no app_id",
+                        tenantId);
+                return paths;
+            }
+
+            for (String appId : appIds) {
+                java.nio.file.Path dir = edgeBase.resolve(tenantId).resolve(appId);
+                java.nio.file.Files.createDirectories(dir);
+                List<RuleRevision> filtered = filterEdgeRulesForApp(allRules, appId, registry);
+                String filename = "canary".equals(pool)
+                        ? "edge-manifest-canary.json"
+                        : "edge-manifest.json";
+                java.nio.file.Path manifestFile = dir.resolve(filename);
+                writeEdgeManifestFile(tenantId, appId, pool, filtered, manifestFile);
+                paths.put("edge:" + appId + ":" + pool, manifestFile.toString());
+            }
+            if (!appIds.isEmpty()) {
+                paths.put("edge" + ("canary".equals(pool) ? ":canary" : ""),
+                        paths.get("edge:" + appIds.get(0) + ":" + pool));
+            }
+            return paths;
+        } catch (Exception e) {
+            log.warn("failed to write edge manifests for pool={}: {}", pool, e.getMessage());
+            Map<String, String> err = new LinkedHashMap<>();
+            err.put("error", e.getMessage());
+            return err;
+        }
+    }
+
+    /**
+     * Snapshot the current stable edge manifest (renames edge-manifest.json to
+     * edge-manifest-stable.json). Returns the paths that were snapshotted, or empty if none.
+     */
+    public Map<String, String> snapshotStableEdge(String tenantId) {
+        Map<String, String> paths = new LinkedHashMap<>();
+        java.nio.file.Path edgeBase = dataDir.resolve("edge").resolve(tenantId);
+        if (!java.nio.file.Files.isDirectory(edgeBase)) {
+            return paths;
+        }
+        try (var apps = java.nio.file.Files.list(edgeBase)) {
+            apps.filter(java.nio.file.Files::isDirectory).forEach(appDir -> {
+                java.nio.file.Path stableFile = appDir.resolve("edge-manifest.json");
+                java.nio.file.Path stableTarget = appDir.resolve("edge-manifest-stable.json");
+                if (java.nio.file.Files.isRegularFile(stableFile)
+                        && !java.nio.file.Files.isRegularFile(stableTarget)) {
+                    try {
+                        java.nio.file.Files.copy(stableFile, stableTarget);
+                        String appId = appDir.getFileName().toString();
+                        paths.put("edge:" + appId + ":stable", stableTarget.toString());
+                    } catch (Exception e) {
+                        log.warn("failed to snapshot stable edge manifest: {}", e.getMessage());
+                    }
+                }
+            });
+        } catch (Exception e) {
+            log.warn("failed to list edge dirs for snapshot: {}", e.getMessage());
+        }
+        return paths;
+    }
+
+    /**
+     * Promote canary edge manifest to stable: remove stable files, rename canary files to the
+     * default stable name.
+     */
+    public Map<String, String> promoteEdgeCanary(String tenantId) {
+        Map<String, String> paths = new LinkedHashMap<>();
+        java.nio.file.Path edgeBase = dataDir.resolve("edge").resolve(tenantId);
+        if (!java.nio.file.Files.isDirectory(edgeBase)) {
+            return paths;
+        }
+        try (var apps = java.nio.file.Files.list(edgeBase)) {
+            apps.filter(java.nio.file.Files::isDirectory).forEach(appDir -> {
+                String appId = appDir.getFileName().toString();
+                java.nio.file.Path stableFile = appDir.resolve("edge-manifest.json");
+                java.nio.file.Path stableTarget = appDir.resolve("edge-manifest-stable.json");
+                java.nio.file.Path canaryFile = appDir.resolve("edge-manifest-canary.json");
+
+                try {
+                    java.nio.file.Files.deleteIfExists(stableFile);
+                    java.nio.file.Files.deleteIfExists(stableTarget);
+                    if (java.nio.file.Files.isRegularFile(canaryFile)) {
+                        java.nio.file.Files.move(canaryFile, stableFile);
+                    }
+                    edgeArtifactMetaRepository.delete(tenantId, appId, "canary");
+                    paths.put("edge:" + appId, stableFile.toString());
+                } catch (Exception e) {
+                    log.warn("failed to promote edge canary: {}", e.getMessage());
+                }
+            });
+        } catch (Exception e) {
+            log.warn("failed to list edge dirs for promotion: {}", e.getMessage());
+        }
+        return paths;
+    }
+
     /** Package-visible for unit tests. */
     Map<String, Object> buildGatewaySnapshot(String tenantId) {
         return buildGatewaySnapshot(tenantId, Map.of());
@@ -306,36 +430,7 @@ public class ArtifactService {
     }
 
     private Map<String, String> writeEdge(String tenantId, Map<String, Object> bundleMetadata) throws Exception {
-        SceneRegistry registry =
-                io.virbius.control.gateway.SceneRegistryHelper.parseRegistry(bundleMetadata);
-        List<RuleRevision> allRules = listEdgeRulesInExecutionPlane(tenantId);
-        List<Map<String, Object>> scopes = allRules.stream()
-                .map(r -> r.scope() != null ? r.scope() : Map.<String, Object>of())
-                .toList();
-        List<String> appIds = EdgeManifestFilter.collectAppIds(registry, scopes);
-
-        Map<String, String> paths = new LinkedHashMap<>();
-        java.nio.file.Path edgeBase = dataDir.resolve("edge");
-        java.nio.file.Files.createDirectories(edgeBase);
-
-        if (appIds.isEmpty()) {
-            log.warn(
-                    "skip edge manifests for tenant={}: scene_registry has no app_id "
-                            + "(seed bundle metadata or rule bind_ref app_ids required)",
-                    tenantId);
-            return paths;
-        }
-
-        for (String appId : appIds) {
-            java.nio.file.Path dir = edgeBase.resolve(tenantId).resolve(appId);
-            java.nio.file.Files.createDirectories(dir);
-            List<RuleRevision> filtered = filterEdgeRulesForApp(allRules, appId, registry);
-            java.nio.file.Path manifestFile = dir.resolve("edge-manifest.json");
-            writeEdgeManifestFile(tenantId, appId, filtered, manifestFile);
-            paths.put("edge:" + appId, manifestFile.toString());
-        }
-        paths.put("edge", paths.get("edge:" + appIds.get(0)));
-        return paths;
+        return writeEdgeWithPool(tenantId, bundleMetadata, "stable");
     }
 
     private List<RuleRevision> listEdgeRulesInExecutionPlane(String tenantId) {
@@ -361,7 +456,7 @@ public class ArtifactService {
     }
 
     private void writeEdgeManifestFile(
-            String tenantId, String appId, List<RuleRevision> rules, java.nio.file.Path manifestFile)
+            String tenantId, String appId, String pool, List<RuleRevision> rules, java.nio.file.Path manifestFile)
             throws Exception {
         TenantRolloutPolicy policy = policyRepository.getOrDefault(tenantId);
         Map<String, Object> root = new LinkedHashMap<>();
@@ -389,7 +484,7 @@ public class ArtifactService {
         root.put("sdk_config", sdk);
 
         Instant publishedAt = Instant.now();
-        long revision = nextArtifactRevision(tenantId, appId);
+        long revision = nextArtifactRevision(tenantId, appId, pool);
         root.put("artifact_revision", revision);
         root.put("published_at", publishedAt.toString());
 
@@ -397,12 +492,12 @@ public class ArtifactService {
         byte[] bytes = java.nio.file.Files.readAllBytes(manifestFile);
         String sha256 = sha256Hex(bytes);
         edgeArtifactMetaRepository.save(
-                new EdgeArtifactMeta(tenantId, appId, revision, sha256, publishedAt));
+                new EdgeArtifactMeta(tenantId, appId, pool, revision, sha256, publishedAt));
     }
 
-    private long nextArtifactRevision(String tenantId, String appId) {
+    private long nextArtifactRevision(String tenantId, String appId, String pool) {
         return edgeArtifactMetaRepository
-                        .get(tenantId, appId)
+                        .get(tenantId, appId, pool)
                         .map(meta -> meta.artifactRevision() + 1)
                         .orElse(1L);
     }

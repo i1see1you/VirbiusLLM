@@ -12,6 +12,7 @@ import io.virbius.control.gateway.artifact.RedisGatewayArtifactBlobStore;
 import io.virbius.control.repository.DeployRolloutRepository;
 import io.virbius.control.repository.TenantRolloutPolicyRepository;
 import io.virbius.control.service.ArtifactService;
+import io.virbius.control.service.BundleReleaseService;
 import io.virbius.control.service.EngineArtifactPointer;
 import io.virbius.control.service.RedisEngineArtifactStore;
 import java.time.Instant;
@@ -48,6 +49,8 @@ public class DeployRolloutService {
     private final RedisGatewayArtifactBlobStore gatewayBlobStore;
     private final ArtifactService artifactService;
     private final NodeRegistryService nodeRegistryService;
+    private final io.virbius.control.repository.EdgeArtifactMetaRepository edgeMetaRepo;
+    private final BundleReleaseService releaseService;
 
     public DeployRolloutService(
             DeployRolloutRepository rolloutRepo,
@@ -57,7 +60,9 @@ public class DeployRolloutService {
             RedisEngineArtifactStore engineStore,
             RedisGatewayArtifactBlobStore gatewayBlobStore,
             ArtifactService artifactService,
-            NodeRegistryService nodeRegistryService) {
+            NodeRegistryService nodeRegistryService,
+            io.virbius.control.repository.EdgeArtifactMetaRepository edgeMetaRepo,
+            BundleReleaseService releaseService) {
         this.rolloutRepo = rolloutRepo;
         this.policyRepo = policyRepo;
         this.pointerStore = pointerStore;
@@ -66,6 +71,8 @@ public class DeployRolloutService {
         this.gatewayBlobStore = gatewayBlobStore;
         this.artifactService = artifactService;
         this.nodeRegistryService = nodeRegistryService;
+        this.edgeMetaRepo = edgeMetaRepo;
+        this.releaseService = releaseService;
     }
 
     // ---------------------------------------------------------------
@@ -86,10 +93,29 @@ public class DeployRolloutService {
         if (targetVersion == null || targetVersion.isBlank()) {
             targetVersion = DTF.format(Instant.now());
         }
-        String bundleFullId = generateBundleId(bundleId, bundleVersion);
+        String resolvedVersion = (bundleVersion == null || bundleVersion.isBlank())
+                ? releaseService.nextVersion(tenantId, bundleId)
+                : bundleVersion;
+        String bundleFullId = generateBundleId(bundleId, resolvedVersion);
         boolean doEngine = layer == null || layer.isBlank() || "cloud".equalsIgnoreCase(layer);
         boolean doGateway = layer == null || layer.isBlank() || "gateway".equalsIgnoreCase(layer);
-        String effectiveLayer = (doEngine && doGateway) ? "cloud+gateway" : doEngine ? "cloud" : "gateway";
+        boolean doEdge = layer == null || layer.isBlank() || "edge".equalsIgnoreCase(layer);
+        String effectiveLayer;
+        if (doEngine && doGateway && doEdge) {
+            effectiveLayer = "cloud+gateway+edge";
+        } else if (doEngine && doGateway) {
+            effectiveLayer = "cloud+gateway";
+        } else if (doEngine && doEdge) {
+            effectiveLayer = "cloud+edge";
+        } else if (doGateway && doEdge) {
+            effectiveLayer = "gateway+edge";
+        } else if (doEngine) {
+            effectiveLayer = "cloud";
+        } else if (doGateway) {
+            effectiveLayer = "gateway";
+        } else {
+            effectiveLayer = "edge";
+        }
 
         acquireLock(tenantId);
         try {
@@ -109,6 +135,22 @@ public class DeployRolloutService {
                     ? artifactWriter.writeGatewayCanary(tenantId, "prepare")
                     : stableGatewayRev;
 
+            // Edge canary: snapshot stable manifest, write canary manifest
+            long stableEdgeRev = 0L;
+            long canaryEdgeRev = 0L;
+            if (doEdge) {
+                // Snapshot existing edge-manifest.json as stable backup (if any)
+                Map<String, String> stablePaths = artifactService.snapshotStableEdge(tenantId);
+                // Write canary manifest from current rules
+                Map<String, String> canaryPaths = artifactService.writeEdgeForPool(tenantId, "canary");
+                // If no prior stable manifest existed, write stable from current rules too
+                if (stablePaths.isEmpty()) {
+                    artifactService.writeEdgeForPool(tenantId, "stable");
+                }
+                stableEdgeRev = 1L;
+                canaryEdgeRev = canaryPaths.isEmpty() ? 0L : 1L;
+            }
+
             String deployId = UUID.randomUUID().toString().replace("-", "");
             String now = DTF.format(Instant.now());
             DeployRollout rollout = new DeployRollout(
@@ -118,6 +160,7 @@ public class DeployRolloutService {
                     targetVersion, null,
                     canaryEngineRev, stableEngineRev,
                     canaryGatewayRev, stableGatewayRev,
+                    canaryEdgeRev, stableEdgeRev,
                     ladder, null, null, null,
                     operator, description);
 
@@ -128,6 +171,7 @@ public class DeployRolloutService {
                     0,
                     canaryEngineRev, stableEngineRev,
                     canaryGatewayRev, stableGatewayRev,
+                    canaryEdgeRev, stableEdgeRev,
                     targetVersion, null, now);
             pointerStore.writePointer(pointer);
             pointerStore.notifyChange(tenantId, deployId, "prepare");
@@ -205,6 +249,7 @@ public class DeployRolloutService {
                         currentPtr.tenantId(), currentPtr.deployId(), toState, toPercent,
                         currentPtr.canaryEngineRevision(), currentPtr.stableEngineRevision(),
                         currentPtr.canaryGatewayRevision(), currentPtr.stableGatewayRevision(),
+                        currentPtr.canaryEdgeRevision(), currentPtr.stableEdgeRevision(),
                         currentPtr.targetVersion(), currentPtr.prevVersion(), now);
                 pointerStore.writePointer(updated);
                 pointerStore.notifyChange(tenantId, deployId, toState);
@@ -251,6 +296,7 @@ public class DeployRolloutService {
                         DeployRolloutState.PAUSED.value(), currentPtr.canaryPercent(),
                         currentPtr.canaryEngineRevision(), currentPtr.stableEngineRevision(),
                         currentPtr.canaryGatewayRevision(), currentPtr.stableGatewayRevision(),
+                        currentPtr.canaryEdgeRevision(), currentPtr.stableEdgeRevision(),
                         currentPtr.targetVersion(), currentPtr.prevVersion(), now);
                 pointerStore.writePointer(updated);
                 pointerStore.notifyChange(tenantId, deployId, "pause");
@@ -315,8 +361,7 @@ public class DeployRolloutService {
 
         acquireLock(tenantId);
         try {
-            artifactService.writeEdgeOnly(tenantId);
-
+            // Edge canary manifests were already written in prepare(); just transition state
             rolloutRepo.updateState(deployId, DeployRolloutState.EDGE_DONE.value(),
                     rollout.canaryPercent(), true);
 
@@ -392,6 +437,11 @@ public class DeployRolloutService {
                     engineStore.updatePointer(tenantId, newPtr);
                     engineStore.notifyReload(tenantId, rollout.canaryEngineRevision());
                 }
+            }
+
+            // Promote edge canary: remove stable, rename canary → stable
+            if (rollout.canaryEdgeRevision() != null && rollout.canaryEdgeRevision() > 0) {
+                artifactService.promoteEdgeCanary(tenantId);
             }
 
             rolloutRepo.markFinalized(deployId, DeployRolloutState.FINALIZED.value());
@@ -515,17 +565,8 @@ public class DeployRolloutService {
     static String generateBundleId(String bundleId, String bundleVersion) {
         String base = (bundleId != null && !bundleId.isBlank()) ? bundleId : "default";
         if (bundleVersion == null || bundleVersion.isBlank()) {
-            return base + "@0.1.0";
+            throw new IllegalArgumentException("bundleVersion must be resolved before calling generateBundleId");
         }
-        String[] parts = bundleVersion.split("\\.");
-        if (parts.length != 3) {
-            throw new IllegalArgumentException("Invalid bundle version format, expected X.Y.Z: " + bundleVersion);
-        }
-        try {
-            int patch = Integer.parseInt(parts[2]) + 1;
-            return base + "@" + parts[0] + "." + parts[1] + "." + patch;
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Invalid bundle version segment, expected numeric: " + bundleVersion, e);
-        }
+        return base + "@" + bundleVersion;
     }
 }

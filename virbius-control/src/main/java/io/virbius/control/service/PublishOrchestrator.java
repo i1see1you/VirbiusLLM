@@ -63,8 +63,7 @@ public class PublishOrchestrator {
             Map<String, Object> gwResult = accessListService.syncRules(tenantId);
             result.put("gateway", gwResult);
 
-            Map<String, Object> edgeResult = new LinkedHashMap<>(artifactService.writeEdgeOnly(tenantId));
-            result.put("edge", edgeResult);
+            result.put("edge", Map.of("note", "edge manifests written during deploy-rollout"));
 
             return result;
         } catch (Exception e) {
@@ -101,8 +100,7 @@ public class PublishOrchestrator {
             Map<String, Object> gwResult = accessListService.syncRules(tenantId);
             result.put("gateway", gwResult);
 
-            Map<String, Object> edgeResult = new LinkedHashMap<>(artifactService.writeEdgeOnly(tenantId));
-            result.put("edge", edgeResult);
+            result.put("edge", Map.of("note", "edge manifests written during deploy-rollout"));
 
             return result;
         } catch (Exception e) {

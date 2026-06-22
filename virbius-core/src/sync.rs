@@ -22,6 +22,11 @@ pub struct EdgeInitConfig {
     /// Bearer token for Control Edge pull API (tenant-scoped; not in manifest).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edge_api_key: Option<String>,
+    /// Device identifier used for canary pool assignment.
+    /// If set, the SDK computes a bucket (0-99) from the device_id and compares it against
+    /// the active rollout's canary_percent to decide whether to fetch the canary manifest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_id: Option<String>,
 }
 
 fn default_tenant() -> String {
@@ -37,6 +42,7 @@ impl Default for EdgeInitConfig {
             tenant_id: default_tenant(),
             app_id: String::new(),
             edge_api_key: None,
+            device_id: None,
         }
     }
 }
@@ -127,6 +133,7 @@ impl EdgeInitConfig {
         } else {
             Self::default_cache_dir(&tenant_id, &app_id)
         };
+        let device_id = env::var("VIRBIUS_DEVICE_ID").ok().filter(|s| !s.is_empty());
         Self {
             control_base_url,
             offline_manifest_path,
@@ -134,6 +141,7 @@ impl EdgeInitConfig {
             tenant_id,
             app_id,
             edge_api_key,
+            device_id,
         }
     }
 }
@@ -156,6 +164,62 @@ struct CacheMeta {
 struct PolicyVersionResponse {
     artifact_revision: u64,
     content_sha256: String,
+    #[serde(default)]
+    stable_revision: u64,
+    #[serde(default)]
+    stable_sha256: String,
+    #[serde(default)]
+    canary_revision: u64,
+    #[serde(default)]
+    canary_sha256: String,
+    #[serde(default)]
+    canary_percent: u64,
+}
+
+impl PolicyVersionResponse {
+    /// Returns the (revision, sha256, pool) for the device. When the control plane provides
+    /// canary info and the device falls into the canary bucket, the canary manifest is used.
+    fn resolve_pool(&self, device_id: Option<&str>) -> PoolSelection<'_> {
+        let has_canary = self.canary_revision > 0 && !self.canary_sha256.is_empty();
+        if !has_canary || self.canary_percent == 0 {
+            return PoolSelection {
+                revision: self.artifact_revision,
+                sha256: self.content_sha256.clone(),
+                pool: "stable",
+            };
+        }
+        let bucket = device_id
+            .filter(|id| !id.is_empty())
+            .map(bucket_of)
+            .unwrap_or(100);
+        if bucket < self.canary_percent || self.canary_percent >= 100 {
+            PoolSelection {
+                revision: self.canary_revision,
+                sha256: self.canary_sha256.clone(),
+                pool: "canary",
+            }
+        } else {
+            PoolSelection {
+                revision: self.stable_revision,
+                sha256: self.stable_sha256.clone(),
+                pool: "stable",
+            }
+        }
+    }
+}
+
+struct PoolSelection<'a> {
+    revision: u64,
+    sha256: String,
+    pool: &'a str,
+}
+
+/// CRC32C bucket computation matching `BucketCalculator.bucketOf()` on the control side.
+fn bucket_of(device_id: &str) -> u64 {
+    use std::hash::Hasher;
+    let mut hasher = crc32c::Crc32cHasher::new(0);
+    hasher.write(device_id.as_bytes());
+    hasher.finish() % 100
 }
 
 pub fn sync_if_configured() -> Result<(), String> {
@@ -180,6 +244,8 @@ fn sync_from_control(cfg: &EdgeInitConfig) -> Result<(), String> {
         .as_ref()
         .expect("remote sync requires control base url")
         .trim_end_matches('/');
+
+    // --- resolve pool from device_id ---
     let version_url = format!(
         "{base}/api/v1/edge/tenants/{}/apps/{}/policy-version",
         cfg.tenant_id, cfg.app_id
@@ -202,10 +268,13 @@ fn sync_from_control(cfg: &EdgeInitConfig) -> Result<(), String> {
         .into_json()
         .map_err(|e| format!("policy-version parse failed: {e}"))?;
 
+    // --- resolve pool based on device_id ---
+    let selection = version.resolve_pool(cfg.device_id.as_deref());
+
     let manifest_file = manifest_cache_path(&cfg.cache_dir);
     if let Some(ref meta) = local_meta {
-        if meta.artifact_revision == version.artifact_revision
-            && meta.content_sha256.eq_ignore_ascii_case(&version.content_sha256)
+        if meta.artifact_revision == selection.revision
+            && meta.content_sha256.eq_ignore_ascii_case(&selection.sha256)
             && manifest_file.is_file()
         {
             return Ok(());
@@ -213,11 +282,11 @@ fn sync_from_control(cfg: &EdgeInitConfig) -> Result<(), String> {
     }
 
     let manifest_url = format!(
-        "{base}/api/v1/edge/tenants/{}/apps/{}/manifest",
-        cfg.tenant_id, cfg.app_id
+        "{base}/api/v1/edge/tenants/{}/apps/{}/manifest?pool={}",
+        cfg.tenant_id, cfg.app_id, selection.pool
     );
     let manifest_resp = apply_edge_auth(ureq::get(&manifest_url), cfg)
-        .set("If-None-Match", &version.artifact_revision.to_string())
+        .set("If-None-Match", &selection.revision.to_string())
         .call()
         .map_err(|e| format!("manifest request failed: {e}"))?;
 
@@ -233,7 +302,7 @@ fn sync_from_control(cfg: &EdgeInitConfig) -> Result<(), String> {
 
     if manifest_resp.status() == 304 {
         if let Some(meta) = local_meta {
-            if meta.artifact_revision == version.artifact_revision {
+            if meta.artifact_revision == selection.revision {
                 return Ok(());
             }
         }
@@ -244,10 +313,10 @@ fn sync_from_control(cfg: &EdgeInitConfig) -> Result<(), String> {
         .into_string()
         .map_err(|e| format!("manifest body read failed: {e}"))?;
     let sha = sha256_hex(body.as_bytes());
-    if !sha.eq_ignore_ascii_case(&version.content_sha256) {
+    if !sha.eq_ignore_ascii_case(&selection.sha256) {
         return Err(format!(
             "manifest sha256 mismatch: expected {}, got {sha}",
-            version.content_sha256
+            selection.sha256
         ));
     }
 
@@ -256,8 +325,8 @@ fn sync_from_control(cfg: &EdgeInitConfig) -> Result<(), String> {
     write_cache_meta(
         &cfg.cache_dir,
         &CacheMeta {
-            artifact_revision: version.artifact_revision,
-            content_sha256: version.content_sha256,
+            artifact_revision: selection.revision,
+            content_sha256: selection.sha256,
         },
     )?;
     Ok(())
@@ -312,11 +381,10 @@ mod tests {
     fn remote_sync_disabled_without_control_url() {
         let cfg = EdgeInitConfig {
             control_base_url: None,
-            offline_manifest_path: None,
             cache_dir: PathBuf::from("/tmp/unused"),
             tenant_id: "default".into(),
             app_id: "demo".into(),
-            edge_api_key: None,
+            ..Default::default()
         };
         assert!(!cfg.remote_sync_enabled());
     }
@@ -329,7 +397,7 @@ mod tests {
             cache_dir: PathBuf::from("/tmp/cache"),
             tenant_id: "default".into(),
             app_id: "demo".into(),
-            edge_api_key: None,
+            ..Default::default()
         };
         assert!(!cfg.remote_sync_enabled());
     }

@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * Persistent record for a deploy rollout (machine-bucket canary release of a bundle version
- * across cloud + gateway). One non-terminal record per tenant at a time.
+ * across cloud + gateway + edge). One non-terminal record per tenant at a time.
  */
 public record DeployRollout(
         String deployId,
@@ -20,6 +20,8 @@ public record DeployRollout(
         Long stableEngineRevision,
         Long canaryGatewayRevision,
         Long stableGatewayRevision,
+        Long canaryEdgeRevision,
+        Long stableEdgeRevision,
         List<Integer> canaryLadder,
         Instant startedAt,
         Instant updatedAt,

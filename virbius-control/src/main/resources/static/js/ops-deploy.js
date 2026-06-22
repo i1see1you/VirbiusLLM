@@ -26,7 +26,7 @@
 
     async function drRefresh() {
       const res = await drApi('/active', 'GET');
-      if (res.code === 0 && res.data && res.data.active) {
+      if (res.code === 0 && res.data && res.data.deploy_id) {
         renderActive(res.data);
       } else {
         document.getElementById('drActiveInfo').style.display = 'block';
@@ -65,10 +65,16 @@
       const rules = {
         drPrepareEngine: rollout
           ? { enabled: false, hint: '已有进行中的部署，请先完结或回退' }
-          : { enabled: true, hint: '开始 Engine 灰度部署' },
+          : { enabled: true, hint: '开始 Engine 灰度部署（仅包含 cloud 层）' },
         drPrepareGateway: rollout
           ? { enabled: false, hint: '已有进行中的部署，请先完结或回退' }
-          : { enabled: true, hint: '开始 Gateway 灰度部署' },
+          : { enabled: true, hint: '开始 Gateway 灰度部署（仅包含 gateway 层）' },
+        drPrepareEdge: rollout
+          ? { enabled: false, hint: '已有进行中的部署，请先完结或回退' }
+          : { enabled: true, hint: '开始 Edge 按 device_id 灰度部署（仅包含 edge 层）' },
+        drPrepareAll: rollout
+          ? { enabled: false, hint: '已有进行中的部署，请先完结或回退' }
+          : { enabled: true, hint: '开始三层（Engine+Gateway+Edge）同时灰度部署' },
         drUpgrade: !rollout
           ? { enabled: false, hint: '无进行中部署' }
           : ['pending', 'canary', 'paused'].includes(state)
@@ -84,19 +90,11 @@
           : ['finalized', 'rolled_back'].includes(state)
             ? { enabled: false, hint: '部署已终结，无法回退' }
             : { enabled: true, hint: '回退到旧版本（终结前都可回退）' },
-        drDeployEdge: !rollout
-          ? { enabled: false, hint: '无进行中部署' }
-          : state === 'full'
-            ? { enabled: true, hint: '发布到边缘节点（全量、无灰度）' }
-            : { enabled: false, hint: '需先升级到 FULL@100%' },
         drFinalize: !rollout
           ? { enabled: false, hint: '无进行中部署' }
-          : ['full', 'edge_done'].includes(state)
-            ? { enabled: true, hint: '⚠ 完结后切换稳定版指针，无法再回退' }
-            : pct < 100
-              ? { enabled: false, hint: `需先升级至 100%（当前 ${pct}%）` }
-              : { enabled: false, hint: `当前状态 ${state} 不可完结` },
-        drDeployEdgeOrFinalizeHint: null,
+          : pct === 100
+            ? { enabled: true, hint: '⚠ 完结后切换稳定版指针 + 清理 canary 清单，不可回退' }
+            : { enabled: false, hint: `需先升级至 100%（当前 ${pct}%）` },
       };
 
       for (const [id, rule] of Object.entries(rules)) {
@@ -126,6 +124,8 @@
         <td>${r.stable_engine_revision || '-'}</td>
         <td>${r.canary_gateway_revision || '-'}</td>
         <td>${r.stable_gateway_revision || '-'}</td>
+        <td>${r.canary_edge_revision || '-'}</td>
+        <td>${r.stable_edge_revision || '-'}</td>
         <td>${esc(r.operator)}</td>
         <td>${esc(r.note)}</td>
       </tr>`;
@@ -133,8 +133,8 @@
       // node distribution
       const dist = r.pool_distribution || {};
       const nd = document.getElementById('drNodeDistribution');
-      const fullStates = ['full', 'edge_done', 'finalized'];
-      if (fullStates.includes(r.state) || (r.canary_percent || 0) >= 100) {
+      const pct = r.canary_percent || 0;
+      if (pct >= 100) {
         nd.innerHTML = '<div class="kpi-card" style="border-color:#16a34a;grid-column:1/-1"><div class="label">状态</div><div class="value" style="color:#16a34a">✅ 已全量部署</div></div>';
       } else {
         const parts = [];
@@ -159,6 +159,14 @@
             }
             parts.push(`</details>`);
           }
+        }
+        // Edge status card (no heartbeats, show pool strategy info)
+        const hasEdge = r.canary_edge_revision > 0 || r.stable_edge_revision > 0;
+        if (hasEdge) {
+          parts.push(`<div class="kpi-card" style="border-color:#818cf8"><div class="label">Edge</div><div class="value">按 device_id 分池</div>`);
+          parts.push(`<span class="tag" style="background:#16a34a;color:#fff">canary: < ${pct}%</span>`);
+          parts.push(`<span class="tag">stable: ≥ ${pct}%</span>`);
+          parts.push(`</div>`);
         }
         nd.innerHTML = parts.join('') || '<div class="hint">暂无节点心跳</div>';
       }
@@ -188,19 +196,99 @@
       </tr>`).join('');
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
-      document.getElementById('drPrepareEngine').addEventListener('click', async () => {
-        const desc = document.getElementById('drDescription').value.trim();
-        const res = await drApi('/prepare', 'POST', { bundle_id: document.getElementById('bundleId').value, bundle_version: document.getElementById('bundleVer').value, layer: 'cloud', description: desc });
-        if (res.code === 0) { drLog('Engine 灰度准备完成 deploy_id=' + res.data.deploy_id + ' bundle=' + (res.data.bundle_id || 'auto'), true); drRefresh(); }
-        else { drLog('准备失败: ' + (res.message || JSON.stringify(res)), false); }
-      });
+    function drRenderDiff(data) {
+      const area = document.getElementById('drDiffArea');
+      const summary = document.getElementById('drDiffSummary');
+      const list = document.getElementById('drDiffList');
+      document.getElementById('drDiffLoading').style.display = 'none';
+      area.style.display = 'block';
+      const s = data && data.summary ? data.summary : { added: 0, removed: 0, modified: 0 };
+      const baseVer = (data && data.base_version) || '首次发布';
+      const parts = [];
+      if (s.added > 0) parts.push('新增 ' + s.added);
+      if (s.removed > 0) parts.push('删除 ' + s.removed);
+      if (s.modified > 0) parts.push('修改 ' + s.modified);
+      summary.textContent = '基于 ' + baseVer + ' 的变更' + (parts.length ? '：' + parts.join('，') : '（无变更）');
+      list.innerHTML = '';
+      if (data && data.layers) {
+        for (const [layer, rules] of Object.entries(data.layers)) {
+          for (const r of rules) {
+            const div = document.createElement('div');
+            div.style.cssText = 'font-size:0.8rem;padding:0.15rem 0;display:flex;gap:0.35rem;align-items:center';
+            const tag = document.createElement('span');
+            tag.className = 'tag';
+            tag.style.cssText = 'font-size:0.7rem';
+            if (r.change === 'added') { tag.textContent = '新增'; tag.style.background = '#16a34a'; tag.style.color = '#fff'; }
+            else if (r.change === 'removed') { tag.textContent = '删除'; tag.style.background = '#dc2626'; tag.style.color = '#fff'; }
+            else if (r.change === 'modified') { tag.textContent = '修改'; tag.style.background = '#d97706'; tag.style.color = '#fff'; }
+            else { tag.textContent = r.change; }
+            div.appendChild(tag);
+            const idSpan = document.createElement('span');
+            idSpan.textContent = r.rule_id;
+            div.appendChild(idSpan);
+            const layerTag = document.createElement('span');
+            layerTag.className = 'tag';
+            layerTag.style.cssText = 'font-size:0.7rem;background:#e2e8f0';
+            layerTag.textContent = r.layer || layer;
+            div.appendChild(layerTag);
+            list.appendChild(div);
+          }
+        }
+      }
+    }
 
-      document.getElementById('drPrepareGateway').addEventListener('click', async () => {
-        const desc = document.getElementById('drDescription').value.trim();
-        const res = await drApi('/prepare', 'POST', { bundle_id: document.getElementById('bundleId').value, bundle_version: document.getElementById('bundleVer').value, layer: 'gateway', description: desc });
-        if (res.code === 0) { drLog('Gateway 灰度准备完成 deploy_id=' + res.data.deploy_id + ' bundle=' + (res.data.bundle_id || 'auto'), true); drRefresh(); }
-        else { drLog('准备失败: ' + (res.message || JSON.stringify(res)), false); }
+    function drOpenVersionModal(layer, label) {
+      const desc = document.getElementById('drDescription').value.trim();
+      document.getElementById('drDiffArea').style.display = 'none';
+      document.getElementById('drDiffLoading').style.display = 'block';
+      const bundleId = document.getElementById('bundleId').value;
+      Promise.all([
+        drApi('/next-version?bundle_id=' + encodeURIComponent(bundleId), 'GET'),
+        drApi('/diff-rules?bundle_id=' + encodeURIComponent(bundleId), 'GET')
+      ]).then(([verRes, diffRes]) => {
+        const nextVer = (verRes.code === 0 && verRes.data) ? verRes.data.version : '';
+        document.getElementById('drVersionInput').value = nextVer;
+        document.getElementById('drVersionLayer').value = layer;
+        window._drPendingPrepare = { desc, label };
+        document.getElementById('drVersionModal').style.display = 'flex';
+        drRenderDiff(diffRes.code === 0 ? diffRes.data : null);
+      }).catch(() => {
+        document.getElementById('drDiffLoading').style.display = 'none';
+        document.getElementById('drVersionModal').style.display = 'flex';
+      });
+    }
+
+    function drCloseVersionModal() {
+      document.getElementById('drVersionModal').style.display = 'none';
+      document.getElementById('drDiffLoading').style.display = 'none';
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      document.getElementById('drPrepareEngine').addEventListener('click', () => drOpenVersionModal('cloud', 'Engine 灰度'));
+      document.getElementById('drPrepareGateway').addEventListener('click', () => drOpenVersionModal('gateway', 'Gateway 灰度'));
+      document.getElementById('drPrepareEdge').addEventListener('click', () => drOpenVersionModal('edge', 'Edge 灰度'));
+      document.getElementById('drPrepareAll').addEventListener('click', () => drOpenVersionModal('', '三层灰度'));
+
+      document.getElementById('drVersionCancel').addEventListener('click', drCloseVersionModal);
+      document.getElementById('drVersionModal').addEventListener('click', (e) => { if (e.target === e.currentTarget) drCloseVersionModal(); });
+      document.getElementById('drVersionConfirm').addEventListener('click', async () => {
+        const modal = document.getElementById('drVersionModal');
+        modal.style.display = 'none';
+        const version = document.getElementById('drVersionInput').value.trim();
+        const layer = document.getElementById('drVersionLayer').value;
+        const { desc, label } = window._drPendingPrepare || { desc: '', label: '' };
+        const res = await drApi('/prepare', 'POST', {
+          bundle_id: document.getElementById('bundleId').value,
+          bundle_version: version || undefined,
+          layer: layer,
+          description: desc
+        });
+        if (res.code === 0) {
+          drLog(label + ' 准备完成 deploy_id=' + res.data.deploy_id + ' bundle=' + (res.data.bundle_id || 'auto'), true);
+          drRefresh();
+        } else {
+          drLog('准备失败: ' + (res.message || JSON.stringify(res)), false);
+        }
       });
 
       document.getElementById('drUpgrade').addEventListener('click', async () => {
@@ -231,17 +319,8 @@
         else { drLog('回退失败: ' + (res.message || JSON.stringify(res)), false); }
       });
 
-      document.getElementById('drDeployEdge').addEventListener('click', async () => {
-        const active = await drApi('/active', 'GET');
-        const did = active.data && active.data.deploy_id;
-        if (!did) { drLog('无进行中部署', false); return; }
-        const res = await drApi('/' + did + '/deploy-edge', 'POST', { note: 'UI 发布 Edge' });
-        if (res.code === 0) { drLog('Edge 已发布', true); drRefresh(); }
-        else { drLog('Edge 发布失败: ' + (res.message || JSON.stringify(res)), false); }
-      });
-
       document.getElementById('drFinalize').addEventListener('click', async () => {
-        if (!confirm('⚠ 确认完结部署？\n\n完结后将：\n  · 把新版本指针切换为稳定版\n  · 关闭回退通道（不可再 rollback）\n  · 归档当前 rollout 记录\n\n建议在线上指标观察期通过后再点。')) return;
+        if (!confirm('⚠ 确认完结部署？\n\n完结后将：\n  · 把新版本指针切换为稳定版\n  · 关闭回退通道（不可再 rollback）\n  · 清理 canary 文件（edge）\n  · 归档当前 rollout 记录\n\n建议在线上指标观察期通过后再点。')) return;
         const active = await drApi('/active', 'GET');
         const did = active.data && active.data.deploy_id;
         if (!did) { drLog('无进行中部署', false); return; }

@@ -131,6 +131,14 @@
     .big-kpi-card .value.rate-high { color: #dc2626; background: #fee2e2; padding: 0.15rem 1rem; border-radius: 6px; display: inline-block; }
     .chart-wrap { position: relative; width: 100%; margin: 0.5rem 0 0; }
     .chart-wrap canvas { width: 100% !important; max-height: 300px; }
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      display: flex; align-items: center; justify-content: center; z-index: 1000;
+    }
+    .modal-box {
+      background: #fff; border-radius: 8px; padding: 1.25rem 1.5rem;
+      min-width: 320px; max-width: 420px; box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
@@ -175,7 +183,7 @@
         <span class="hint" style="margin:0">Bundle <code id="topBundleId">poc-default</code>@<code id="topBundleVer">0.1.0</code></span>
       </header>
       <input type="hidden" id="bundleId" value="poc-default" />
-      <input type="hidden" id="bundleVer" value="0.1.0" />
+        <input type="text" id="bundleVer" placeholder="版本号，留空自动递增" size="14" style="display:none" />
       <div class="main-scroll">
 
   <div id="panel-tenants" class="panel card">
@@ -608,20 +616,21 @@
 
   <div id="panel-rollout" class="panel card">
     <h2 style="margin:0 0 0.5rem;font-size:1rem">策略上线</h2>
-    <p class="hint">draft 须先 <code>上线</code> 进入 dry_run；达标后点 <code>升级 / 下一步</code>（后端仍校验门禁，未过可 force）。<strong>编辑和放量操作仅写 DB，须点「部署」推送到执行面才生效。</strong>看板每 5 秒自动刷新。</p>
+    <p class="hint">draft 须先 <code>上线</code> 进入 dry_run；达标后点 <code>升级 / 下一步</code>（后端仍校验门禁，未过可 force）。版本号留空时自动从上次发布递增 patch。<strong>编辑和放量操作仅写 DB，须点「部署」推送到执行面才生效。</strong>看板每 5 秒自动刷新。</p>
 
     <div class="rollout-section">
       <h3 style="margin:0 0 0.35rem;font-size:0.95rem">机器灰度部署</h3>
-      <p class="hint">按机器 <code>bucket</code> 分池：<code>PENDING→CANARY(5/20/50)→FULL(100)→EDGE_DONE→FINALIZED</code>。Edge 全量发布，无灰度。</p>
+      <p class="hint">按机器 <code>bucket</code> 分池：<code>PENDING→CANARY(5/20/50)→FULL(100)→FINALIZED</code>。Edge 按 <code>device_id</code> CRC32C hash 分池灰度，与 engine/gateway 共用同一份 canary%。</p>
       <div id="drStatusBar" class="kpi-grid" style="margin-bottom:0.5rem"></div>
       <div id="drActions" class="row" style="flex-wrap:wrap;gap:0.4rem">
         <input id="drDescription" placeholder="变更说明" size="24" />
         <button type="button" id="drPrepareEngine">📦 准备 Engine</button>
         <button type="button" id="drPrepareGateway" class="secondary">📦 准备 Gateway</button>
+        <button type="button" id="drPrepareEdge" class="secondary">📡 准备 Edge</button>
+        <button type="button" id="drPrepareAll" class="secondary" style="background:#6366f1">🚀 全部部署</button>
         <button type="button" id="drUpgrade" class="secondary">⬆ 升级</button>
         <button type="button" id="drPause" class="secondary" style="background:#f59e0b">⏸ 暂停</button>
         <button type="button" id="drRollback" class="danger">↩ 回退</button>
-        <button type="button" id="drDeployEdge" class="secondary">📡 发布 Edge</button>
         <button type="button" id="drFinalize" class="secondary" style="background:#16a34a">✅ 完结</button>
         <button type="button" id="drRefresh" class="secondary">🔄 刷新</button>
       </div>
@@ -629,7 +638,7 @@
         <div id="drActiveInfo" class="hint">无进行中的部署</div>
         <div id="drActiveDetail" style="display:none">
           <table id="drActiveTable">
-            <thead><tr><th>ID</th><th>状态</th><th>Bundle</th><th>canary%</th><th>Engine 灰度</th><th>Engine 稳定</th><th>Gateway 灰度</th><th>Gateway 稳定</th><th>操作者</th><th>备注</th></tr></thead>
+            <thead><tr><th>ID</th><th>状态</th><th>Bundle</th><th>canary%</th><th>Engine 灰度</th><th>Engine 稳定</th><th>Gateway 灰度</th><th>Gateway 稳定</th><th>Edge 灰度</th><th>Edge 稳定</th><th>操作者</th><th>备注</th></tr></thead>
             <tbody></tbody>
           </table>
           <h4 style="margin:0.5rem 0 0.25rem;font-size:0.85rem">节点分布</h4>
@@ -774,6 +783,26 @@
   <script src="js/ops-audit.js"></script>
   <script src="js/ops-tenants.js"></script>
   <script src="js/ops-nav.js"></script>
+
+  <!-- Version input modal for deploy prepare -->
+  <div id="drVersionModal" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+      <h3 style="margin:0 0 0.75rem;font-size:1rem">确认版本号</h3>
+      <p class="hint" style="margin-bottom:0.5rem">将以此版本号执行灰度部署：</p>
+      <input type="text" id="drVersionInput" size="20" style="font-size:1rem;padding:0.4rem;width:100%;box-sizing:border-box" />
+      <p class="hint" style="margin-top:0.35rem">留空或修改版本号将直接使用该值</p>
+      <div id="drDiffArea" style="margin-top:0.5rem;max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:4px;padding:0.5rem;background:#f8fafc;display:none">
+        <div id="drDiffSummary" style="font-size:0.85rem;font-weight:600;margin-bottom:0.35rem"></div>
+        <div id="drDiffList"></div>
+      </div>
+      <div id="drDiffLoading" class="hint" style="margin-top:0.5rem">加载规则变更...</div>
+      <div class="row" style="margin-top:0.75rem;justify-content:flex-end;gap:0.5rem">
+        <button type="button" class="secondary" id="drVersionCancel">取消</button>
+        <button type="button" id="drVersionConfirm">确认部署</button>
+      </div>
+      <input type="hidden" id="drVersionLayer" value="" />
+    </div>
+  </div>
 
 </body>
 </html>

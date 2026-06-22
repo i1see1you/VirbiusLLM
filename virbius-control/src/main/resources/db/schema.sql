@@ -245,10 +245,11 @@ CREATE TABLE IF NOT EXISTS tb_tenant_request_stats_1h (
 CREATE TABLE IF NOT EXISTS tb_edge_artifact_meta (
     tenant_id         VARCHAR(64) NOT NULL,
     app_id            VARCHAR(128) NOT NULL,
+    pool              VARCHAR(16) NOT NULL DEFAULT 'stable',
     artifact_revision BIGINT NOT NULL DEFAULT 0,
     content_sha256    VARCHAR(64) NOT NULL,
     published_at      TIMESTAMP NOT NULL,
-    PRIMARY KEY (tenant_id, app_id)
+    PRIMARY KEY (tenant_id, app_id, pool)
 );
 
 CREATE TABLE IF NOT EXISTS tb_tenant_api_credential (
@@ -340,6 +341,8 @@ CREATE TABLE IF NOT EXISTS tb_deploy_rollout (
     stable_engine_revision  BIGINT,
     canary_gateway_revision BIGINT,
     stable_gateway_revision BIGINT,
+    canary_edge_revision   BIGINT,
+    stable_edge_revision   BIGINT,
     canary_ladder          TEXT         NOT NULL DEFAULT '[5,20,50,100]',
     started_at             TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at             TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
