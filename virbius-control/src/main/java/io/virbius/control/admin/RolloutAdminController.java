@@ -1,9 +1,11 @@
 package io.virbius.control.admin;
 
+import io.virbius.control.common.exception.BusinessException;
 import io.virbius.control.common.response.ApiResult;
 import io.virbius.control.domain.TenantRolloutPolicy;
 import io.virbius.control.domain.dto.request.RolloutEvaluateRequest;
 import io.virbius.control.domain.dto.request.UpdateRolloutRequest;
+import io.virbius.control.repository.DeployRolloutRepository;
 import io.virbius.control.repository.TenantRolloutPolicyRepository;
 import io.virbius.control.service.RolloutDashboardService;
 import io.virbius.control.service.RolloutService;
@@ -30,18 +32,21 @@ public class RolloutAdminController {
     private final RolloutDashboardService dashboardService;
     private final AuditIngestService auditIngestService;
     private final AuditCenterService auditCenterService;
+    private final DeployRolloutRepository deployRolloutRepo;
 
     public RolloutAdminController(
             RolloutService rolloutService,
             TenantRolloutPolicyRepository policyRepository,
             RolloutDashboardService dashboardService,
             AuditIngestService auditIngestService,
-            AuditCenterService auditCenterService) {
+            AuditCenterService auditCenterService,
+            DeployRolloutRepository deployRolloutRepo) {
         this.rolloutService = rolloutService;
         this.policyRepository = policyRepository;
         this.dashboardService = dashboardService;
         this.auditIngestService = auditIngestService;
         this.auditCenterService = auditCenterService;
+        this.deployRolloutRepo = deployRolloutRepo;
     }
 
     @PatchMapping("/rules/{ruleId}/rollout")
@@ -49,6 +54,7 @@ public class RolloutAdminController {
             @PathVariable("tenantId") String tenantId,
             @PathVariable("ruleId") String ruleId,
             @RequestBody UpdateRolloutRequest body) {
+        requireNoActiveDeploy(tenantId);
         boolean force = body.force() != null && body.force();
         return ApiResult.ok(rolloutService.applyRollout(
                 tenantId,
@@ -64,12 +70,14 @@ public class RolloutAdminController {
     @PostMapping("/rules/{ruleId}/rollout/publish")
     public ApiResult<Map<String, Object>> publish(
             @PathVariable("tenantId") String tenantId, @PathVariable("ruleId") String ruleId) {
+        requireNoActiveDeploy(tenantId);
         return ApiResult.ok(rolloutService.publish(tenantId, ruleId));
     }
 
     @PostMapping("/rules/{ruleId}/rollout/rollback")
     public ApiResult<Map<String, Object>> rollback(
             @PathVariable("tenantId") String tenantId, @PathVariable("ruleId") String ruleId) {
+        requireNoActiveDeploy(tenantId);
         return ApiResult.ok(rolloutService.rollback(tenantId, ruleId));
     }
 
@@ -188,5 +196,12 @@ public class RolloutAdminController {
             @PathVariable("tenantId") String tenantId, @PathVariable("ruleId") String ruleId) {
         dashboardService.setLadderStatus(tenantId, ruleId, "paused");
         return ApiResult.ok(Map.of("ladder_status", "paused"));
+    }
+
+    private void requireNoActiveDeploy(String tenantId) {
+        if (deployRolloutRepo.findActive(tenantId).isPresent()) {
+            throw new BusinessException(423,
+                    "存在进行中的机器灰度部署，请等待完成或回退后再操作规则灰度");
+        }
     }
 }

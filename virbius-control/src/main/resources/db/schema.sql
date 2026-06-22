@@ -325,3 +325,56 @@ CREATE TABLE IF NOT EXISTS tb_gateway_artifact_meta (
     trigger                VARCHAR(32),
     storage                VARCHAR(16)  NOT NULL DEFAULT 'redis'
 );
+
+-- Deploy rollout: machine-bucket canary deployment of a bundle release across cloud + gateway.
+CREATE TABLE IF NOT EXISTS tb_deploy_rollout (
+    deploy_id              VARCHAR(64)  PRIMARY KEY,
+    tenant_id              VARCHAR(64)  NOT NULL,
+    bundle_id              VARCHAR(128) NOT NULL DEFAULT 'poc-default',
+    state                  VARCHAR(16)  NOT NULL,
+    canary_percent         INTEGER      NOT NULL DEFAULT 0,
+    edge_deployed          INTEGER      NOT NULL DEFAULT 0,
+    target_version         VARCHAR(64)  NOT NULL,
+    prev_version           VARCHAR(64),
+    canary_engine_revision  BIGINT,
+    stable_engine_revision  BIGINT,
+    canary_gateway_revision BIGINT,
+    stable_gateway_revision BIGINT,
+    canary_ladder          TEXT         NOT NULL DEFAULT '[5,20,50,100]',
+    started_at             TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at             TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finalized_at           TIMESTAMP,
+    operator               VARCHAR(64),
+    note                   TEXT,
+    CHECK (state IN ('pending','canary','paused','full','edge_done','rolled_back','finalized'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_tb_deploy_rollout_tenant
+    ON tb_deploy_rollout (tenant_id, started_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_tb_deploy_rollout_active
+    ON tb_deploy_rollout (tenant_id, state);
+
+-- Deploy event audit log (state transitions, rule demotions, gate evaluations).
+CREATE TABLE IF NOT EXISTS tb_deploy_event (
+    event_id     VARCHAR(64)  PRIMARY KEY,
+    deploy_id    VARCHAR(64)  NOT NULL,
+    tenant_id    VARCHAR(64)  NOT NULL,
+    event_type   VARCHAR(32)  NOT NULL,
+    reason       VARCHAR(64),
+    rule_id      VARCHAR(128),
+    from_state   VARCHAR(16),
+    from_percent INTEGER,
+    to_state     VARCHAR(16),
+    to_percent   INTEGER,
+    layer        VARCHAR(16),
+    operator     VARCHAR(64),
+    note         TEXT,
+    created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_tb_deploy_event_deploy
+    ON tb_deploy_event (deploy_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_tb_deploy_event_rule
+    ON tb_deploy_event (tenant_id, rule_id);

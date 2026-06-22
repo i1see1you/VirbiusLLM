@@ -611,13 +611,42 @@
     <p class="hint">draft 须先 <code>上线</code> 进入 dry_run；达标后点 <code>升级 / 下一步</code>（后端仍校验门禁，未过可 force）。<strong>编辑和放量操作仅写 DB，须点「部署」推送到执行面才生效。</strong>看板每 5 秒自动刷新。</p>
 
     <div class="rollout-section">
-      <h3 style="margin:0 0 0.35rem;font-size:0.95rem">部署引擎</h3>
-      <p class="hint" style="margin:0 0 0.35rem">规则变更（编辑/放量/停用）默认只写 DB；点击下发将最新配置推送到各层执行面。</p>
-      <div id="deployStatusBar" class="kpi-grid" style="margin-bottom:0.5rem"></div>
-      <div class="row" style="flex-wrap:wrap;gap:0.4rem">
-        <button type="button" class="secondary" data-deploy="gateway">🔄 部署网关</button>
-        <button type="button" class="secondary" data-deploy="cloud">🔄 部署引擎</button>
-        <button type="button" class="secondary" data-deploy="edge">🔄 部署端侧</button>
+      <h3 style="margin:0 0 0.35rem;font-size:0.95rem">机器灰度部署</h3>
+      <p class="hint">按机器 <code>bucket</code> 分池：<code>PENDING→CANARY(5/20/50)→FULL(100)→EDGE_DONE→FINALIZED</code>。Edge 全量发布，无灰度。</p>
+      <div id="drStatusBar" class="kpi-grid" style="margin-bottom:0.5rem"></div>
+      <div id="drActions" class="row" style="flex-wrap:wrap;gap:0.4rem">
+        <input id="drDescription" placeholder="变更说明" size="24" />
+        <button type="button" id="drPrepareEngine">📦 准备 Engine</button>
+        <button type="button" id="drPrepareGateway" class="secondary">📦 准备 Gateway</button>
+        <button type="button" id="drUpgrade" class="secondary">⬆ 升级</button>
+        <button type="button" id="drPause" class="secondary" style="background:#f59e0b">⏸ 暂停</button>
+        <button type="button" id="drRollback" class="danger">↩ 回退</button>
+        <button type="button" id="drDeployEdge" class="secondary">📡 发布 Edge</button>
+        <button type="button" id="drFinalize" class="secondary" style="background:#16a34a">✅ 完结</button>
+        <button type="button" id="drRefresh" class="secondary">🔄 刷新</button>
+      </div>
+      <div id="drActiveSection">
+        <div id="drActiveInfo" class="hint">无进行中的部署</div>
+        <div id="drActiveDetail" style="display:none">
+          <table id="drActiveTable">
+            <thead><tr><th>ID</th><th>状态</th><th>Bundle</th><th>canary%</th><th>Engine 灰度</th><th>Engine 稳定</th><th>Gateway 灰度</th><th>Gateway 稳定</th><th>操作者</th><th>备注</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <h4 style="margin:0.5rem 0 0.25rem;font-size:0.85rem">节点分布</h4>
+          <div id="drNodeDistribution" class="kpi-grid" style="margin-bottom:0.5rem"></div>
+          <h4 style="margin:0.5rem 0 0.25rem;font-size:0.85rem">事件</h4>
+          <table id="drEventTable">
+            <thead><tr><th>时间</th><th>类型</th><th>从</th><th>→</th><th>说明</th><th>操作者</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div id="drHistorySection">
+        <h4 style="margin:0.5rem 0 0.25rem;font-size:0.85rem">历史部署</h4>
+        <table id="drHistoryTable">
+          <thead><tr><th>ID</th><th>Bundle</th><th>状态</th><th>开始</th><th>完结</th><th>操作者</th></tr></thead>
+          <tbody></tbody>
+        </table>
       </div>
     </div>
 
@@ -694,6 +723,7 @@
       </table>
       <button type="button" class="secondary" id="roTraceClose" style="margin-top:0.5rem">关闭</button>
     </div>
+
   </div>
 
   <div id="panel-audit-center" class="panel card">
@@ -740,6 +770,7 @@
   <script src="js/ops-scene-registry.js"></script>
   <script src="js/ops-gw-routes.js"></script>
   <script src="js/ops-rollout.js"></script>
+  <script src="js/ops-deploy.js"></script>
   <script src="js/ops-audit.js"></script>
   <script src="js/ops-tenants.js"></script>
   <script src="js/ops-nav.js"></script>

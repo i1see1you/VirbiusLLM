@@ -15,7 +15,7 @@ import io.virbius.engine.config.PromptLlmProperties;
 import io.virbius.policy.MatchContext;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
+import io.virbius.engine.config.TenantAwareTaskExecutor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -32,7 +32,7 @@ class PromptRunnerBindTest {
         PromptLlmProperties props =
                 new PromptLlmProperties("http://127.0.0.1:11434", "m", "/v1/chat/completions", 3000, true, "<|im_start|>", "");
         runner = new PromptRunner(cache, props, llmClient, new PromptAuditJsonParser(new ObjectMapper()),
-                mock(ExecutorService.class), mock(AsyncActionHandler.class));
+                mock(TenantAwareTaskExecutor.class), mock(AsyncActionHandler.class));
     }
 
     @Test

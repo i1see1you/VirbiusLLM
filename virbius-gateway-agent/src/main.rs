@@ -1,4 +1,5 @@
 mod access_lists;
+mod deploy;
 mod list_redis;
 mod audit;
 mod bind_scope;
@@ -31,6 +32,8 @@ use std::{
 struct AppState {
     engine: EngineClient,
     lists: Arc<access_lists::AccessListChecker>,
+    deploy_resolver: Arc<deploy::NodePoolResolver>,
+    deploy_watcher: Arc<deploy::DeployRolloutWatcher>,
 }
 #[derive(Debug, Deserialize)]
 struct AgentEvaluateRequest {
@@ -111,6 +114,24 @@ async fn evaluate(
             "INVALID_ARGUMENT",
             "invalid X-Virbius-Trace-Id",
         );
+    }
+
+    // Pool guard: if X-Virbius-Pool header is set, verify this instance matches
+    if let Some(header_pool) = req.headers.as_ref().and_then(|h| h.get("X-Virbius-Pool")) {
+        let canary_pct = state
+            .deploy_watcher
+            .get(&req.tenant_id)
+            .await
+            .map(|p| p.canary_percent)
+            .unwrap_or(0);
+        let instance_pool = state.deploy_resolver.resolve_pool(canary_pct);
+        if !header_pool.eq_ignore_ascii_case(instance_pool) {
+            return error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "WRONG_POOL",
+                &format!("wrong pool: expected={} instance={}", header_pool, instance_pool),
+            );
+        }
     }
 
     let mut req = req;
@@ -306,10 +327,25 @@ async fn main() {
     let listen = env::var("VIRBIUS_AGENT_LISTEN").unwrap_or_else(|_| "127.0.0.1:9070".into());
     let engine_url =
         env::var("VIRBIUS_ENGINE_URL").unwrap_or_else(|_| "http://127.0.0.1:8082".into());
+    let redis_url =
+        env::var("VIRBIUS_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".into());
+
+    let deploy_resolver = Arc::new(deploy::NodePoolResolver::from_env());
+    let deploy_watcher = Arc::new(deploy::DeployRolloutWatcher::new());
+    deploy_watcher.start(&redis_url);
+
+    let hr_resolver = deploy_resolver.clone();
+    let hr_watcher = deploy_watcher.clone();
+    let hr_redis = redis_url.clone();
+    tokio::spawn(async move {
+        deploy::heartbeat_loop(&hr_redis, hr_resolver, hr_watcher).await;
+    });
 
     let state = Arc::new(AppState {
         engine: EngineClient::new(engine_url.clone()),
         lists: Arc::new(access_lists::AccessListChecker::from_env()),
+        deploy_resolver,
+        deploy_watcher,
     });
 
     let app = Router::new()

@@ -198,6 +198,11 @@ function _M.access(conf, ctx)
         return
     end
 
+    local deploy_pool = resolve_deploy_pool(conf.tenant_id, session_id, trace_id)
+    if deploy_pool then
+        ngx.req.set_header("X-Virbius-Pool", deploy_pool)
+    end
+
     local httpc = http.new()
     httpc:set_timeout(3000)
     local payload = core.json.encode({
@@ -265,5 +270,74 @@ function _M.access(conf, ctx)
 
     ngx.req.set_header("X-Virbius-Trace-Id", trace_id)
 end
+
+-- ---------------------------------------------------------------
+-- Deploy rollout pointer: read from Redis, compute session pool
+-- ---------------------------------------------------------------
+
+local function deploy_redis_connect()
+    local redis = require("resty.redis")
+    local red = redis:new()
+    red:set_timeout(200)
+    local redis_url = os.getenv("VIRBIUS_REDIS_URL") or "127.0.0.1:6379"
+    local host, port = redis_url:match("^redis://([^:/]+):?(%d*)")
+    if not host then
+        host, port = redis_url:match("^([^:/]+):?(%d*)")
+    end
+    host = host or "127.0.0.1"
+    port = tonumber(port) or 6379
+    local ok, err = red:connect(host, port)
+    if not ok then
+        return nil, "connect failed: " .. (err or "unknown")
+    end
+    return red, nil
+end
+
+local DEPLOY_POINTER_CACHE = {}
+local DEPLOY_POINTER_TTL = 5
+
+function resolve_deploy_pool(tenant_id, session_id, trace_id)
+    if not tenant_id or tenant_id == "" then
+        return nil
+    end
+    local now = ngx.time()
+    local cached = DEPLOY_POINTER_CACHE[tenant_id]
+    local canary_percent
+    if cached and now - cached.fetched_at < DEPLOY_POINTER_TTL then
+        canary_percent = cached.canary_percent
+    else
+        local red, err = deploy_redis_connect()
+        if not red then
+            core.log.warn(plugin_name, " deploy pointer: redis connect failed: ", err)
+            return nil
+        end
+        local pointer_key = "virbius:deploy:active:" .. tenant_id
+        local raw, perr = red:hgetall(pointer_key)
+        red:set_keepalive(10000, 100)
+        if not raw or #raw == 0 then
+            DEPLOY_POINTER_CACHE[tenant_id] = { canary_percent = 0, fetched_at = now }
+            return nil
+        end
+        local pointer = {}
+        for i = 1, #raw, 2 do
+            pointer[raw[i]] = raw[i + 1]
+        end
+        canary_percent = tonumber(pointer.canary_percent) or 0
+        DEPLOY_POINTER_CACHE[tenant_id] = { canary_percent = canary_percent, fetched_at = now }
+    end
+
+    if canary_percent <= 0 then
+        return nil
+    end
+
+    local bucket_key = session_id or trace_id or tenant_id
+    local bucket = ngx.crc32_long(bucket_key) % 100
+    if bucket < canary_percent then
+        return "canary"
+    end
+    return "stable"
+end
+
+-- ---------------------------------------------------------------
 
 return _M
