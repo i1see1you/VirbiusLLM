@@ -143,9 +143,10 @@ end`;
 
     function setRuleEditorEnforceUi(exec) {
       const showRuntime = !isNewRule && selectedRuleId && exec;
-      document.getElementById('enforceWrap').style.display = showRuntime ? '' : 'none';
-      document.getElementById('canaryWrap').style.display = showRuntime ? '' : 'none';
-
+      const enforceWrap = document.getElementById('enforceWrap');
+      const canaryWrap = document.getElementById('canaryWrap');
+      if (enforceWrap) enforceWrap.style.display = showRuntime ? '' : 'none';
+      if (canaryWrap) canaryWrap.style.display = showRuntime ? '' : 'none';
     }
 
     function setRuleEditorCloudOnly(layer) {

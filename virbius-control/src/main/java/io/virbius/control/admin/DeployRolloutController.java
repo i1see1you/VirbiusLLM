@@ -11,6 +11,7 @@ import io.virbius.control.repository.DeployRolloutRepository;
 import io.virbius.control.repository.RegistryRepository;
 import io.virbius.control.service.BundleReleaseService;
 import io.virbius.control.service.BundleStagingService;
+import io.virbius.control.service.RolloutDashboardService;
 import io.virbius.control.service.deploy.DeployRolloutService;
 import io.virbius.control.service.deploy.NodeRegistryService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -36,6 +37,7 @@ public class DeployRolloutController {
     private final BundleReleaseService releaseService;
     private final BundleStagingService stagingService;
     private final RegistryRepository ruleRepo;
+    private final RolloutDashboardService dashboardService;
 
     public DeployRolloutController(
             DeployRolloutService deployRolloutService,
@@ -43,13 +45,15 @@ public class DeployRolloutController {
             NodeRegistryService nodeRegistryService,
             BundleReleaseService releaseService,
             BundleStagingService stagingService,
-            RegistryRepository ruleRepo) {
+            RegistryRepository ruleRepo,
+            RolloutDashboardService dashboardService) {
         this.deployRolloutService = deployRolloutService;
         this.rolloutRepo = rolloutRepo;
         this.nodeRegistryService = nodeRegistryService;
         this.releaseService = releaseService;
         this.stagingService = stagingService;
         this.ruleRepo = ruleRepo;
+        this.dashboardService = dashboardService;
     }
 
     @GetMapping("/next-version")
@@ -63,7 +67,8 @@ public class DeployRolloutController {
     @GetMapping("/diff-rules")
     public ApiResult<Map<String, Object>> diffRules(
             @PathVariable("tenantId") String tenantId,
-            @RequestParam(name = "bundle_id", defaultValue = "poc-default") String bundleId) {
+            @RequestParam(name = "bundle_id", defaultValue = "poc-default") String bundleId,
+            @RequestParam(name = "layer", required = false, defaultValue = "") String layerFilter) {
         String activeVersion = releaseService.getActiveVersion(tenantId, bundleId);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("base_version", activeVersion);
@@ -91,9 +96,12 @@ public class DeployRolloutController {
             currentMap.put(r.ruleId(), r);
         }
 
-        // Per-layer diffs based on staging
+        // Per-layer diffs based on staging; filter by layer if specified
+        List<String> targetLayers = layerFilter.isBlank()
+                ? List.of("cloud", "gateway", "edge")
+                : List.of(layerFilter);
         Map<String, Object> layers = new LinkedHashMap<>();
-        for (String layer : List.of("cloud", "gateway", "edge")) {
+        for (String layer : targetLayers) {
             BundleStaging staging = stagingService.getStaging(tenantId, bundleId, layer);
             if (staging == null || staging.ruleDiffs() == null || staging.ruleDiffs().isEmpty()) continue;
 
@@ -113,7 +121,15 @@ public class DeployRolloutController {
                 if (cur == null) {
                     item.put("change", "removed");
                 } else if (snapshot == null) {
-                    item.put("change", "added");
+                    // Rule exists in current registry but not in active snapshot.
+                    // If diff_type is "rollout_only" and rule is now non-execution,
+                    // it was previously deployed via rollout and is now withdrawn → "removed".
+                    String diffType = entry.getValue();
+                    if ("rollout_only".equals(diffType) && ("disabled".equals(cur.rolloutState()) || "draft".equals(cur.rolloutState()))) {
+                        item.put("change", "removed");
+                    } else {
+                        item.put("change", "added");
+                    }
                 } else {
                     String fromState = string(snapshot, "rollout_state");
                     String toState = cur.rolloutState();
@@ -249,6 +265,13 @@ public class DeployRolloutController {
             @PathVariable("tenantId") String tenantId) {
         List<DeployRollout> rollouts = rolloutRepo.listByTenant(tenantId, 20);
         return ApiResult.ok(rollouts.stream().map(this::toMap).toList());
+    }
+
+    @GetMapping("/metrics")
+    public ApiResult<Map<String, Object>> metrics(
+            @PathVariable("tenantId") String tenantId,
+            @RequestParam(name = "hours", defaultValue = "24") int hours) {
+        return ApiResult.ok(dashboardService.aggregateMetrics(tenantId, hours));
     }
 
     @GetMapping("/{deployId}")

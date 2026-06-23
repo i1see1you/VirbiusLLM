@@ -171,6 +171,11 @@
         nd.innerHTML = parts.join('') || '<div class="hint">暂无节点心跳</div>';
       }
 
+      // aggregate metrics chart
+      drApi('/metrics?hours=24', 'GET').then(res => {
+        renderDrBlockRateChart(res.code === 0 ? res.data : null);
+      });
+
       // events
       const evBody = document.querySelector('#drEventTable tbody');
       const events = r.events || [];
@@ -194,6 +199,94 @@
         <td>${r.finalized_at ? new Date(r.finalized_at).toLocaleString() : '-'}</td>
         <td>${esc(r.operator)}</td>
       </tr>`).join('');
+    }
+
+    let drChart = null;
+
+    function renderDrBlockRateChart(metrics) {
+      if (!metrics) {
+        if (drChart) { drChart.destroy(); drChart = null; }
+        return;
+      }
+      const series = metrics.series || [];
+      const series1m = metrics.series_1m || [];
+      const cutoff = Date.now() - 2 * 3600 * 1000;
+      const hourPoints = series.filter(p => {
+        const t = new Date(p.bucket.replace(' ', 'T')).getTime();
+        return !isNaN(t) && t < cutoff;
+      });
+      const merged = hourPoints.concat(series1m).sort((a, b) =>
+        new Date(a.bucket.replace(' ', 'T')) - new Date(b.bucket.replace(' ', 'T'))
+      );
+      if (!merged.length) {
+        if (drChart) { drChart.destroy(); drChart = null; }
+        return;
+      }
+      const labels = merged.map(p => {
+        const d = new Date(p.bucket.replace(' ', 'T'));
+        return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      });
+      const blockRate = merged.map(p => {
+        const t = p.total_requests || 0;
+        return t > 0 ? ((p.block || 0) / t * 100) : null;
+      });
+      const totals = merged.map(p => p.total_requests || 0);
+      const datasets = [
+        {
+          label: 'block_rate (%)',
+          data: blockRate,
+          yAxisID: 'y',
+          borderColor: '#ef4444',
+          backgroundColor: 'rgba(239,68,68,0.1)',
+          fill: true,
+          tension: 0.2,
+          pointRadius: 0,
+        },
+        {
+          label: 'total_requests',
+          data: totals,
+          yAxisID: 'y1',
+          borderColor: '#94a3b8',
+          backgroundColor: 'rgba(148,163,184,0.08)',
+          fill: true,
+          tension: 0.2,
+          pointRadius: 0,
+        },
+      ];
+      if (drChart) {
+        drChart.data.labels = labels;
+        drChart.data.datasets.forEach((ds, i) => ds.data = datasets[i].data);
+        drChart.update('none');
+      } else {
+        drChart = new Chart(document.getElementById('drBlockRateChart'), {
+          type: 'line',
+          data: { labels, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            spanGaps: true,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+              y: {
+                type: 'linear',
+                position: 'left',
+                title: { display: true, text: 'block_rate %' },
+                min: 0,
+                ticks: { callback: v => v + '%' },
+              },
+              y1: {
+                type: 'linear',
+                position: 'right',
+                title: { display: true, text: 'total_requests' },
+                grid: { drawOnChartArea: false },
+              },
+            },
+            plugins: {
+              legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 10 } } },
+            },
+          },
+        });
+      }
     }
 
     function drRenderDiff(data) {
@@ -242,9 +335,12 @@
       document.getElementById('drDiffArea').style.display = 'none';
       document.getElementById('drDiffLoading').style.display = 'block';
       const bundleId = document.getElementById('bundleId').value;
+      const diffUrl = layer
+        ? '/diff-rules?bundle_id=' + encodeURIComponent(bundleId) + '&layer=' + encodeURIComponent(layer)
+        : '/diff-rules?bundle_id=' + encodeURIComponent(bundleId);
       Promise.all([
         drApi('/next-version?bundle_id=' + encodeURIComponent(bundleId), 'GET'),
-        drApi('/diff-rules?bundle_id=' + encodeURIComponent(bundleId), 'GET')
+        drApi(diffUrl, 'GET')
       ]).then(([verRes, diffRes]) => {
         const nextVer = (verRes.code === 0 && verRes.data) ? verRes.data.version : '';
         document.getElementById('drVersionInput').value = nextVer;

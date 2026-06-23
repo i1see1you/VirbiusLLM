@@ -214,6 +214,86 @@ public class RolloutDashboardService {
                 traceId);
     }
 
+    public Map<String, Object> aggregateMetrics(String tenantId, int hours) {
+        List<Map<String, Object>> series = jdbc.query(
+                """
+                SELECT hour_bucket,
+                       SUM(cnt_review) AS cnt_review,
+                       SUM(cnt_block) AS cnt_block,
+                       SUM(cnt_captcha) AS cnt_captcha,
+                       SUM(cnt_allow) AS cnt_allow,
+                       SUM(cnt_total_requests) AS cnt_total_requests
+                FROM tb_rule_metrics_1h
+                WHERE tenant_id = ?
+                  AND hour_bucket >= datetime('now', ?)
+                GROUP BY hour_bucket
+                ORDER BY hour_bucket
+                """,
+                (rs, i) -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("bucket", rs.getString("hour_bucket"));
+                    row.put("review", rs.getInt("cnt_review"));
+                    row.put("block", rs.getInt("cnt_block"));
+                    row.put("captcha", rs.getInt("cnt_captcha"));
+                    row.put("allow", rs.getInt("cnt_allow"));
+                    row.put("total_requests", rs.getInt("cnt_total_requests"));
+                    return row;
+                },
+                tenantId,
+                "-" + hours + " hours");
+
+        List<Map<String, Object>> series1m = jdbc.query(
+                """
+                SELECT strftime('%%Y-%%m-%%d %%H:%%M:00', intercepted_at) AS bucket,
+                       SUM(CASE WHEN effective_action = 'review'  THEN 1 ELSE 0 END) AS review,
+                       SUM(CASE WHEN effective_action = 'block'   THEN 1 ELSE 0 END) AS block,
+                       SUM(CASE WHEN effective_action = 'captcha' THEN 1 ELSE 0 END) AS captcha,
+                       SUM(CASE WHEN effective_action = 'allow'   THEN 1 ELSE 0 END) AS allow,
+                       COUNT(*) AS total_requests
+                FROM tb_audit_events
+                WHERE tenant_id = ?
+                  AND intercepted_at >= datetime('now', '-2 hours')
+                GROUP BY bucket
+                ORDER BY bucket
+                """,
+                (rs, i) -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("bucket", rs.getString("bucket"));
+                    row.put("review", rs.getInt("review"));
+                    row.put("block", rs.getInt("block"));
+                    row.put("captcha", rs.getInt("captcha"));
+                    row.put("allow", rs.getInt("allow"));
+                    row.put("total_requests", rs.getInt("total_requests"));
+                    return row;
+                },
+                tenantId);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("series", series);
+        out.put("series_1m", series1m);
+        int review = 0, block = 0, captcha = 0, allow = 0, total = 0;
+        for (Map<String, Object> row : series) {
+            review += (int) row.get("review");
+            block += (int) row.get("block");
+            captcha += (int) row.get("captcha");
+            allow += (int) row.get("allow");
+            total += (int) row.get("total_requests");
+        }
+        Map<String, Object> totals = new LinkedHashMap<>();
+        totals.put("review", review);
+        totals.put("block", block);
+        totals.put("captcha", captcha);
+        totals.put("allow", allow);
+        totals.put("total_requests", total);
+        if (total > 0) {
+            totals.put("hit_rate", (review + block + captcha) / (double) total);
+            totals.put("review_rate", review / (double) total);
+            totals.put("block_rate", block / (double) total);
+        }
+        out.put("totals", totals);
+        return out;
+    }
+
     public Map<String, Object> ingestHealth(String tenantId, String layer, int hours) {
         Long events = jdbc.queryForObject(
                 """

@@ -9,6 +9,7 @@ import io.virbius.control.domain.enums.DeployRolloutState;
 import io.virbius.control.gateway.artifact.GatewayArtifactPart;
 import io.virbius.control.gateway.artifact.GatewayArtifactPointer;
 import io.virbius.control.gateway.artifact.RedisGatewayArtifactBlobStore;
+import io.virbius.control.repository.BundleStagingRepository;
 import io.virbius.control.repository.DeployRolloutRepository;
 import io.virbius.control.repository.TenantRolloutPolicyRepository;
 import io.virbius.control.service.ArtifactService;
@@ -51,6 +52,7 @@ public class DeployRolloutService {
     private final NodeRegistryService nodeRegistryService;
     private final io.virbius.control.repository.EdgeArtifactMetaRepository edgeMetaRepo;
     private final BundleReleaseService releaseService;
+    private final BundleStagingRepository stagingRepo;
 
     public DeployRolloutService(
             DeployRolloutRepository rolloutRepo,
@@ -62,7 +64,8 @@ public class DeployRolloutService {
             ArtifactService artifactService,
             NodeRegistryService nodeRegistryService,
             io.virbius.control.repository.EdgeArtifactMetaRepository edgeMetaRepo,
-            BundleReleaseService releaseService) {
+            BundleReleaseService releaseService,
+            BundleStagingRepository stagingRepo) {
         this.rolloutRepo = rolloutRepo;
         this.policyRepo = policyRepo;
         this.pointerStore = pointerStore;
@@ -73,6 +76,7 @@ public class DeployRolloutService {
         this.nodeRegistryService = nodeRegistryService;
         this.edgeMetaRepo = edgeMetaRepo;
         this.releaseService = releaseService;
+        this.stagingRepo = stagingRepo;
     }
 
     // ---------------------------------------------------------------
@@ -119,6 +123,9 @@ public class DeployRolloutService {
 
         acquireLock(tenantId);
         try {
+            // Clear stale staging diffs from any previous incomplete deploy
+            stagingRepo.clear(tenantId, bundleId, resolvedVersion);
+
             TenantRolloutPolicy policy = policyRepo.getOrDefault(tenantId);
             List<Integer> ladder = policy.canaryLadder();
 
@@ -455,6 +462,9 @@ public class DeployRolloutService {
                     rollout.state(), rollout.canaryPercent(),
                     DeployRolloutState.FINALIZED.value(), 0,
                     "cloud+gateway", operator, note, Instant.now()));
+
+            // Clear staging diffs so next "准备" shows a clean diff
+            stagingRepo.clear(tenantId, rollout.bundleId(), rollout.targetVersion());
 
             log.info("deploy finalized tenant={} deploy={}", tenantId, deployId);
             return rolloutRepo.get(deployId).orElseThrow();
