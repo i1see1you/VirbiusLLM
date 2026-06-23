@@ -348,6 +348,12 @@ public class DeployRolloutService {
                     DeployRolloutState.ROLLED_BACK.value(), 0,
                     "cloud+gateway", operator, note, Instant.now()));
 
+            // Clear staging diffs so next "准备" shows a clean diff
+            String baseBundleId = rollout.bundleId().contains("@")
+                    ? rollout.bundleId().substring(0, rollout.bundleId().indexOf("@"))
+                    : rollout.bundleId();
+            stagingRepo.clear(tenantId, baseBundleId, rollout.targetVersion());
+
             log.info("deploy rolled back tenant={} deploy={}", tenantId, deployId);
             return rolloutRepo.get(deployId).orElseThrow();
         } finally {
@@ -463,8 +469,14 @@ public class DeployRolloutService {
                     DeployRolloutState.FINALIZED.value(), 0,
                     "cloud+gateway", operator, note, Instant.now()));
 
-            // Clear staging diffs so next "准备" shows a clean diff
-            stagingRepo.clear(tenantId, rollout.bundleId(), rollout.targetVersion());
+            // Record release (frozen snapshot + active version + clear staging)
+            String baseBundleId = rollout.bundleId().contains("@")
+                    ? rollout.bundleId().substring(0, rollout.bundleId().indexOf("@"))
+                    : rollout.bundleId();
+            String releaseVersion = rollout.bundleId().contains("@")
+                    ? rollout.bundleId().substring(rollout.bundleId().indexOf("@") + 1)
+                    : rollout.targetVersion();
+            releaseService.recordRelease(tenantId, baseBundleId, releaseVersion);
 
             log.info("deploy finalized tenant={} deploy={}", tenantId, deployId);
             return rolloutRepo.get(deployId).orElseThrow();

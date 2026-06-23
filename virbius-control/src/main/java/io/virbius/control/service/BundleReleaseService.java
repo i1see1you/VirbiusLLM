@@ -94,6 +94,21 @@ public class BundleReleaseService {
         return result;
     }
 
+    public void recordRelease(String tenantId, String bundleId, String version) {
+        List<RuleRevision> allRules = ruleRepo.listCurrentRules(tenantId, null);
+        List<Map<String, Object>> snapshot = allRules.stream()
+                .map(RuleResponseMapper::toDetail)
+                .toList();
+        releaseRepo.create(
+                new BundleRelease(tenantId, bundleId, version, "active", snapshot, null, null));
+        String oldActive = releaseRepo.getActiveVersion(tenantId, bundleId);
+        releaseRepo.setActiveVersion(tenantId, bundleId, version);
+        if (oldActive != null && !oldActive.equals(version)) {
+            releaseRepo.updateStatus(tenantId, bundleId, oldActive, "superseded");
+        }
+        stagingRepo.clear(tenantId, bundleId, version);
+    }
+
     public String nextVersion(String tenantId, String bundleId) {
         String current = releaseRepo.getActiveVersion(tenantId, bundleId);
         if (current == null) {

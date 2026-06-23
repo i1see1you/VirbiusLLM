@@ -138,7 +138,10 @@
         nd.innerHTML = '<div class="kpi-card" style="border-color:#16a34a;grid-column:1/-1"><div class="label">状态</div><div class="value" style="color:#16a34a">✅ 已全量部署</div></div>';
       } else {
         const parts = [];
-        for (const layer of ['cloud', 'gateway']) {
+        const activeLayers = [];
+        if (r.canary_engine_revision > 0 && r.canary_engine_revision !== r.stable_engine_revision) activeLayers.push('cloud');
+        if (r.canary_gateway_revision > 0 && r.canary_gateway_revision !== r.stable_gateway_revision) activeLayers.push('gateway');
+        for (const layer of activeLayers) {
           const nodes = r[layer + '_nodes'] || [];
           const pools = dist[layer] || {};
           const total = Object.values(pools).reduce((a, b) => a + b, 0);
@@ -180,7 +183,7 @@
       const evBody = document.querySelector('#drEventTable tbody');
       const events = r.events || [];
       evBody.innerHTML = events.map(e => `<tr>
-        <td>${e.created_at ? new Date(e.created_at).toLocaleString() : '-'}</td>
+        <td>${fmtTime(e.created_at)}</td>
         <td><span class="tag">${esc(e.event_type)}</span></td>
         <td>${esc(e.from_state)}${e.from_percent != null ? '@' + e.from_percent + '%' : ''}</td>
         <td>${esc(e.to_state)}${e.to_percent != null ? '@' + e.to_percent + '%' : ''}</td>
@@ -195,8 +198,8 @@
         <td>${esc(r.deploy_id)}</td>
         <td>${esc(r.bundle_id)}</td>
         <td><span class="tag">${esc(r.state)}</span></td>
-        <td>${r.started_at ? new Date(r.started_at).toLocaleString() : '-'}</td>
-        <td>${r.finalized_at ? new Date(r.finalized_at).toLocaleString() : '-'}</td>
+        <td>${fmtTime(r.started_at)}</td>
+        <td>${fmtTime(r.finalized_at)}</td>
         <td>${esc(r.operator)}</td>
       </tr>`).join('');
     }
@@ -212,19 +215,19 @@
       const series1m = metrics.series_1m || [];
       const cutoff = Date.now() - 2 * 3600 * 1000;
       const hourPoints = series.filter(p => {
-        const t = new Date(p.bucket.replace(' ', 'T')).getTime();
-        return !isNaN(t) && t < cutoff;
+        const d = parseUtc(p.bucket);
+        return d && d.getTime() < cutoff;
       });
       const merged = hourPoints.concat(series1m).sort((a, b) =>
-        new Date(a.bucket.replace(' ', 'T')) - new Date(b.bucket.replace(' ', 'T'))
+        (parseUtc(a.bucket) || 0) - (parseUtc(b.bucket) || 0)
       );
       if (!merged.length) {
         if (drChart) { drChart.destroy(); drChart = null; }
         return;
       }
       const labels = merged.map(p => {
-        const d = new Date(p.bucket.replace(' ', 'T'));
-        return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        const d = parseUtc(p.bucket);
+        return d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
       });
       const blockRate = merged.map(p => {
         const t = p.total_requests || 0;

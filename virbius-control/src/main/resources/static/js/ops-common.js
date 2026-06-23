@@ -127,16 +127,28 @@
       return '';
     }
 
+    function parseUtc(s) {
+      if (!s) return null;
+      let iso = s.includes('T') ? s : s.replace(' ', 'T');
+      if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(iso)) {
+        iso += 'Z';
+      }
+      const t = Date.parse(iso);
+      return Number.isNaN(t) ? null : new Date(t);
+    }
+
     function fmtTime(s) {
       if (!s) return '—';
-      return String(s).replace('T', ' ').slice(0, 19);
+      const d = parseUtc(s);
+      if (!d) return String(s).replace('T', ' ').slice(0, 19);
+      return d.toLocaleString(undefined, { hour12: false });
     }
 
     function fmtTimeAgo(s) {
       if (!s) return '—';
-      const t = Date.parse(String(s));
-      if (Number.isNaN(t)) return '—';
-      const diff = Date.now() - t;
+      const d = parseUtc(s);
+      if (!d) return '—';
+      const diff = Date.now() - d.getTime();
       if (diff < 60000) return '刚刚';
       if (diff < 3600000) return Math.floor(diff / 60000) + ' 分钟前';
       if (diff < 86400000) return Math.floor(diff / 3600000) + ' 小时前';

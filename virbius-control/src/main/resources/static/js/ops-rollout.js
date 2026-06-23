@@ -79,20 +79,20 @@
     function renderRolloutCombinedChart(series, series1m) {
       const cutoff = Date.now() - 2 * 3600 * 1000;
       const hourPoints = (series || []).filter(p => {
-        const t = new Date(p.bucket.replace(' ', 'T')).getTime();
-        return !isNaN(t) && t < cutoff;
+        const d = parseUtc(p.bucket);
+        return d && d.getTime() < cutoff;
       });
       const minPoints = series1m || [];
-      const merged = hourPoints.concat(minPoints).sort((a, b) => {
-        return new Date(a.bucket.replace(' ', 'T')) - new Date(b.bucket.replace(' ', 'T'));
-      });
+      const merged = hourPoints.concat(minPoints).sort((a, b) =>
+        (parseUtc(a.bucket) || 0) - (parseUtc(b.bucket) || 0)
+      );
       if (!merged.length) {
         if (roChart) { roChart.destroy(); roChart = null; }
         return;
       }
       const labels = merged.map(p => {
-        const d = new Date(p.bucket.replace(' ', 'T'));
-        return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        const d = parseUtc(p.bucket);
+        return d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
       });
       const datasets = [
         { label: 'total_requests', data: merged.map(p => p.total_requests ?? 0), yAxisID: 'y', borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.2, pointRadius: 0 },
