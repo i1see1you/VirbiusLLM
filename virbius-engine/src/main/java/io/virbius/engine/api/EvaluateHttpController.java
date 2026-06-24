@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-/** HTTP 镜像 gateway-agent 契约，便于联调；生产路径为 gRPC :50051。 */
+/** HTTP mirror of the gateway-agent contract, for local debugging; production path is gRPC :50051. */
 @RestController
 public class EvaluateHttpController {
 

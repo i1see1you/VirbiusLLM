@@ -20,7 +20,7 @@
       const logicals = contextVars.map(v => v.logical).filter(Boolean);
       const opts = logicals.length
         ? logicals.map(l => `<option value="${escAttr(l)}">${esc(l)}</option>`).join('')
-        : '<option value="">— 无映射 —</option>';
+        : '<option value="">' + __('cum.no-mapping') + '</option>';
       sel.innerHTML = opts;
       if (selected && logicals.includes(selected)) {
         sel.value = selected;
@@ -52,9 +52,9 @@
       if (base !== 'var') return base;
       const logical = document.getElementById('cumVarLogicalCustom').value.trim()
         || document.getElementById('cumVarLogical').value.trim();
-      if (!logical) throw new Error('var 维度须填写逻辑变量名（先在上下文映射配置）');
+      if (!logical) throw new Error(__('cum.var-dim-required'));
       if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(logical)) {
-        throw new Error('逻辑变量名须为字母/数字/下划线，且不以数字开头');
+        throw new Error(__('cum.var-name-invalid'));
       }
       return 'var:' + logical;
     }
@@ -74,7 +74,7 @@
 
     function syncCumWinLenHint() {
       const hours = document.getElementById('cumWinUnitHr').checked;
-      document.getElementById('cumWinLenHint').textContent = hours ? '小时' : '分钟';
+      document.getElementById('cumWinLenHint').textContent = hours ? __('cum.hours') : __('cum.minutes');
     }
 
     function setCumWinUnit(unit) {
@@ -96,7 +96,7 @@
       isNewCumulative = !!isNew;
       selectedCumulativeName = isNew ? null : field(c, 'cumulative_name', 'cumulativeName');
       document.getElementById('cumEditor').style.display = 'block';
-      document.getElementById('cumEditTitle').textContent = isNew ? '新建' : '编辑';
+      document.getElementById('cumEditTitle').textContent = isNew ? __('cum.edit-title-new') : __('cum.edit-title-edit');
       document.getElementById('cumEditName').textContent = isNew ? '' : (selectedCumulativeName || '');
       document.getElementById('cumNameRow').style.display = isNew ? '' : 'none';
       document.getElementById('btnCumDelete').style.display = isNew ? 'none' : '';
@@ -160,7 +160,7 @@
         tr.innerHTML = `<td><code>${esc(name)}</code></td><td>${esc(formatCumDimension(field(c, 'dimension')))}</td>
           <td>${esc(formatCumWindow(c))}</td>
           <td><span class="tag ${st === 'disabled' ? 'disabled' : ''}">${esc(st)}</span></td>
-          <td><button type="button" class="secondary" data-name="${escAttr(name)}">编辑</button></td>`;
+          <td><button type="button" class="secondary" data-name="${escAttr(name)}">${__('common.edit')}</button></td>`;
         tr.onclick = (e) => {
           if (e.target.tagName === 'BUTTON') return;
           selectCumulative(name);
@@ -188,13 +188,13 @@
       if (v) document.getElementById('cumVarLogicalCustom').value = v;
     };
     document.getElementById('btnCumNew').onclick = () => openCumulativeEditor({}, true);
-    document.getElementById('btnCumRefresh').onclick = () => loadCumulatives().then(() => log('累计列表已刷新', 'ok')).catch(e => log(e.message, 'err'));
+    document.getElementById('btnCumRefresh').onclick = () => loadCumulatives().then(() => log(__('cum.list-refreshed'), 'ok')).catch(e => log(e.message, 'err'));
     document.getElementById('btnCumSave').onclick = async () => {
       const name = isNewCumulative
         ? document.getElementById('cumName').value.trim()
         : selectedCumulativeName;
       if (!name) {
-        log('请填写 cumulative_name', 'warn');
+        log(__('cum.name-required'), 'warn');
         return;
       }
       let payload;
@@ -219,7 +219,7 @@
       }
     };
     document.getElementById('btnCumDelete').onclick = async () => {
-      if (!selectedCumulativeName || !confirm('删除累计定义 ' + selectedCumulativeName + '？')) return;
+      if (!selectedCumulativeName || !confirm(__('cum.confirm-delete', selectedCumulativeName))) return;
       try {
         const data = await admin('/cumulatives/' + encodeURIComponent(selectedCumulativeName), { method: 'DELETE' });
         log(data);

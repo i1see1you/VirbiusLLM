@@ -20,7 +20,7 @@
         const tr = document.createElement('tr');
         tr.innerHTML = `<td><code>${esc(row.uri)}</code></td>
           <td>${esc((row.methods || []).join(', '))}</td>
-          <td><button class="danger" data-i="${idx}">删</button></td>`;
+          <td><button class="danger" data-i="${idx}">${__('common.delete')}</button></td>`;
         tr.querySelector('button').onclick = () => { gatewayRoutes.splice(idx, 1); renderGatewayRoutesTable(); };
         tbody.appendChild(tr);
       });
@@ -45,8 +45,8 @@
 
     document.getElementById('btnGwRouteAdd').onclick = () => {
       const uri = document.getElementById('grUri').value.trim();
-      if (!uri) { log('请填写 uri', 'warn'); return; }
-      if (gatewayRoutes.some(r => r.uri === uri)) { log('uri 已存在', 'warn'); return; }
+      if (!uri) { log(__('gw.uri-required'), 'warn'); return; }
+      if (gatewayRoutes.some(r => r.uri === uri)) { log(__('gw.uri-exists'), 'warn'); return; }
       gatewayRoutes.push({
         uri,
         methods: parseMethodsText(document.getElementById('grMethods').value)
@@ -57,7 +57,7 @@
     };
     document.getElementById('btnSaveGatewayRoutes').onclick = () => {
       if (!gatewayRoutes.length) {
-        log('至少保留一条网关路由', 'warn');
+        log(__('gw.at-least-one'), 'warn');
         return;
       }
       return admin(`/bundles/${encodeURIComponent(bundleId())}/versions/${encodeURIComponent(bundleVer())}/metadata/gateway-routes?sync=true`, {

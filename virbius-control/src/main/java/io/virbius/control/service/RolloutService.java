@@ -56,8 +56,8 @@ public class RolloutService {
                     tenantId, List.of("dry_run", "canary"), ruleId);
             if (active >= policy.maxConcurrentRollouts()) {
                 throw new BusinessException(429,
-                        "当前活跃上线数 " + active + " 已达上限 " + policy.maxConcurrentRollouts()
-                                + "，请先完成已有规则的上线再操作新规则。");
+                        "Active rollout count " + active + " has reached the limit " + policy.maxConcurrentRollouts()
+                                + ". Please finish existing rollouts before operating new rules.");
             }
         }
 

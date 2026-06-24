@@ -14,7 +14,7 @@ public final class RuleRecipeCatalog {
                 recipe(
                         "gateway.list.deny",
                         "gateway",
-                        "名单命中 deny",
+                        "List deny",
                         "global",
                         Map.of("type", "list_match", "list_name", "deny_keyword", "value_source", "content"),
                         100,
@@ -22,7 +22,7 @@ public final class RuleRecipeCatalog {
                 recipe(
                         "gateway.cum.rate_limit",
                         "gateway",
-                        "累计超阈",
+                        "Cumulative threshold exceeded",
                         "global",
                         Map.of(
                                 "type",
@@ -38,7 +38,7 @@ public final class RuleRecipeCatalog {
                 recipe(
                         "gateway.route.scene_list",
                         "gateway",
-                        "Route + scene 名单",
+                        "Route + scene list",
                         "route",
                         Map.of("type", "list_match", "list_name", "deny_keyword", "value_source", "content"),
                         100,
@@ -47,7 +47,7 @@ public final class RuleRecipeCatalog {
                 recipe(
                         "cloud.list.deny",
                         "cloud",
-                        "名单命中 deny",
+                        "List deny",
                         "global",
                         Map.of("type", "list_match", "list_name", "deny_keyword", "value_source", "content"),
                         100,
@@ -55,7 +55,7 @@ public final class RuleRecipeCatalog {
                 recipe(
                         "cloud.l3.aggregate",
                         "cloud",
-                        "L3 汇总",
+                        "L3 Aggregation",
                         "global",
                         Map.of("type", "l3_aggregate", "list_name", "deny_keyword"),
                         100,
@@ -63,7 +63,7 @@ public final class RuleRecipeCatalog {
                 recipe(
                         "cloud.cum.rate_limit",
                         "cloud",
-                        "累计超阈",
+                        "Cumulative threshold exceeded",
                         "global",
                         Map.of(
                                 "type",

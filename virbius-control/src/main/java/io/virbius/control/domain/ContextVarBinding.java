@@ -3,7 +3,7 @@ package io.virbius.control.domain;
 import java.util.Locale;
 import java.util.Map;
 
-/** 逻辑变量 → HTTP/主体 来源映射。 */
+/** Logical variable → HTTP/body source mapping. */
 public record ContextVarBinding(String logical, String from, String name, String field) {
 
     public static final String FROM_QUERY = "query";

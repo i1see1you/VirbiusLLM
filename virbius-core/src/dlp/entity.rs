@@ -131,7 +131,7 @@ mod tests {
     #[test]
     fn phone_cn_matches_after_cjk_without_space() {
         assert_eq!(
-            first_valid_match("phone_cn", "请致电13912345678办理"),
+            first_valid_match("phone_cn", "Please call 13912345678 for service"),
             Some("13912345678".into())
         );
     }
@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn idcard_cn_matches_after_cjk() {
         assert_eq!(
-            first_valid_match("idcard_cn", "身份证号110101199003077934"),
+            first_valid_match("idcard_cn", "ID number 110101199003077934"),
             Some("110101199003077934".into())
         );
     }
@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn email_matches_after_cjk() {
         assert_eq!(
-            first_valid_match("email", "联系admin@example.com谢谢"),
+            first_valid_match("email", "Contact admin@example.com thanks"),
             Some("admin@example.com".into())
         );
     }

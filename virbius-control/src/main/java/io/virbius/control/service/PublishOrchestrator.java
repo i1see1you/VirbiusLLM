@@ -46,7 +46,7 @@ public class PublishOrchestrator {
         String lockKey = LOCK_PREFIX + tenantId + ":" + bundleId;
         String lockOwner = acquireLock(lockKey);
         if (lockOwner == null) {
-            throw new BusinessException(423, "部署进行中，请等待当前部署完成");
+            throw new BusinessException(423, "Deployment in progress, please wait for the current deployment to complete");
         }
         try {
             for (String layer : new String[]{"cloud", "gateway", "edge"}) {
@@ -81,7 +81,7 @@ public class PublishOrchestrator {
         String lockKey = LOCK_PREFIX + tenantId + ":" + bundleId;
         String lockOwner = acquireLock(lockKey);
         if (lockOwner == null) {
-            throw new BusinessException(423, "部署进行中，请等待当前部署完成");
+            throw new BusinessException(423, "Deployment in progress, please wait for the current deployment to complete");
         }
         try {
             for (String layer : new String[]{"cloud", "gateway", "edge"}) {

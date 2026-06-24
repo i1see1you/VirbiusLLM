@@ -136,7 +136,7 @@
         tbody.appendChild(tr);
       });
       if (!series || !series.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="hint">暂无指标（需 audit ingest + metrics rollup）</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="hint">' + __('rollout.no-metrics') + '</td></tr>';
       }
     }
 
@@ -152,36 +152,35 @@
         tbody.appendChild(tr);
       });
       if (!events || !events.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="hint">暂无变更记录</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="hint">' + __('rollout.no-timeline') + '</td></tr>';
       }
     }
 
     function updateRolloutSuggestedHint(meta) {
       const hint = document.getElementById('roSuggestedHint');
       if (!meta) {
-        hint.textContent = '选择规则后可操作';
+        hint.textContent = __('rollout.select-rule-hint');
         return;
       }
       const st = meta.rollout_state;
       if (st === 'draft') {
-        hint.textContent = 'draft 规则请先点「上线」进入 dry_run';
+        hint.textContent = __('rollout.draft-hint');
         return;
       }
       if (st === 'disabled') {
-        hint.textContent = '已停用，可「恢复草稿」后编辑';
+        hint.textContent = __('rollout.disabled-hint');
         return;
       }
       if (st === 'full') {
-        hint.textContent = '已在 full，无下一步升级';
+        hint.textContent = __('rollout.full-hint');
         return;
       }
       const target = rolloutEvaluateTarget(meta);
       if (!target) {
-        hint.textContent = '当前无下一步升级目标';
+        hint.textContent = __('rollout.no-target-hint');
         return;
       }
-      hint.textContent = `下一步：${rolloutStateLabel(target.target_state, target.canary_percent)}`
-        + '（未达标时返回 409，可勾选 force 并填写说明）';
+      hint.textContent = __('rollout.next-step-hint', rolloutStateLabel(target.target_state, target.canary_percent));
     }
 
     function renderRolloutSamples(samples) {
@@ -206,7 +205,7 @@
         };
       });
       if (!samples || !samples.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="hint">暂无 audit 样本</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="hint">' + __('rollout.no-samples') + '</td></tr>';
       }
     }
 
@@ -216,8 +215,8 @@
       const hint = document.getElementById('roTraceHint');
       const tbody = document.querySelector('#roTraceTable tbody');
       modal.style.display = '';
-      hint.textContent = `trace_id: ${traceId}`;
-      tbody.innerHTML = '<tr><td colspan="7" class="hint">加载中…</td></tr>';
+      hint.textContent = __('rollout.trace-hint', traceId);
+      tbody.innerHTML = '<tr><td colspan="7" class="hint">' + __('rollout.loading-trace') + '</td></tr>';
       try {
         const detail = await admin('/audit/trace/' + encodeURIComponent(traceId));
         tbody.innerHTML = '';
@@ -236,7 +235,7 @@
           tbody.appendChild(tr);
         });
         if (!rows.length) {
-          tbody.innerHTML = '<tr><td colspan="7" class="hint">无 audit 记录（DB 与 allow 日志均为空）</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7" class="hint">' + __('rollout.no-audit-records') + '</td></tr>';
         }
         if (detail.note) {
           hint.textContent = `trace_id: ${traceId} — ${detail.note}`;
@@ -291,7 +290,7 @@
       rolloutAllRules = all.sort((a, b) => a.rule_id.localeCompare(b.rule_id));
       const sel = document.getElementById('roRuleSelect');
       const prev = sel.value;
-      sel.innerHTML = '<option value="">— 选择规则 —</option>' +
+      sel.innerHTML = '<option value="">' + __('rollout.select-rule') + '</option>' +
         rolloutAllRules.map(r => {
           const label = `${r.rule_id} [${r.layer}] ${rolloutStateLabel(r.rollout_state, r.canary_percent)}`;
           return `<option value="${escAttr(r.rule_id)}">${esc(label)}</option>`;
@@ -373,11 +372,11 @@
           const count = rules.length;
           let statusText, pendingHtml;
           if (!st.deployed_at) {
-            statusText = count > 0 ? `尚未部署（${count} 条规则在线上未推送）` : '尚未部署';
+            statusText = count > 0 ? __('rollout.not-deployed-count', count) : __('rollout.not-deployed');
           } else if (hasUnpub) {
-            statusText = `${count} 条规则待部署`;
+            statusText = __('rollout.pending-deploy', count);
           } else {
-            statusText = '已同步，无待部署变更';
+            statusText = __('rollout.synced');
           }
           if (hasUnpub && count > 0) {
             const groups = { dry_run: [], canary: [], full: [], disabled: [] };
@@ -385,7 +384,7 @@
               const g = groups[r.rollout_state];
               if (g) g.push(r.rule_id);
             });
-            const labels = { dry_run: '待上线', canary: '灰度中', full: '已全量', disabled: '待下线' };
+            const labels = { dry_run: __('ro-deploy.pending'), canary: __('ro-deploy.canary'), full: __('ro-deploy.full'), disabled: __('ro-deploy.disabled') };
             const parts = [];
             ['dry_run', 'canary', 'full', 'disabled'].forEach(st => {
               const ids = groups[st];
@@ -393,7 +392,7 @@
               const tag = labels[st] || st;
               const maxShow = 2;
               const shown = ids.slice(0, maxShow).map(id => `<code style="font-size:0.7rem">${esc(id)}</code>`).join(' · ');
-              const extra = ids.length > maxShow ? ` 等${ids.length}条` : '';
+              const extra = ids.length > maxShow ? __('rollout.et', ids.length) : '';
               parts.push(`<span style="font-size:0.68rem;color:#64748b;margin-right:0.25rem">[${esc(tag)}]</span>${shown}${extra}`);
             });
             pendingHtml = `<div style="font-size:0.72rem;color:#64748b;margin-top:2px">${parts.join('&nbsp;&nbsp;|&nbsp;&nbsp;')}</div>`;
@@ -410,7 +409,7 @@
         el.innerHTML = cards.join('');
         loadGatewayArtifactStatus().catch(() => {});
       } catch (e) {
-        el.innerHTML = '<div class="kpi-card"><div class="label">部署状态</div><div class="value" style="font-size:0.85rem;color:#dc2626">不可用</div></div>';
+        el.innerHTML = '<div class="kpi-card"><div class="label">' + __('rollout.status-deploy') + '</div><div class="value" style="font-size:0.85rem;color:#dc2626">' + __('rollout.unavailable') + '</div></div>';
       }
     }
 
@@ -430,9 +429,9 @@
       try {
         const data = await admin('/gateway-artifacts/policy-version');
         const rev = data.artifact_revision ?? '?';
-        el.innerHTML = `<span style="color:#22c55e">配置已发布到 Redis (r${esc(String(rev))})</span>`;
+        el.innerHTML = `<span style="color:#22c55e">` + __('rollout.config-published', esc(String(rev))) + `</span>`;
       } catch (e) {
-        el.textContent = '配置状态不可用';
+        el.textContent = __('rollout.config-unavailable');
       }
     }
 
@@ -455,20 +454,20 @@
     document.getElementById('roRuleSelect').onchange = () =>
       refreshRolloutDashboard().catch(e => log(e.message, 'err'));
     document.getElementById('roRefresh').onclick = () =>
-      refreshRolloutDashboard().then(() => log('策略看板已刷新', 'ok')).catch(e => log(e.message, 'err'));
+      refreshRolloutDashboard().then(() => log(__('rollout.dashboard-refreshed'), 'ok')).catch(e => log(e.message, 'err'));
 
     document.getElementById('roApply').onclick = async () => {
       const ruleId = rolloutRuleId();
       if (!ruleId || !rolloutRuleMeta) return;
       const target = rolloutEvaluateTarget(rolloutRuleMeta);
       if (!target || (!target.rollout_state && !target.target_state)) {
-        log('当前无下一步升级目标', 'warn');
+        log(__('rollout.no-next-target'), 'warn');
         return;
       }
       const force = document.getElementById('roForce').checked;
       const comment = document.getElementById('roForceComment').value.trim();
       if (force && !comment) {
-        log('force 绕过须填写说明', 'warn');
+        log(__('rollout.force-comment-required'), 'warn');
         return;
       }
       const rolloutState = target.rollout_state || target.target_state;
@@ -531,4 +530,4 @@
       document.getElementById('roTraceModal').style.display = 'none';
     };
     document.getElementById('btnGatewayArtifact').onclick = () =>
-      loadGatewayArtifactStatus().then(() => log('网关产物状态已刷新')).catch(e => log(e.message, 'err'));
+      loadGatewayArtifactStatus().then(() => log(__('rollout.artifact-refreshed'))).catch(e => log(e.message, 'err'));

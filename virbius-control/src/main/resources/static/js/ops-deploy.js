@@ -42,15 +42,15 @@
     function renderStatusBar(rollout) {
       const el = document.getElementById('drStatusBar');
       if (!rollout) {
-        el.innerHTML = '<div class="kpi-card"><div class="label">状态</div><div class="value">无进行中部署</div></div>';
+        el.innerHTML = '<div class="kpi-card"><div class="label">' + __('dr.status') + '</div><div class="value">' + __('dr.no-active') + '</div></div>';
         return;
       }
       const pct = rollout.canary_percent || 0;
       const cards = [
-        ['状态', rollout.state],
+        [__('dr.status'), rollout.state],
         ['canary%', pct + '%'],
         ['Bundle', rollout.bundle_id || '-'],
-        ['操作者', rollout.operator || '-'],
+        [__('dr.operator'), rollout.operator || '-'],
       ];
       el.innerHTML = cards.map(([label, value]) =>
         `<div class="kpi-card"><div class="label">${esc(label)}</div><div class="value">${esc(String(value))}</div></div>`
@@ -64,37 +64,37 @@
 
       const rules = {
         drPrepareEngine: rollout
-          ? { enabled: false, hint: '已有进行中的部署，请先完结或回退' }
-          : { enabled: true, hint: '开始 Engine 灰度部署（仅包含 cloud 层）' },
+          ? { enabled: false, hint: __('dr.hint-active-engine') }
+          : { enabled: true, hint: __('dr.hint-start-engine') },
         drPrepareGateway: rollout
-          ? { enabled: false, hint: '已有进行中的部署，请先完结或回退' }
-          : { enabled: true, hint: '开始 Gateway 灰度部署（仅包含 gateway 层）' },
+          ? { enabled: false, hint: __('dr.hint-active-engine') }
+          : { enabled: true, hint: __('dr.hint-start-gateway') },
         drPrepareEdge: rollout
-          ? { enabled: false, hint: '已有进行中的部署，请先完结或回退' }
-          : { enabled: true, hint: '开始 Edge 按 device_id 灰度部署（仅包含 edge 层）' },
+          ? { enabled: false, hint: __('dr.hint-active-engine') }
+          : { enabled: true, hint: __('dr.hint-start-edge') },
         drPrepareAll: rollout
-          ? { enabled: false, hint: '已有进行中的部署，请先完结或回退' }
-          : { enabled: true, hint: '开始三层（Engine+Gateway+Edge）同时灰度部署' },
+          ? { enabled: false, hint: __('dr.hint-active-engine') }
+          : { enabled: true, hint: __('dr.hint-start-all') },
         drUpgrade: !rollout
-          ? { enabled: false, hint: '无进行中部署' }
+          ? { enabled: false, hint: __('dr.hint-no-active') }
           : ['pending', 'canary', 'paused'].includes(state)
-            ? { enabled: true, hint: '推进到下一灰度阶梯（或恢复暂停）' }
-            : { enabled: false, hint: `当前状态 ${state} 不允许升级` },
+            ? { enabled: true, hint: __('dr.hint-upgrade') }
+            : { enabled: false, hint: __('dr.hint-no-upgrade', state) },
         drPause: !rollout
-          ? { enabled: false, hint: '无进行中部署' }
+          ? { enabled: false, hint: __('dr.hint-no-active') }
           : state === 'canary'
-            ? { enabled: true, hint: '暂停当前灰度，停在当前 canary%' }
-            : { enabled: false, hint: '仅 canary 状态可暂停' },
+            ? { enabled: true, hint: __('dr.hint-pause') }
+            : { enabled: false, hint: __('dr.hint-only-canary-pause') },
         drRollback: !rollout
-          ? { enabled: false, hint: '无进行中部署' }
+          ? { enabled: false, hint: __('dr.hint-no-active') }
           : ['finalized', 'rolled_back'].includes(state)
-            ? { enabled: false, hint: '部署已终结，无法回退' }
-            : { enabled: true, hint: '回退到旧版本（终结前都可回退）' },
+            ? { enabled: false, hint: __('dr.hint-ended') }
+            : { enabled: true, hint: __('dr.hint-rollback') },
         drFinalize: !rollout
-          ? { enabled: false, hint: '无进行中部署' }
+          ? { enabled: false, hint: __('dr.hint-no-active') }
           : pct === 100
-            ? { enabled: true, hint: '⚠ 完结后切换稳定版指针 + 清理 canary 清单，不可回退' }
-            : { enabled: false, hint: `需先升级至 100%（当前 ${pct}%）` },
+            ? { enabled: true, hint: __('dr.hint-finalize') }
+            : { enabled: false, hint: __('dr.hint-finalize-pending', pct) },
       };
 
       for (const [id, rule] of Object.entries(rules)) {
@@ -135,7 +135,7 @@
       const nd = document.getElementById('drNodeDistribution');
       const pct = r.canary_percent || 0;
       if (pct >= 100) {
-        nd.innerHTML = '<div class="kpi-card" style="border-color:#16a34a;grid-column:1/-1"><div class="label">状态</div><div class="value" style="color:#16a34a">✅ 已全量部署</div></div>';
+        nd.innerHTML = '<div class="kpi-card" style="border-color:#16a34a;grid-column:1/-1"><div class="label">' + __('dr.status') + '</div><div class="value" style="color:#16a34a">✅ ' + __('dr.fully-deployed') + '</div></div>';
       } else {
         const parts = [];
         const activeLayers = [];
@@ -146,7 +146,7 @@
           const pools = dist[layer] || {};
           const total = Object.values(pools).reduce((a, b) => a + b, 0);
           if (total === 0) continue;
-          parts.push(`<div class="kpi-card"><div class="label">${layer}</div><div class="value">${total} 台</div>`);
+          parts.push(`<div class="kpi-card"><div class="label">${layer}</div><div class="value">${total} ` + __('dr.nodes', total) + `</div>`);
           for (const [pool, count] of Object.entries(pools)) {
             const tag = pool === 'canary' ? ' style="background:#16a34a;color:#fff"' : '';
             parts.push(`<span class="tag"${tag}>${pool}: ${count}</span>`);
@@ -154,7 +154,7 @@
           parts.push(`</div>`);
           if (nodes.length > 2) {
             parts.push(`<details style="grid-column:1/-1;font-size:0.8rem;color:#666">`);
-            parts.push(`<summary style="cursor:pointer">查看 ${layer} 节点详情</summary>`);
+            parts.push(`<summary style="cursor:pointer">` + __('dr.show-node-detail', layer) + `</summary>`);
             for (const node of nodes) {
               const tag = node.pool === 'canary' ? ' style="background:#16a34a;color:#fff;font-size:0.75rem"' : ' style="font-size:0.75rem"';
               const seen = node.last_seen ? new Date(parseInt(node.last_seen) * 1000).toLocaleString() : '-';
@@ -166,12 +166,12 @@
         // Edge status card (no heartbeats, show pool strategy info)
         const hasEdge = r.canary_edge_revision > 0 || r.stable_edge_revision > 0;
         if (hasEdge) {
-          parts.push(`<div class="kpi-card" style="border-color:#818cf8"><div class="label">Edge</div><div class="value">按 device_id 分池</div>`);
-          parts.push(`<span class="tag" style="background:#16a34a;color:#fff">canary: < ${pct}%</span>`);
-          parts.push(`<span class="tag">stable: ≥ ${pct}%</span>`);
+          parts.push(`<div class="kpi-card" style="border-color:#818cf8"><div class="label">Edge</div><div class="value">` + __('dr.edge-by-device') + `</div>`);
+          parts.push(`<span class="tag" style="background:#16a34a;color:#fff">` + __('dr.canary-label', pct) + `</span>`);
+          parts.push(`<span class="tag">` + __('dr.stable-label', pct) + `</span>`);
           parts.push(`</div>`);
         }
-        nd.innerHTML = parts.join('') || '<div class="hint">暂无节点心跳</div>';
+        nd.innerHTML = parts.join('') || '<div class="hint">' + __('dr.no-heartbeat') + '</div>';
       }
 
       // aggregate metrics chart
@@ -299,12 +299,12 @@
       document.getElementById('drDiffLoading').style.display = 'none';
       area.style.display = 'block';
       const s = data && data.summary ? data.summary : { added: 0, removed: 0, modified: 0 };
-      const baseVer = (data && data.base_version) || '首次发布';
+      const baseVer = (data && data.base_version) || __('dr.first-release');
       const parts = [];
-      if (s.added > 0) parts.push('新增 ' + s.added);
-      if (s.removed > 0) parts.push('删除 ' + s.removed);
-      if (s.modified > 0) parts.push('修改 ' + s.modified);
-      summary.textContent = '基于 ' + baseVer + ' 的变更' + (parts.length ? '：' + parts.join('，') : '（无变更）');
+      if (s.added > 0) parts.push(__('dr.diff-added') + s.added);
+      if (s.removed > 0) parts.push(__('dr.diff-removed') + s.removed);
+      if (s.modified > 0) parts.push(__('dr.diff-modified') + s.modified);
+      summary.textContent = __('dr.diff-based-on', baseVer) + (parts.length ? ': ' + parts.join(', ') : __('dr.diff-no-changes'));
       list.innerHTML = '';
       if (data && data.layers) {
         for (const [layer, rules] of Object.entries(data.layers)) {
@@ -314,9 +314,9 @@
             const tag = document.createElement('span');
             tag.className = 'tag';
             tag.style.cssText = 'font-size:0.7rem';
-            if (r.change === 'added') { tag.textContent = '新增'; tag.style.background = '#16a34a'; tag.style.color = '#fff'; }
-            else if (r.change === 'removed') { tag.textContent = '删除'; tag.style.background = '#dc2626'; tag.style.color = '#fff'; }
-            else if (r.change === 'modified') { tag.textContent = '修改'; tag.style.background = '#d97706'; tag.style.color = '#fff'; }
+            if (r.change === 'added') { tag.textContent = __('dr.tag-added'); tag.style.background = '#16a34a'; tag.style.color = '#fff'; }
+            else if (r.change === 'removed') { tag.textContent = __('dr.tag-removed'); tag.style.background = '#dc2626'; tag.style.color = '#fff'; }
+            else if (r.change === 'modified') { tag.textContent = __('dr.tag-modified'); tag.style.background = '#d97706'; tag.style.color = '#fff'; }
             else { tag.textContent = r.change; }
             div.appendChild(tag);
             const idSpan = document.createElement('span');
@@ -363,10 +363,10 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-      document.getElementById('drPrepareEngine').addEventListener('click', () => drOpenVersionModal('cloud', 'Engine 灰度'));
-      document.getElementById('drPrepareGateway').addEventListener('click', () => drOpenVersionModal('gateway', 'Gateway 灰度'));
-      document.getElementById('drPrepareEdge').addEventListener('click', () => drOpenVersionModal('edge', 'Edge 灰度'));
-      document.getElementById('drPrepareAll').addEventListener('click', () => drOpenVersionModal('', '三层灰度'));
+      document.getElementById('drPrepareEngine').addEventListener('click', () => drOpenVersionModal('cloud', __('dr.prepare-engine')));
+      document.getElementById('drPrepareGateway').addEventListener('click', () => drOpenVersionModal('gateway', __('dr.prepare-gateway')));
+      document.getElementById('drPrepareEdge').addEventListener('click', () => drOpenVersionModal('edge', __('dr.prepare-edge')));
+      document.getElementById('drPrepareAll').addEventListener('click', () => drOpenVersionModal('', __('dr.prepare-all')));
 
       document.getElementById('drVersionCancel').addEventListener('click', drCloseVersionModal);
       document.getElementById('drVersionModal').addEventListener('click', (e) => { if (e.target === e.currentTarget) drCloseVersionModal(); });
@@ -383,49 +383,49 @@
           description: desc
         });
         if (res.code === 0) {
-          drLog(label + ' 准备完成 deploy_id=' + res.data.deploy_id + ' bundle=' + (res.data.bundle_id || 'auto'), true);
+          drLog(__('dr.prepared-ok', label, res.data.deploy_id, res.data.bundle_id || 'auto'), true);
           drRefresh();
         } else {
-          drLog('准备失败: ' + (res.message || JSON.stringify(res)), false);
+          drLog(__('dr.prepare-fail', res.message || JSON.stringify(res)), false);
         }
       });
 
       document.getElementById('drUpgrade').addEventListener('click', async () => {
         const active = await drApi('/active', 'GET');
         const did = active.data && active.data.deploy_id;
-        if (!did) { drLog('无进行中部署', false); return; }
-        const res = await drApi('/' + did + '/upgrade', 'POST', { note: 'UI 升级' });
-        if (res.code === 0) { drLog('升级成功 state=' + res.data.state + ' pct=' + res.data.canary_percent + '%', true); drRefresh(); }
-        else { drLog('升级失败: ' + (res.message || JSON.stringify(res)), false); }
+        if (!did) { drLog(__('dr.no-active-deploy'), false); return; }
+        const res = await drApi('/' + did + '/upgrade', 'POST', { note: 'UI upgrade' });
+        if (res.code === 0) { drLog(__('dr.upgrade-ok', res.data.state, res.data.canary_percent), true); drRefresh(); }
+        else { drLog(__('dr.upgrade-fail', res.message || JSON.stringify(res)), false); }
       });
 
       document.getElementById('drPause').addEventListener('click', async () => {
         const active = await drApi('/active', 'GET');
         const did = active.data && active.data.deploy_id;
-        if (!did) { drLog('无进行中部署', false); return; }
-        const res = await drApi('/' + did + '/pause', 'POST', { note: 'UI 暂停' });
-        if (res.code === 0) { drLog('已暂停', true); drRefresh(); }
-        else { drLog('暂停失败: ' + (res.message || JSON.stringify(res)), false); }
+        if (!did) { drLog(__('dr.no-active-deploy'), false); return; }
+        const res = await drApi('/' + did + '/pause', 'POST', { note: 'UI pause' });
+        if (res.code === 0) { drLog(__('dr.paused-ok'), true); drRefresh(); }
+        else { drLog(__('dr.pause-fail', res.message || JSON.stringify(res)), false); }
       });
 
       document.getElementById('drRollback').addEventListener('click', async () => {
-        if (!confirm('确认回退当前部署？')) return;
+        if (!confirm(__('dr.rollback-confirm'))) return;
         const active = await drApi('/active', 'GET');
         const did = active.data && active.data.deploy_id;
-        if (!did) { drLog('无进行中部署', false); return; }
-        const res = await drApi('/' + did + '/rollback', 'POST', { note: 'UI 回退' });
-        if (res.code === 0) { drLog('已回退', true); drRefresh(); }
-        else { drLog('回退失败: ' + (res.message || JSON.stringify(res)), false); }
+        if (!did) { drLog(__('dr.no-active-deploy'), false); return; }
+        const res = await drApi('/' + did + '/rollback', 'POST', { note: 'UI rollback' });
+        if (res.code === 0) { drLog(__('dr.rolled-back-ok'), true); drRefresh(); }
+        else { drLog(__('dr.rollback-fail', res.message || JSON.stringify(res)), false); }
       });
 
       document.getElementById('drFinalize').addEventListener('click', async () => {
-        if (!confirm('⚠ 确认完结部署？\n\n完结后将：\n  · 把新版本指针切换为稳定版\n  · 关闭回退通道（不可再 rollback）\n  · 清理 canary 文件（edge）\n  · 归档当前 rollout 记录\n\n建议在线上指标观察期通过后再点。')) return;
+        if (!confirm(__('dr.finalize-confirm'))) return;
         const active = await drApi('/active', 'GET');
         const did = active.data && active.data.deploy_id;
-        if (!did) { drLog('无进行中部署', false); return; }
-        const res = await drApi('/' + did + '/finalize', 'POST', { note: 'UI 完结' });
-        if (res.code === 0) { drLog('已完结', true); drRefresh(); }
-        else { drLog('完结失败: ' + (res.message || JSON.stringify(res)), false); }
+        if (!did) { drLog(__('dr.no-active-deploy'), false); return; }
+        const res = await drApi('/' + did + '/finalize', 'POST', { note: 'UI finalize' });
+        if (res.code === 0) { drLog(__('dr.finalized-ok'), true); drRefresh(); }
+        else { drLog(__('dr.finalize-fail', res.message || JSON.stringify(res)), false); }
       });
 
       document.getElementById('drRefresh').addEventListener('click', drRefresh);

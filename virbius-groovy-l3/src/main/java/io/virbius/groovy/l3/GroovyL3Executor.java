@@ -14,7 +14,7 @@ import java.util.concurrent.TimeoutException;
 import org.codehaus.groovy.control.CompilerConfiguration;
 
 /**
- * 沙箱执行 L3 {@code decide(ctx)}（G3–G5）。超时或异常由调用方 fail-open。
+ * Sandbox-execute L3 {@code decide(ctx)} (G3-G5). Timeout or exception: caller fail-opens.
  */
 public final class GroovyL3Executor {
 

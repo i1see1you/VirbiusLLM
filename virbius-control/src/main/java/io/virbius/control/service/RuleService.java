@@ -75,9 +75,9 @@ public class RuleService {
         if (existing.isPresent() && contentChanged(existing.get(), req, normalizedRisk, intentAction)) {
             if (RolloutStateHelper.inExecutionPlane(existing.get())) {
                 String state = existing.get().rolloutState();
-                String hint = "dry_run".equals(state) ? "先下线（禁用）再编辑" : "先回滚到 dry_run，收集足够数据后下线再编辑";
+                String hint = "dry_run".equals(state) ? "take offline (disable) then edit" : "rollback to dry_run, collect sufficient data, then take offline and edit";
                 throw new BusinessException(409,
-                        "规则当前为 " + state + " 状态，正在线上运行，不允许编辑。请" + hint + "。");
+                        "Rule is currently in " + state + " state and running online. Editing is not allowed. Please " + hint + ".");
             }
         }
 

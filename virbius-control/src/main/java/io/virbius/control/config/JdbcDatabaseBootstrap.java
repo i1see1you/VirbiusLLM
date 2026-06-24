@@ -3,7 +3,7 @@ package io.virbius.control.config;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-/** SQLite 文件库路径辅助；其它 JDBC 方言无需调用。 */
+/** SQLite file-db path helper; unnecessary for other JDBC dialects. */
 public final class JdbcDatabaseBootstrap {
 
     private JdbcDatabaseBootstrap() {}
@@ -25,7 +25,7 @@ public final class JdbcDatabaseBootstrap {
                 Files.createDirectories(file.getParent());
             }
         } catch (Exception ignored) {
-            // 忽略不可创建目录的情况
+            // ignore directories that cannot be created
         }
     }
 }

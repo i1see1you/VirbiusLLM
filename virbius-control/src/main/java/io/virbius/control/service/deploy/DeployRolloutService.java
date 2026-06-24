@@ -89,9 +89,9 @@ public class DeployRolloutService {
         Optional<DeployRollout> active = rolloutRepo.findActive(tenantId);
         if (active.isPresent()) {
             throw new BusinessException(409,
-                    "存在进行中的部署 " + active.get().deployId()
-                            + "，状态=" + active.get().state()
-                            + "，请等待完成或回退");
+                    "Active deployment " + active.get().deployId()
+                            + ", state=" + active.get().state()
+                            + ". Please wait for completion or rollback.");
         }
 
         if (targetVersion == null || targetVersion.isBlank()) {
@@ -205,7 +205,7 @@ public class DeployRolloutService {
                                  String operator, String note) {
         DeployRollout rollout = rolloutRepo.get(deployId)
                 .filter(r -> r.tenantId().equals(tenantId))
-                .orElseThrow(() -> new BusinessException("部署不存在: " + deployId));
+                .orElseThrow(() -> new BusinessException("Deployment not found: " + deployId));
 
         String fromState = rollout.state();
         DeployRolloutState from = DeployRolloutState.parse(fromState);
@@ -224,7 +224,7 @@ public class DeployRolloutService {
             case CANARY:
                 int next = computeNextEffectiveStep(tenantId, ladder, rollout.canaryPercent());
                 if (next == 0) {
-                    throw new BusinessException("已达灰度阶梯终点，请执行 fullRelease 或 deployEdge");
+                    throw new BusinessException("Already at the end of the canary ladder, execute fullRelease or deployEdge");
                 }
                 if (next >= 100) {
                     toState = DeployRolloutState.FULL.value();
@@ -240,7 +240,7 @@ public class DeployRolloutService {
                 toPercent = rollout.canaryPercent();
                 break;
             default:
-                throw new BusinessException("当前状态 " + fromState + " 不支持升级操作");
+                throw new BusinessException("Current state " + fromState + " does not support upgrade operation");
         }
 
         // TODO: optional PromotionGateService check for deploy rollout
@@ -286,7 +286,7 @@ public class DeployRolloutService {
     public DeployRollout pause(String tenantId, String deployId, String operator, String note) {
         DeployRollout rollout = rolloutRepo.get(deployId)
                 .filter(r -> r.tenantId().equals(tenantId))
-                .orElseThrow(() -> new BusinessException("部署不存在: " + deployId));
+                .orElseThrow(() -> new BusinessException("Deployment not found: " + deployId));
 
         DeployRolloutStateHelper.validateTransition(rollout.state(), DeployRolloutState.PAUSED.value());
 
@@ -330,7 +330,7 @@ public class DeployRolloutService {
     public DeployRollout rollback(String tenantId, String deployId, String operator, String note) {
         DeployRollout rollout = rolloutRepo.get(deployId)
                 .filter(r -> r.tenantId().equals(tenantId))
-                .orElseThrow(() -> new BusinessException("部署不存在: " + deployId));
+                .orElseThrow(() -> new BusinessException("Deployment not found: " + deployId));
 
         DeployRolloutStateHelper.validateTransition(rollout.state(), DeployRolloutState.ROLLED_BACK.value());
 
@@ -348,7 +348,7 @@ public class DeployRolloutService {
                     DeployRolloutState.ROLLED_BACK.value(), 0,
                     "cloud+gateway", operator, note, Instant.now()));
 
-            // Clear staging diffs so next "准备" shows a clean diff
+            // Clear staging diffs so next "prepare" shows a clean diff
             String baseBundleId = rollout.bundleId().contains("@")
                     ? rollout.bundleId().substring(0, rollout.bundleId().indexOf("@"))
                     : rollout.bundleId();
@@ -368,7 +368,7 @@ public class DeployRolloutService {
     public DeployRollout deployEdge(String tenantId, String deployId, String operator, String note) {
         DeployRollout rollout = rolloutRepo.get(deployId)
                 .filter(r -> r.tenantId().equals(tenantId))
-                .orElseThrow(() -> new BusinessException("部署不存在: " + deployId));
+                .orElseThrow(() -> new BusinessException("Deployment not found: " + deployId));
 
         DeployRolloutStateHelper.validateTransition(rollout.state(), DeployRolloutState.EDGE_DONE.value());
 
@@ -402,7 +402,7 @@ public class DeployRolloutService {
     public DeployRollout finalize(String tenantId, String deployId, String operator, String note) {
         DeployRollout rollout = rolloutRepo.get(deployId)
                 .filter(r -> r.tenantId().equals(tenantId))
-                .orElseThrow(() -> new BusinessException("部署不存在: " + deployId));
+                .orElseThrow(() -> new BusinessException("Deployment not found: " + deployId));
 
         DeployRolloutStateHelper.validateTransition(rollout.state(), DeployRolloutState.FINALIZED.value());
 
@@ -504,7 +504,7 @@ public class DeployRolloutService {
                 log.warn("lock acquire error, proceeding without lock: {}", e.getMessage());
                 return;
             }
-            throw new BusinessException(423, "部署进行中，请等待当前部署完成");
+            throw new BusinessException(423, "Deployment in progress, please wait for the current deployment to complete");
         }
     }
 

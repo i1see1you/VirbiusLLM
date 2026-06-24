@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.zip.CRC32;
 
 /**
- * Groovy L3 白名单 API（G2）。脚本仅可访问 {@code ctx} 的 public 方法。
+ * Groovy L3 allowlist API (G2). Scripts may only access public methods of {@code ctx}.
  */
 public final class PolicyContext {
 
@@ -81,12 +81,12 @@ public final class PolicyContext {
         return signals;
     }
 
-    /** 只读 RequestContext 逻辑变量表。 */
+    /** Read-only RequestContext logical variable table. */
     public Map<String, String> vars() {
         return vars;
     }
 
-    /** 读取逻辑变量，如 {@code app_id}、{@code debug_flag}。 */
+    /** Read a logical variable, e.g. {@code app_id}, {@code debug_flag}. */
     public String var(String logicalName) {
         if (logicalName == null || logicalName.isBlank()) {
             return null;
@@ -109,7 +109,7 @@ public final class PolicyContext {
         return r != null ? r.canaryPercent() : 100;
     }
 
-    /** 任一 signal 达到拦截阈值（risk_score≥100 或 suggest=block）。 */
+    /** Any signal reaches the block threshold (risk_score &ge; 100 or suggest=block). */
     public boolean wouldHitBlock() {
         for (L3SignalView s : signals) {
             if (s.score() >= BLOCK_THRESHOLD || "block".equalsIgnoreCase(s.suggest())) {

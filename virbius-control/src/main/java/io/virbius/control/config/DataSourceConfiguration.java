@@ -7,8 +7,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
 /**
- * 使用 Spring Boot 标准 {@link DataSourceProperties} 构建数据源，不绑定 SQLite 驱动类。
- * 在连接前仅为 SQLite 文件 URL 创建父目录。
+ * Build DataSource using standard Spring Boot {@link DataSourceProperties}, without binding SQLite driver class.
+ * Only creates parent directories for SQLite file URLs before connecting.
  */
 @Configuration
 public class DataSourceConfiguration {

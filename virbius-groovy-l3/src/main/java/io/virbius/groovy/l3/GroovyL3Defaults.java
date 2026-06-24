@@ -1,6 +1,6 @@
 package io.virbius.groovy.l3;
 
-/** PoC 默认 L3 脚本：dry_run/canary 返回 review，full 返回 block。 */
+/** PoC default L3 script: dry_run/canary returns review, full returns block. */
 public final class GroovyL3Defaults {
 
     public static final String DEFAULT_DECIDE_SCRIPT =

@@ -21,13 +21,13 @@
 
     async function saveSceneRegistry(sync) {
       if (!sceneEntries.length) {
-        throw new Error('至少一条 scene');
+        throw new Error(__('sr.at-least-one'));
       }
       const data = await admin(
         `/bundles/${encodeURIComponent(bundleId())}/versions/${encodeURIComponent(bundleVer())}/metadata/scene-registry?sync=${sync}`,
         { method: 'PUT', body: JSON.stringify(readSceneRegistryPayload()) }
       );
-      log(sync ? 'scene_registry 已同步到网关' : 'scene_registry 已保存', 'ok');
+      log(sync ? __('sr.synced') : __('sr.saved'), 'ok');
       await loadSceneRegistry();
       return data;
     }
@@ -56,9 +56,9 @@
           <td><code>${esc((row.uris || []).join(', '))}</code></td>
           <td>${row.priority != null ? row.priority : 0}</td>
           <td><code>${esc(formatMatchQuery(row.matchQuery))}</code></td>
-          <td><button class="danger">删</button></td>`;
+          <td><button class="danger">${__('common.delete')}</button></td>`;
         tr.querySelector('button').onclick = async () => {
-          if (sceneEntries.length <= 1) {           log('至少保留一条 scene', 'warn'); return; }
+          if (sceneEntries.length <= 1) {           log(__('sr.at-least-one-warn'), 'warn'); return; }
           sceneEntries.splice(idx, 1);
           renderSceneRegistryTable();
           try {
@@ -97,8 +97,8 @@
       const sceneId = document.getElementById('srSceneId').value.trim();
       const appId = document.getElementById('srAppId').value.trim();
       const uriRaw = document.getElementById('srUris').value.trim();
-      if (!sceneId || !appId) { log('请填写 scene_id 与 app_id', 'warn'); return; }
-      if (sceneEntries.some(e => e.sceneId === sceneId)) { log('scene_id 已存在', 'warn'); return; }
+      if (!sceneId || !appId) { log(__('sr.fill-id-and-app'), 'warn'); return; }
+      if (sceneEntries.some(e => e.sceneId === sceneId)) { log(__('sr.id-exists'), 'warn'); return; }
       const matchQuery = {};
       const mq = document.getElementById('srMatchQuery').value.trim();
       if (mq && mq.includes('=')) {

@@ -1,13 +1,13 @@
-//! 经 **APISIX/Kong 网关** 调用 LLM（管层 + 可选端层）示例。
+//! Example: calling LLM through **APISIX/Kong Gateway** (gateway layer + optional edge layer).
 //!
-//! 流程：端侧 `virbius-core` scan（可选）→ HTTP POST 网关 OpenAI 兼容入口 + Virbius Header。
+//! Flow: edge `virbius-core` scan (optional) → HTTP POST to gateway OpenAI-compatible endpoint + Virbius headers.
 //!
-//! 前置：本地 PoC 已启动 APISIX（默认 `9080`）并挂载 `virbius-guard`，见仓库 `docs/POC-SEED-API.md`。
+//! Prerequisite: local PoC has APISIX running (default `9080`) with `virbius-guard` mounted, see `docs/POC-SEED-API.md`.
 //!
 //! ```bash
 //! cd virbius-core
 //! export VIRBIUS_GATEWAY_URL=http://127.0.0.1:9080/v1/chat/completions
-//! # 可选：跳过端 scan
+//! # Optional: skip edge scan
 //! # export VIRBIUS_SKIP_EDGE=1
 //! cargo run --example gateway_http_client
 //! ```
@@ -23,7 +23,7 @@ const DEFAULT_GATEWAY: &str = "http://127.0.0.1:9080/v1/chat/completions";
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let gateway_url = std::env::var("VIRBIUS_GATEWAY_URL").unwrap_or_else(|_| DEFAULT_GATEWAY.into());
     let user_message = std::env::var("VIRBIUS_DEMO_PROMPT")
-        .unwrap_or_else(|_| "你好，用一句话介绍 Rust 的 ownership。".into());
+        .unwrap_or_else(|_| "Hello, explain Rust's ownership in one sentence.".into());
 
     let ctx = ScanContext {
         user_id: Some("demo-user".into()),
@@ -69,7 +69,7 @@ fn skip_edge() -> bool {
     )
 }
 
-/// 端 L0 scan；Block 则不再请求网关。
+/// Edge L0 scan; if Blocked, do not request the gateway.
 fn edge_scan_and_trace(
     ctx: &ScanContext,
     prompt: &str,
@@ -95,7 +95,7 @@ fn edge_scan_and_trace(
         EffectiveAction::Block => {
             if let Some(hit) = &out.primary {
                 eprintln!(
-                    "  blocked locally by {} ({}) — 不上行网关",
+                    "  blocked locally by {} ({}) — not sending to gateway",
                     hit.rule_id, hit.reason_code
                 );
             }
@@ -113,7 +113,7 @@ enum GatewayOutcome {
     ClientError { status: u16, body: String },
 }
 
-/// POST OpenAI Chat Completions 形态；`virbius-guard` 从 `messages[].content` 抽文本做 evaluate。
+/// POST OpenAI Chat Completions format; `virbius-guard` extracts text from `messages[].content` for evaluation.
 fn chat_via_gateway(
     url: &str,
     ctx: &ScanContext,
@@ -130,8 +130,8 @@ fn chat_via_gateway(
 
     let mut request = ureq::post(url).set("Content-Type", "application/json");
 
-    // --- Virbius ControlContext → HTTP Header（见 docs/user-guide.en.md §4.2）---
-    // trace_id：与端 scan 相同，便于 audit 串联；须 UUID v4。
+    // --- Virbius ControlContext → HTTP Headers (see docs/user-guide.en.md §4.2) ---
+    // trace_id: same as edge scan, for audit tracing; must be UUID v4.
     request = request.set("X-Virbius-Trace-Id", trace_id);
 
     if let Some(uid) = ctx.user_id.as_deref().filter(|s| !s.is_empty()) {
@@ -140,12 +140,12 @@ fn chat_via_gateway(
     if let Some(did) = ctx.device_id.as_deref().filter(|s| !s.is_empty()) {
         request = request.set("X-Virbius-Device-Id", did);
     }
-    // 端侧已 scan 且放行时，可提示网关（可选，见 DESIGN §11.6.9）。
+    // When edge scan passed, can hint the gateway (optional, see DESIGN §11.6.9).
     if edge_pass {
         request = request.set("X-Virbius-Edge-Pass", "1");
     }
 
-    // 不要由客户端设置（网关按路由/Service 注入，防伪造）：
+    // Do NOT set from client (gateway injects per route/service to prevent forgery):
     //   X-Virbius-Tenant, X-Virbius-Scene
 
     println!("[gateway] POST {url}");

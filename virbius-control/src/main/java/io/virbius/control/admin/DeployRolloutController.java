@@ -280,7 +280,7 @@ public class DeployRolloutController {
             @PathVariable("deployId") String deployId) {
         DeployRollout rollout = rolloutRepo.get(deployId)
                 .filter(r -> r.tenantId().equals(tenantId))
-                .orElseThrow(() -> new BusinessException("部署不存在: " + deployId));
+                .orElseThrow(() -> new BusinessException("Deployment not found: " + deployId));
         Map<String, Object> m = toMap(rollout);
         m.put("events", rolloutRepo.listEvents(deployId).stream()
                 .map(this::toEventMap).toList());

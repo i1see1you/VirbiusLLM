@@ -386,22 +386,22 @@ public class RuleSimulateService {
             boolean promptRuntime,
             Map<String, Object> decideDetail) {
         if (!bindMatched) {
-            return promptRuntime ? "bind_scope 未命中，不会调用 1B" : "bind_scope 未命中，脚本不会执行";
+            return promptRuntime ? "bind_scope did not match, will not invoke 1B" : "bind_scope did not match, script will not execute";
         }
         if (!hit) {
             Object llmErr = decideDetail.get("error");
             if (promptRuntime && llmErr != null && !String.valueOf(llmErr).isBlank()) {
-                return "bind 命中但 1B 调用失败：" + llmErr;
+                return "bind matched but 1B call failed: " + llmErr;
             }
             if (promptRuntime && Boolean.TRUE.equals(decideDetail.get("llm_hit_rule"))) {
-                return "bind 命中但 triggered_id 非本规则，draft 未命中";
+                return "bind matched but triggered_id is not this rule, draft did not hit";
             }
-            return promptRuntime ? "bind 命中但 1B 未触发本规则" : "bind 命中但 decide=false，规则不触发";
+            return promptRuntime ? "bind matched but 1B did not trigger this rule" : "bind matched but decide=false, rule does not trigger";
         }
         if ("dry_run".equalsIgnoreCase(rollout)) {
-            return "规则命中；dry_run 下 effective_action=" + effective + "，不拦截";
+            return "rule hit; under dry_run effective_action=" + effective + ", not blocking";
         }
-        return "规则命中；effective_action=" + effective;
+        return "rule hit; effective_action=" + effective;
     }
 
     private static Map<String, Object> step(String id, boolean ok, Map<String, Object> detail) {

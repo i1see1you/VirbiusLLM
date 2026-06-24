@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 兼容旧脚本路径 {@code /api/v1/tenants/...}；运营台请使用 {@code /api/v1/admin/...} 与 {@code /ui}。
+ * Compatible legacy path {@code /api/v1/tenants/...}; use {@code /api/v1/admin/...} and {@code /ui} for the admin console.
  */
 @RestController
 @RequestMapping("/api/v1/tenants/{tenantId}")

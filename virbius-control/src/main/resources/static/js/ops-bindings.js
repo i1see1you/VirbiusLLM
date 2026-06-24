@@ -18,7 +18,7 @@
         const wire = row.from === 'subject' || row.from === 'network' ? row.field : row.name;
         const tr = document.createElement('tr');
         tr.innerHTML = `<td><code>${esc(row.logical)}</code></td><td>${esc(row.from)}</td><td><code>${esc(wire)}</code></td>
-          <td><button class="danger" data-i="${idx}">删</button></td>`;
+                     <td><button class="danger" data-i="${idx}">${esc(__('common.delete'))}</button></td>`;
         tr.querySelector('button').onclick = () => { contextVars.splice(idx, 1); renderBindingsTable(); };
         tbody.appendChild(tr);
       });

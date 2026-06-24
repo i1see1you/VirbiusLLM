@@ -200,7 +200,7 @@ public class AccessListService {
         }
         if (countActiveEntries(existing, now) >= MEMORY_LIST_MAX_ACTIVE_ENTRIES) {
             throw new IllegalArgumentException(
-                    "内存名单生效条目已达上限（" + MEMORY_LIST_MAX_ACTIVE_ENTRIES + "），无法继续添加");
+                    "Memory list active entries have reached the limit (" + MEMORY_LIST_MAX_ACTIVE_ENTRIES + "), cannot add more");
         }
     }
 

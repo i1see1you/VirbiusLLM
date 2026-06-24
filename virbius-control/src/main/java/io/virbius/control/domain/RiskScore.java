@@ -1,6 +1,6 @@
 package io.virbius.control.domain;
 
-/** 规则风险分：0–100。0=放行（白名单），1–99=灰区预留，100=应拦截。 */
+/** Rule risk score: 0-100. 0=allow (allowlist), 1-99=reserved grey zone, 100=block. */
 public final class RiskScore {
 
     public static final int MIN = 0;
@@ -37,7 +37,7 @@ public final class RiskScore {
         return riskScore > ALLOW && riskScore < BLOCK_THRESHOLD;
     }
 
-    /** engine signal.suggest：0→allow，100→block，1–99→review（灰区，PoC 不触发 wouldHit）。 */
+    /** engine signal.suggest: 0→allow, 100→block, 1-99→review (grey zone, PoC does not trigger wouldHit). */
     public static String suggest(int riskScore) {
         if (isBlock(riskScore)) {
             return "block";

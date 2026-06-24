@@ -54,7 +54,7 @@ public class AuditCenterService {
         out.put("allow_log_files", hints);
         out.put(
                 "note",
-                "tb_audit_events 仅存 review/block/captcha；allow 见 allow_log_events 或上述 JSONL 文件。");
+                "tb_audit_events only stores review/block/captcha; allow records can be found in allow_log_events or the JSONL files above.");
         return out;
     }
 }

@@ -9,7 +9,7 @@
       const logicals = contextVars.map(v => v.logical).filter(Boolean);
       const opts = logicals.length
         ? logicals.map(l => `<option value="${escAttr(l)}">${esc(l)}</option>`).join('')
-        : '<option value="">— 无映射 —</option>';
+        : '<option value="">' + __('lists.no-mapping') + '</option>';
       sel.innerHTML = opts;
       if (selected && logicals.includes(selected)) {
         sel.value = selected;
@@ -26,9 +26,9 @@
       if (base !== 'var') return base;
       const logical = document.getElementById('listVarLogicalCustom').value.trim()
         || document.getElementById('listVarLogical').value.trim();
-      if (!logical) throw new Error('var 维度须选择逻辑变量（先在「请求映射」配置）');
+      if (!logical) throw new Error(__('lists.var-dim-required'));
       if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(logical)) {
-        throw new Error('逻辑变量名须为字母/数字/下划线，且不以数字开头');
+        throw new Error(__('lists.var-name-invalid'));
       }
       return 'var:' + logical;
     }
@@ -83,7 +83,7 @@
       listCatalog = Object.keys(listMetaByName).sort();
       const sel = document.getElementById('entryListName');
       const prev = sel.value;
-      sel.innerHTML = '<option value="">选择名单</option>' +
+      sel.innerHTML = '<option value="">' + __('lists.placeholder-select') + '</option>' +
         listCatalog.map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`).join('');
       if (prev && listCatalog.includes(prev)) sel.value = prev;
       fillWizardListSelect();
@@ -98,14 +98,14 @@
           <td>${esc(fmtTime(row.createdAt))}</td>
           <td>${esc(fmtTime(row.expiresAt))}</td>
           <td>${esc(row.remark)}</td>
-          <td><button class="danger" data-name="${escAttr(row.listName)}" data-val="${escAttr(row.value)}">删</button></td>`;
+          <td><button class="danger" data-name="${escAttr(row.listName)}" data-val="${escAttr(row.value)}">${__('common.delete')}</button></td>`;
         tbody.appendChild(tr);
       });
       tbody.querySelectorAll('button.danger').forEach(btn => {
         btn.onclick = async () => {
           const resp = await admin(`/lists/${encodeURIComponent(btn.dataset.name)}/entries/${encodeURIComponent(btn.dataset.val)}`, { method: 'DELETE' });
           await loadLists();
-          log('已删除明细' + listSyncHint(resp), 'ok');
+          log(__('lists.entry-deleted') + listSyncHint(resp), 'ok');
         };
       });
     }
@@ -113,7 +113,7 @@
     document.getElementById('btnListCreate').onclick = async () => {
       const name = document.getElementById('newListName').value.trim();
       const remark = document.getElementById('newListRemark').value.trim() || null;
-      if (!name) { log('请填写 list_name', 'warn'); return; }
+      if (!name) { log(__('lists.name-required'), 'warn'); return; }
       let dim;
       try { dim = buildListDimension(); } catch (e) { log(e.message, 'err'); return; }
       await admin('/lists/' + encodeURIComponent(name), {
@@ -123,7 +123,7 @@
       document.getElementById('newListName').value = '';
       document.getElementById('newListRemark').value = '';
       await loadLists();
-      log('名单已创建（gateway + Engine 已同步）', 'ok');
+      log(__('lists.created'), 'ok');
     };
     document.getElementById('newListDim').onchange = syncListDimUi;
 
@@ -132,7 +132,7 @@
       const val = document.getElementById('entryVal').value.trim();
       const expires = document.getElementById('entryExpires').value.trim();
       const remark = document.getElementById('entryRemark').value.trim();
-      if (!listName || !val) { log('请选择名单并填写值', 'warn'); return; }
+      if (!listName || !val) { log(__('lists.select-name-and-value'), 'warn'); return; }
       const meta = listMetaByName[listName];
       if (meta && meta.storage === 'memory') {
         const active = meta.activeEntryCount != null
@@ -141,7 +141,7 @@
         const newActive = isListEntryActive(expires || null);
         const duplicate = (meta.entries || []).some(e => entryValue(e) === val);
         if (newActive && !duplicate && active >= MEMORY_LIST_MAX_ACTIVE) {
-          log(`内存名单生效条目已达上限（${MEMORY_LIST_MAX_ACTIVE}），无法继续添加`, 'warn');
+          log(__('lists.memory-limit', MEMORY_LIST_MAX_ACTIVE), 'warn');
           return;
         }
       }
@@ -158,6 +158,6 @@
           document.getElementById('entryRemark').value = '';
           return loadLists().then(() => resp);
         })
-        .then(resp => log('明细已添加' + listSyncHint(resp), 'ok'))
+        .then(resp => log(__('lists.entry-added') + listSyncHint(resp), 'ok'))
         .catch(e => log(e.message, 'err'));
     };

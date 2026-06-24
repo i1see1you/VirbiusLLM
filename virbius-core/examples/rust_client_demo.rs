@@ -1,4 +1,4 @@
-//! Virbius 端侧 L0 SDK 集成示例（生产路径：Init 参数，不用环境变量）。
+//! Virbius client-side L0 SDK integration example (production path: Init parameters, not env vars).
 //!
 //! ```bash
 //! cd virbius-core
@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn demo_scan_allow(edge: &VirbiusEdge, ctx: &ScanContext) -> Result<(), virbius_core::VirbiusError> {
-    let prompt = "你好，请介绍一下 Rust 的所有权模型。";
+    let prompt = "Hello, please introduce Rust's ownership model.";
     let out = edge.scan_with(ctx.clone(), prompt)?;
     println!("[scan] allow path");
     println!("  input:  {prompt}");
@@ -92,7 +92,7 @@ fn demo_dlp_roundtrip(
     };
     let phone = "13912345678";
     let idcard = "110101199003077934";
-    let user_text = format!("请致电 {phone} 办理业务，身份证号 {idcard}。");
+    let user_text = format!("Please call {phone} for service, ID number {idcard}.");
 
     let scan = edge.scan_with(ctx.clone(), &user_text)?;
     println!("\n[dlp] roundtrip (phone_cn + idcard_cn)");
@@ -110,7 +110,7 @@ fn demo_dlp_roundtrip(
         println!("    - {} ({})", hit.entity_type, hit.token);
     }
 
-    let fake_model_reply = format!("好的，已登记：{}\n邮件草稿如下……", masked.text);
+    let fake_model_reply = format!("OK, registered: {}\nEmail draft as follows...", masked.text);
     let restored = edge.desensitize_out_with(trace, &fake_model_reply, ctx);
     println!("  model:  {fake_model_reply}");
     println!("  out:    {}", restored.text);

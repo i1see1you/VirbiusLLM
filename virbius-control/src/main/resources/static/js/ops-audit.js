@@ -11,7 +11,7 @@
     async function searchAuditCenter(traceId) {
       const tid = (traceId || document.getElementById('acTraceId').value || '').trim();
       if (!tid) {
-        log('请输入 trace_id', 'warn');
+        log(__('ac.input-trace-id'), 'warn');
         return;
       }
       document.getElementById('acTraceId').value = tid;
@@ -19,9 +19,9 @@
       const dbTbody = document.querySelector('#acDbTable tbody');
       const allowTbody = document.querySelector('#acAllowTable tbody');
       const filesTbody = document.querySelector('#acLogFilesTable tbody');
-      summary.textContent = '查询中…';
-      dbTbody.innerHTML = '<tr><td colspan="8" class="hint">加载中…</td></tr>';
-      allowTbody.innerHTML = '<tr><td colspan="8" class="hint">加载中…</td></tr>';
+      summary.textContent = __('ac.searching');
+      dbTbody.innerHTML = '<tr><td colspan="8" class="hint">' + __('common.loading') + '</td></tr>';
+      allowTbody.innerHTML = '<tr><td colspan="8" class="hint">' + __('common.loading') + '</td></tr>';
       try {
         const detail = await admin('/audit/trace/' + encodeURIComponent(tid));
         document.getElementById('acDbCount').textContent = detail.db_count ?? 0;
@@ -34,7 +34,7 @@
           dbTbody.appendChild(tr);
         });
         if (!(detail.db_events || []).length) {
-          dbTbody.innerHTML = '<tr><td colspan="8" class="hint">无 tb_audit_events 记录</td></tr>';
+          dbTbody.innerHTML = '<tr><td colspan="8" class="hint">' + __('ac.no-db-records') + '</td></tr>';
         }
         allowTbody.innerHTML = '';
         (detail.allow_log_events || []).forEach(h => {
@@ -43,13 +43,13 @@
           allowTbody.appendChild(tr);
         });
         if (!(detail.allow_log_events || []).length) {
-          allowTbody.innerHTML = '<tr><td colspan="8" class="hint">无 allow 日志记录</td></tr>';
+          allowTbody.innerHTML = '<tr><td colspan="8" class="hint">' + __('ac.no-allow-records') + '</td></tr>';
         }
         filesTbody.innerHTML = '';
         (detail.allow_log_files || []).forEach(f => {
           const tr = document.createElement('tr');
           tr.innerHTML = `<td>${esc(f.label || '')}</td><td><code>${esc(f.path || '')}</code></td>
-            <td>${f.exists ? '是' : '否'}</td>`;
+            <td>${f.exists ? __('common.yes') : __('common.no')}</td>`;
           filesTbody.appendChild(tr);
         });
         if (!(detail.allow_log_files || []).length) {

@@ -201,7 +201,7 @@ public class RolloutAdminController {
     private void requireNoActiveDeploy(String tenantId) {
         if (deployRolloutRepo.findActive(tenantId).isPresent()) {
             throw new BusinessException(423,
-                    "存在进行中的机器灰度部署，请等待完成或回退后再操作规则灰度");
+                    "Active machine canary deployment in progress. Please wait for it to complete or rollback before operating rule rollout.");
         }
     }
 }

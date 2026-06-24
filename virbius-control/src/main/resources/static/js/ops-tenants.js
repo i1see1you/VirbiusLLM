@@ -21,8 +21,8 @@
           <td>${esc(field(t, 'name', 'name') || '')}</td>
           <td>${esc(String(field(t, 'rule_count', 'ruleCount') ?? 0))}</td>
           <td>${esc((field(t, 'created_at', 'createdAt') || '').slice(0, 19))}</td>
-          <td><button type="button" class="btn-switch-tenant" data-tid="${escAttr(tid)}">切换</button>
-              <button type="button" class="btn-load-cred" data-tid="${escAttr(tid)}">凭证</button></td>
+          <td><button type="button" class="btn-switch-tenant" data-tid="${escAttr(tid)}">${__('common.switch')}</button>
+              <button type="button" class="btn-load-cred" data-tid="${escAttr(tid)}">${__('common.credential')}</button></td>
         </tr>`;
       }).join('');
       document.getElementById('credTenantLabel').textContent = tenant();
@@ -45,7 +45,7 @@
           <td>${esc(field(c, 'label', 'label') || '')}</td>
           <td>${esc(st)}</td>
           <td>${esc((field(c, 'last_used_at', 'lastUsedAt') || '—').slice(0, 19))}</td>
-          <td>${st === 'active' ? `<button type="button" class="btn-revoke-cred" data-tid="${escAttr(tid)}" data-cid="${escAttr(cid)}">吊销</button>` : '—'}</td>
+          <td>${st === 'active' ? `<button type="button" class="btn-revoke-cred" data-tid="${escAttr(tid)}" data-cid="${escAttr(cid)}">${esc(__('tenants.revoke'))}</button>` : '—'}</td>
         </tr>`;
       }).join('');
     }
@@ -61,11 +61,11 @@
       reloadAll().catch(e => log(e.message, 'err'));
     };
     document.getElementById('btnReloadTenants').onclick = () =>
-      loadTenantsPage().then(() => log('租户列表已刷新')).catch(e => log(e.message, 'err'));
+      loadTenantsPage().then(() => log(__('tenants.refreshed'))).catch(e => log(e.message, 'err'));
     document.getElementById('btnCreateTenant').onclick = async () => {
       const tenantId = document.getElementById('newTenantId').value.trim();
       const name = document.getElementById('newTenantName').value.trim();
-      if (!tenantId || !name) { log('tenant_id 与名称必填', 'warn'); return; }
+      if (!tenantId || !name) { log(__('tenants.id-name-required'), 'warn'); return; }
       try {
         const data = await adminRoot('/tenants', {
           method: 'POST',
@@ -87,7 +87,7 @@
           method: 'POST',
           body: JSON.stringify({ role, label: label || null })
         });
-        log({ issued: data, warning: 'api_key 仅显示一次，请立即保存' }, 'warn');
+        log({ issued: data, warning: __('tenants.key-show-once') }, 'warn');
         if (data.api_key) {
           document.getElementById('apiKey').value = data.api_key;
           try { localStorage.setItem('virbius.ops.apiKey', data.api_key); } catch (_) {}
@@ -102,7 +102,7 @@
           method: 'POST',
           body: JSON.stringify({ role: 'platform_admin', label: label || null })
         });
-        log({ issued: data, warning: 'platform_admin api_key 仅显示一次' }, 'warn');
+        log({ issued: data, warning: __('tenants.platform-key-show-once') }, 'warn');
         if (data.api_key) {
           document.getElementById('apiKey').value = data.api_key;
           try { localStorage.setItem('virbius.ops.apiKey', data.api_key); } catch (_) {}

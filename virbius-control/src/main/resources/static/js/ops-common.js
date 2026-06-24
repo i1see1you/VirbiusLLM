@@ -88,7 +88,7 @@
     }
 
     const DIM_HINT = {
-      keyword: '关键字', user_id: '用户', device_id: '设备', ip_cidr: 'IP/CIDR'
+      keyword: __('lists.dim-keyword'), user_id: __('lists.dim-user'), device_id: __('lists.dim-device'), ip_cidr: 'IP/CIDR'
     };
 
     function formatListDimension(dim) {
@@ -107,7 +107,7 @@
     }
 
     function formatListStorage(storage) {
-      return storage === 'redis' ? 'Redis' : '内存';
+      return storage === 'redis' ? 'Redis' : __('lists.storage-memory');
     }
 
     function isListEntryActive(expiresAt) {
@@ -122,8 +122,8 @@
     }
 
     function listSyncHint(data) {
-      if (data && data.engine_reload) return '（gateway + Engine 已同步）';
-      if (data && data.refreshed) return '（gateway 产物已刷新）';
+      if (data && data.engine_reload) return __('lists.synced-engine');
+      if (data && data.refreshed) return __('lists.synced-gateway');
       return '';
     }
 
@@ -149,16 +149,16 @@
       const d = parseUtc(s);
       if (!d) return '—';
       const diff = Date.now() - d.getTime();
-      if (diff < 60000) return '刚刚';
-      if (diff < 3600000) return Math.floor(diff / 60000) + ' 分钟前';
-      if (diff < 86400000) return Math.floor(diff / 3600000) + ' 小时前';
-      return Math.floor(diff / 86400000) + ' 天前';
+      if (diff < 60000) return __('time.just-now');
+      if (diff < 3600000) return __('time.minutes-ago', Math.floor(diff / 60000));
+      if (diff < 86400000) return __('time.hours-ago', Math.floor(diff / 3600000));
+      return __('time.days-ago', Math.floor(diff / 86400000));
     }
 
     const LAYER_LABELS = {
-      gateway: '网关 Gateway',
-      cloud: '引擎 Engine',
-      edge: '端 Edge'
+      gateway: __('layer.gateway'),
+      cloud: __('layer.cloud'),
+      edge: __('layer.edge')
     };
 
     function formatMatchHeaders(h) {

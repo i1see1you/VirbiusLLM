@@ -1,6 +1,6 @@
 -- virbius-guard APISIX plugin (MVP)
 -- trace: client header or gateway-generated UUID v4; illegal format -> 400
--- access lists: subject (user/device/ip) + keyword on 管侧 only
+-- access lists: subject (user/device/ip) + keyword on gateway side only
 
 local function add_lib_path()
     local info = debug.getinfo(1, "S")

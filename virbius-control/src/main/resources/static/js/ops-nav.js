@@ -60,7 +60,7 @@
       const sb = document.getElementById('sidebar');
       const collapsed = sb.classList.toggle('collapsed');
       document.getElementById('btnSidebarToggle').textContent = collapsed ? '▶' : '◀';
-      document.getElementById('btnSidebarToggle').title = collapsed ? '展开菜单' : '折叠菜单';
+      document.getElementById('btnSidebarToggle').title = collapsed ? __('nav.expand') : __('nav.collapse');
       try { localStorage.setItem('virbius.ops.sidebarCollapsed', collapsed ? '1' : '0'); } catch (_) {}
     };
     try {

@@ -59,20 +59,20 @@
       const errEl = document.getElementById('simFixtureErr');
       if (!raw) {
         errEl.style.display = '';
-        errEl.textContent = 'fixture JSON 不能为空';
+        errEl.textContent = __('rules.fixture-empty');
         throw new Error(errEl.textContent);
       }
       try {
         const obj = JSON.parse(raw);
         if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
-          throw new Error('根节点须为 JSON 对象');
+          throw new Error(__('rules.fixture-root-obj'));
         }
         errEl.style.display = 'none';
         errEl.textContent = '';
         return obj;
       } catch (e) {
         errEl.style.display = '';
-        errEl.textContent = 'fixture JSON 无效：' + e.message;
+        errEl.textContent = __('rules.fixture-invalid', e.message);
         throw new Error(errEl.textContent);
       }
     }
@@ -94,7 +94,7 @@
 end`;
       }
       if (runtime === 'prompt') {
-        return '阻断越狱、DAN、ignore previous 等提示词注入与指令劫持。';
+        return __('rules.prompt-default');
       }
       if (runtime === 'lua-dsl') {
         return JSON.stringify(defaultEdgeBody(), null, 2);
@@ -134,7 +134,7 @@ end`;
       syncDlpIntentReadonly();
       document.getElementById('btnSaveRule').style.display = (isDisabled || exec) ? 'none' : '';
       document.getElementById('btnSaveRule').textContent =
-        isNewRule ? '创建规则' : '保存规则（新 revision）';
+        isNewRule ? __('rules.btn-create') : __('rules.btn-save');
       document.getElementById('btnActivateRule').style.display = (!isNewRule && isDraft) ? '' : 'none';
       document.getElementById('btnDisableRule').style.display = (!isNewRule && !isDisabled) ? '' : 'none';
       document.getElementById('btnEnableRule').style.display = (!isNewRule && isDisabled) ? '' : 'none';
@@ -278,20 +278,20 @@ end`;
 
     function renderAsyncVarPalette() {
       const vars = [
-        { label: 'rule_id', desc: '规则ID' },
-        { label: 'rule_revision', desc: '规则版本' },
-        { label: 'tenant_id', desc: '租户ID' },
-        { label: 'reason_code', desc: '处置码' },
-        { label: 'intent_action', desc: '意图' },
-        { label: 'risk_score', desc: '风险分' },
-        { label: 'hit_at', desc: '命中时间' },
-        { label: 'user_id', desc: '用户ID' },
-        { label: 'device_id', desc: '设备ID' },
-        { label: 'client_ip', desc: '客户端IP' },
-        { label: 'session_id', desc: '会话ID' },
-        { label: 'content', desc: '内容' },
-        { label: 'scene', desc: '场景' },
-        { label: 'route_uri', desc: '路由URI' }
+        { label: 'rule_id', desc: __('rules.var-desc-rule-id') },
+        { label: 'rule_revision', desc: __('rules.var-desc-revision') },
+        { label: 'tenant_id', desc: __('rules.var-desc-tenant') },
+        { label: 'reason_code', desc: __('rules.var-desc-reason') },
+        { label: 'intent_action', desc: __('rules.var-desc-intent') },
+        { label: 'risk_score', desc: __('rules.var-desc-risk') },
+        { label: 'hit_at', desc: __('rules.var-desc-hit-at') },
+        { label: 'user_id', desc: __('rules.var-desc-user') },
+        { label: 'device_id', desc: __('rules.var-desc-device') },
+        { label: 'client_ip', desc: __('rules.var-desc-ip') },
+        { label: 'session_id', desc: __('rules.var-desc-session') },
+        { label: 'content', desc: __('rules.var-desc-content') },
+        { label: 'scene', desc: __('rules.var-desc-scene') },
+        { label: 'route_uri', desc: __('rules.var-desc-uri') }
       ];
       (contextVars || []).forEach(v => {
         if (v.logical) vars.push({ label: 'vars.' + v.logical, desc: 'vars.' + v.logical });
@@ -320,7 +320,7 @@ end`;
         pre.textContent = JSON.stringify(msg, null, 2);
         pre.style.color = '#334155';
       } catch {
-        pre.textContent = '（JSON 无效）';
+        pre.textContent = __('rules.async-json-invalid');
         pre.style.color = '#991b1b';
       }
     }
@@ -387,7 +387,7 @@ end`;
       selectedRuleId = null;
       editRuleMeta = { layer: currentLayer };
       document.getElementById('ruleEditor').style.display = 'block';
-      document.getElementById('editTitle').textContent = '新建';
+      document.getElementById('editTitle').textContent = __('rules.edit-title-new');
       document.getElementById('editRuleId').textContent = '';
       document.getElementById('newRuleRow').style.display = '';
       document.getElementById('fRuleId').value = '';
@@ -557,10 +557,10 @@ end`;
       const warns = data.warnings || [];
       if (data.valid) {
         el.className = 'hint script-validate-ok';
-        el.textContent = warns.length ? '校验通过（' + warns.join('；') + '）' : '校验通过';
+        el.textContent = warns.length ? __('rules.valid-pass-with-warn', warns.join('; ')) : __('rules.valid-pass');
       } else {
         el.className = 'hint script-validate-err';
-        el.textContent = errs.join('；');
+        el.textContent = __('rules.valid-fail', errs.join('; '));
       }
     }
 
@@ -598,7 +598,7 @@ end`;
           return edgeBodyFromForm();
         }
         try { return JSON.parse(document.getElementById('fBody').value); } catch {
-          throw new Error('body JSON 无效');
+          throw new Error(__('rules.body-json-invalid'));
         }
       }
       if (isDlpRuntime(runtime)) {
@@ -606,7 +606,7 @@ end`;
           return dlpBodyFromForm();
         }
         try { return JSON.parse(document.getElementById('fBody').value); } catch {
-          throw new Error('body JSON 无效');
+          throw new Error(__('rules.body-json-invalid'));
         }
       }
       if (isSimpleEditorMode() && conditionLeaves.length) {
@@ -668,21 +668,21 @@ end`;
         const row = document.createElement('div');
         row.className = 'cond-row';
         if (leaf.type === 'list_match') {
-          row.innerHTML = `<span>名单</span>
+          row.innerHTML = `<span>${__('rules.cond-list')}</span>
             <select data-i="${idx}" data-f="list_name">${listOptions(leaf.list_name)}</select>
-            <span>匹配</span><select data-i="${idx}" data-f="value_source">
+            <span>${__('rules.cond-match')}</span><select data-i="${idx}" data-f="value_source">
               <option value="content">content</option>
               <option value="var:app_id">var:app_id</option></select>
-            <button type="button" class="danger" data-del="${idx}">删</button>`;
+            <button type="button" class="danger" data-del="${idx}">${__('common.delete')}</button>`;
           row.querySelector('[data-f="list_name"]').value = leaf.list_name || 'deny_keyword';
           row.querySelector('[data-f="value_source"]').value = leaf.value_source || 'content';
         } else if (leaf.type === 'cumulative') {
-          row.innerHTML = `<span>累计</span>
+          row.innerHTML = `<span>${__('rules.cond-cum')}</span>
             <select data-i="${idx}" data-f="cumulative_name">${cumOptions(leaf.cumulative_name)}</select>
             <select data-i="${idx}" data-f="compare">
               <option value="gte">≥</option><option value="gt">&gt;</option><option value="eq">=</option></select>
             <input data-i="${idx}" data-f="threshold" type="number" min="1" style="width:5rem" />
-            <button type="button" class="danger" data-del="${idx}">删</button>`;
+            <button type="button" class="danger" data-del="${idx}">${__('common.delete')}</button>`;
           row.querySelector('[data-f="cumulative_name"]').value = leaf.cumulative_name || 'user_req_1h';
           row.querySelector('[data-f="compare"]').value = leaf.compare || 'gte';
           row.querySelector('[data-f="threshold"]').value = leaf.threshold != null ? leaf.threshold : 120;
@@ -719,7 +719,7 @@ end`;
       const data = await admin('/rules/recipes?layer=' + encodeURIComponent(layer));
       recipeCatalog = data.recipes || [];
       const sel = document.getElementById('fRecipe');
-      sel.innerHTML = '<option value="">— 选择 —</option>' +
+      sel.innerHTML = '<option value="">' + __('rules.select-recipe') + '</option>' +
         recipeCatalog.map(r => `<option value="${escAttr(r.recipe_id)}">${esc(r.label || r.recipe_id)}</option>`).join('');
     }
 
@@ -783,29 +783,29 @@ end`;
         const body = document.getElementById('fBody').value.trim();
         const preview = body.length > 48 ? body.slice(0, 48) + '…' : body;
         card.style.display = preview || bs ? '' : 'none';
-        card.textContent = `bind=${bs} → 矩阵描述「${preview || '未填写'}」→ ${intent}@${risk}`;
+        card.textContent = __('rules.summary-prompt', bs, preview || __('rules.summary-desc-empty'), intent, risk);
         return;
       }
       if (isEdgeDslRuntime(runtime) && isSimpleEditorMode()) {
         const body = edgeBodyFromForm();
-        const kw = body.keywords.length ? body.keywords.slice(0, 5).join('、') + (body.keywords.length > 5 ? '…' : '') : '（空）';
+        const kw = body.keywords.length ? body.keywords.slice(0, 5).join('、') + (body.keywords.length > 5 ? '…' : '') : __('rules.keywords-empty');
         card.style.display = '';
-        card.textContent = `bind=${bs} → ${body.list_type} 关键词「${kw}」→ ${intent}@${risk}`;
+        card.textContent = __('rules.summary-edge', bs, body.list_type, kw, intent, risk);
         return;
       }
       if (isDlpRuntime(runtime) && isSimpleEditorMode()) {
         const body = dlpBodyFromForm();
         card.style.display = '';
-        card.textContent = `bind=${bs} → DLP ${body.entity_type} → allow@0`;
+        card.textContent = __('rules.summary-dlp', bs, body.entity_type);
         return;
       }
       const parts = conditionLeaves.map(l => {
-        if (l.type === 'list_match') return `名单 ${l.list_name}`;
-        if (l.type === 'cumulative') return `累计 ${l.cumulative_name} ${l.compare || '>='} ${l.threshold || 120}`;
+        if (l.type === 'list_match') return __('rules.cond-list-text', l.list_name);
+        if (l.type === 'cumulative') return __('rules.cond-cum-text', l.cumulative_name, l.compare || '>=', l.threshold || 120);
         return '';
       }).filter(Boolean);
       card.style.display = '';
-      card.textContent = `当 bind=${bs}${parts.length ? ' 且 ' + parts.join(' 且 ') : ''} → ${intent}@${risk}`;
+      card.textContent = __('rules.summary-cond', bs, parts.length ? __('rules.and') + parts.join(__('rules.and')) : '', intent, risk);
     }
 
     async function runRuleSimulate() {
@@ -1040,11 +1040,11 @@ end`;
       const current = sel.value || 'global';
       const edge = isEdgeFormRuntime(runtime);
       sel.innerHTML = edge
-        ? '<option value="global">global（全部 App manifest）</option>'
-          + '<option value="service">service（指定 app_ids）</option>'
-        : '<option value="global">global（租户内全流量）</option>'
-          + '<option value="route">route（Scene 匹配）</option>'
-          + '<option value="service">service（app_ids）</option>';
+        ? '<option value="global">' + __('gw.scope.edge-global') + '</option>'
+          + '<option value="service">' + __('gw.scope.edge-service') + '</option>'
+        : '<option value="global">' + __('gw.scope.global') + '</option>'
+          + '<option value="route">' + __('gw.scope.route') + '</option>'
+          + '<option value="service">' + __('gw.scope.service') + '</option>';
       sel.value = [...sel.options].some(o => o.value === current) ? current : 'global';
     }
 
@@ -1135,7 +1135,7 @@ end`;
       const r = await admin('/rules/' + encodeURIComponent(ruleId));
       editRuleMeta = r;
       document.getElementById('ruleEditor').style.display = 'block';
-      document.getElementById('editTitle').textContent = '编辑';
+      document.getElementById('editTitle').textContent = __('rules.edit-title-edit');
       document.getElementById('editRuleId').textContent = ruleId;
       document.getElementById('newRuleRow').style.display = 'none';
       document.getElementById('fReason').value = r.reason_code || '';
@@ -1206,7 +1206,7 @@ end`;
     document.getElementById('fEditorMode').onchange = () => syncEditorModeUi();
     document.getElementById('btnApplyRecipe').onclick = () => {
       const id = document.getElementById('fRecipe').value;
-      if (!id) { log('请选择模板', 'warn'); return; }
+      if (!id) { log(__('rules.recipe-required'), 'warn'); return; }
       applyRecipe(id);
     };
     document.getElementById('btnPreviewScript').onclick = () => previewCompiledScript().catch(e => log(e.message, 'err'));
@@ -1249,18 +1249,18 @@ end`;
 
     document.getElementById('btnSaveRule').onclick = async () => {
       if (editRuleMeta && editRuleMeta.rollout_state === 'disabled') {
-        log('规则已停用，不可修改', 'warn');
+        log(__('rules.disabled-cant-edit'), 'warn');
         return;
       }
       if (editRuleMeta && inExecutionPlane(editRuleMeta.rollout_state)) {
-        log('规则为 ' + editRuleMeta.rollout_state + '，正在线上运行中。请先下线再编辑', 'warn');
+        log(__('rules.running-cant-edit', editRuleMeta.rollout_state), 'warn');
         return;
       }
       const ruleId = isNewRule
         ? document.getElementById('fRuleId').value.trim()
         : selectedRuleId;
       if (!ruleId) {
-        log('请填写 rule_id', 'warn');
+        log(__('rules.id-required'), 'warn');
         return;
       }
       const layer = isNewRule ? currentLayer : editRuleMeta.layer;
@@ -1269,14 +1269,14 @@ end`;
       if (isEdgeFormRuntime(runtime) && scope.bind_scope === 'service') {
         const ids = scope.bind_ref && scope.bind_ref.app_ids;
         if (!ids || !ids.length) {
-          log('端 edge service bind 须填写 app_ids', 'warn');
+          log(__('rules.edge-service-required'), 'warn');
           return;
         }
       }
       const body = await resolveBodyForSave();
       if (isDlpRuntime(runtime)) {
         if (body.entity_type === 'custom_regex' && !(body.pattern || '').trim()) {
-          log('custom_regex 须填写 pattern', 'warn');
+          log(__('rules.custom-regex-required'), 'warn');
           return;
         }
       }
@@ -1287,7 +1287,7 @@ end`;
         });
         showScriptValidateResult(vr);
         if (!vr.valid) {
-          log('脚本校验未通过：' + (vr.errors || []).join('；'), 'err');
+          log(__('rules.valid-fail', (vr.errors || []).join('; ')), 'err');
           return;
         }
       }
@@ -1312,11 +1312,11 @@ end`;
             async_action_config: asyncActionConfig
           })
         });
-        log(isNewRule ? '规则已创建' : '规则已保存', 'ok');
+        log(isNewRule ? __('rules.created') : __('rules.saved'), 'ok');
         isNewRule = false;
         await selectRule(ruleId);
       } catch (e) {
-        log('保存失败：' + e.message, 'err');
+        log(__('rules.save-fail', e.message), 'err');
       }
     };
     document.getElementById('btnDisableRule').onclick = () =>

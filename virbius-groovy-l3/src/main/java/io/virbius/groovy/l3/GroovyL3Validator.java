@@ -3,7 +3,7 @@ package io.virbius.groovy.l3;
 import groovy.lang.GroovyShell;
 import org.codehaus.groovy.control.CompilerConfiguration;
 
-/** 发布门禁 G6：体积 + 危险 token + 语法解析（PoC 不做完整 AST 沙箱，运行期靠 Binding 仅暴露 ctx）。 */
+/** Gate G6: size + dangerous token + parse check (PoC no full AST sandbox; runtime only exposes ctx via Binding). */
 public final class GroovyL3Validator {
 
     public static final int MAX_BODY_BYTES = 32 * 1024;
