@@ -43,7 +43,7 @@
 
       // Tenants
       'tenants.title': '租户与 API 凭证',
-      'tenants.desc': '角色：{0}（Edge manifest + 只读）、{1}（写/放量/发布/本租户 Key）、{2}（租户管理）。鉴权开启时（{3}）请在顶栏填写 API Key。',
+      'tenants.desc': '角色：<code>tenant_viewer</code>（Edge manifest + 只读）、<code>tenant_admin</code>（写/放量/发布/本租户 Key）、<code>platform_admin</code>（租户管理）。鉴权开启时（<code>VIRBIUS_API_KEY_AUTH_ENABLED=true</code>）请在顶栏填写 API Key。',
       'tenants.placeholder-id': 'tenant_id (小写)',
       'tenants.placeholder-name': '显示名称',
       'tenants.btn-create': '新建租户',
@@ -69,7 +69,7 @@
 
       // Lists
       'lists.title': '命名名单',
-      'lists.desc': '名单仅定义 {0} + 维度 + 纯值条目；拦截/放行由脚本规则 {1} + 规则行 {2} / {3} 决定。按 Header/Query 匹配：维度选 {4}（如 {5}），条目填纯值（如 {6}），脚本写 {7}。{8}：{9} / {10} → 内存（gateway JSON + Engine reload）；{11} / {12} / {13} → Redis ZSET（支持单条过期）。内存名单{14}上限 1000{15}；保存后自动刷新 gateway 产物、Redis 并推送 Engine。',
+      'lists.desc': '名单仅定义 <code>list_name</code> + 维度 + 纯值条目；拦截/放行由脚本规则 <code>listMatch(...)</code> + 规则行 <code>intent_action</code> / <code>risk_score</code> 决定。按 Header/Query 匹配：维度选 <code>var:逻辑变量</code>（如 <code>var:app_id</code>），条目填纯值（如 <code>evil</code>），脚本写 <code>listMatch(\'名单\', ctx.var(\'app_id\'))</code>。<strong>存储</strong>：<code>keyword</code> / <code>ip_cidr</code> → 内存（gateway JSON + Engine reload）；<code>user_id</code> / <code>device_id</code> / <code>var:*</code> → Redis ZSET（支持单条过期）。内存名单<strong>生效条目上限 1000</strong>；保存后自动刷新 gateway 产物、Redis 并推送 Engine。',
       'lists.placeholder-name': 'list_name',
       'lists.dim-logical': '逻辑变量',
       'lists.placeholder-remark-list': '名单备注',
@@ -104,7 +104,7 @@
 
       // Cumulatives
       'cum.title': '累计定义（tb_cumulative）',
-      'cum.desc': '定义滑动窗口与默认计数维度（CounterStore）；保存后刷新网关产物。须在「规则」中创建 {0}，引用 {1} 并配置 {2}（阈值/compare）及 reason/risk/intent。Global 与 Route 级限流请使用{3}{4}{5}。按 Header/Query 累计：选 dimension {6} + 逻辑变量（须先在「上下文映射」配置，如 {7} ← {8}）。',
+      'cum.desc': '定义滑动窗口与默认计数维度（CounterStore）；保存后刷新网关产物。须在「规则」中创建 <code>runtime=cumulative</code>，引用 <code>cumulative_name</code> 并配置 <code>condition</code>（阈值/compare）及 reason/risk/intent。Global 与 Route 级限流请使用<strong>不同</strong> <code>cumulative_name</code>。按 Header/Query 累计：选 dimension <code>var</code> + 逻辑变量（须先在「上下文映射」配置，如 <code>app_id</code> ← <code>X-App-Id</code>）。',
       'cum.btn-new': '新建累计',
       'cum.btn-refresh': '刷新列表',
       'cum.header-name': '名称',
@@ -123,7 +123,7 @@
       'cum.rolling-hour': '按小时',
       'cum.label-duration': '时长',
       'cum.label-timezone': '时区',
-      'cum.var-hint': 'var 维度从「上下文映射」的 {0} 取值；未映射时该请求跳过 ingest/判定。',
+      'cum.var-hint': 'var 维度从「上下文映射」的 <code>vars</code> 取值；未映射时该请求跳过 ingest/判定。',
       'cum.btn-save': '保存定义',
       'cum.btn-delete': '删除',
       'cum.no-mapping': '— 无映射 —',
@@ -137,7 +137,7 @@
 
       // Bindings
       'bind.title': '上下文映射（context_bindings）',
-      'bind.desc': '逻辑名 → HTTP 来源；策略与名单只引用逻辑名。wire 留空时默认与逻辑名相同（如逻辑名 {0} → Query 参数 {0}）。',
+      'bind.desc': '逻辑名 → HTTP 来源；策略与名单只引用逻辑名。wire 留空时默认与逻辑名相同（如逻辑名 <code>debug_flag</code> → Query 参数 <code>debug_flag</code>）。',
       'bind.header-logical': '逻辑名',
       'bind.header-from': '来源 from',
       'bind.header-wire': 'wire name / field',
@@ -148,7 +148,7 @@
 
       // Scene Registry
       'sr.title': '场景注册（scene_registry）',
-      'sr.desc': '每个 {0} 归属唯一 {1}；同一 app 可有多个 scene。运行时由 {2} 解析 scene（见「请求映射」中的 {3}）。{4} 须已在「网关路由」覆盖（支持 {5}）。{6}会写入 DB；点{7}推产物。',
+      'sr.desc': '每个 <code>scene_id</code> 归属唯一 <code>app_id</code>；同一 app 可有多个 scene。运行时由 <code>(app_id, uri, match)</code> 解析 scene（见「请求映射」中的 <code>app_id</code>）。<strong>uris</strong> 须已在「网关路由」覆盖（支持 <code>/path/*</code>）。<strong>添加 / 删除 / 改 fail 开关</strong>会写入 DB；点<strong>同步到网关</strong>推产物。',
       'sr.header-scene': 'scene_id',
       'sr.header-app': 'app_id',
       'sr.header-default': 'default',
@@ -170,7 +170,7 @@
 
       // Gateway Routes
       'gw.title': '网关路由（gateway.routes）',
-      'gw.desc': '定义哪些 URI 进入网关 evaluate（精确 path 或末尾 {0} 前缀，如 {1}）；scene 由「场景注册」解析。保存后需「同步到网关」推产物。',
+      'gw.desc': '定义哪些 URI 进入网关 evaluate（精确 path 或末尾 <code>*</code> 前缀，如 <code>/v1/chat/*</code>）；scene 由「场景注册」解析。保存后需「同步到网关」推产物。',
       'gw.header-uri': 'uri',
       'gw.header-methods': 'methods',
       'gw.placeholder-uri': '/v1/chat/* 或 /v1/chat/completions',
@@ -205,7 +205,7 @@
       'rules.action-type': '动作类型',
       'rules.stream-key': 'Stream Key',
       'rules.webhook-url': 'URL',
-      'rules.msg-content': '消息内容 (支持 {0} 占位)',
+      'rules.msg-content': '消息内容 (支持 <code>&#123;&#123;变量}}</code> 占位)',
       'rules.avail-vars': '可用变量',
       'rules.live-preview': '实时预览',
       'rules.async-hint': '点击「可用变量」名称插入光标位置。异步规则 intent_action 固定为 allow，命中后仅执行异步动作。',
@@ -291,9 +291,9 @@
 
       // Rollout
       'rollout.title': '策略上线',
-      'rollout.desc': 'draft 须先 {0} 进入 dry_run；达标后点 {1}（后端仍校验门禁，未过可 force）。版本号留空时自动从上次发布递增 patch。{2}看板每 5 秒自动刷新。',
+      'rollout.desc': 'draft 须先 <code>上线</code> 进入 dry_run；达标后点 <code>升级 / 下一步</code>（后端仍校验门禁，未过可 force）。版本号留空时自动从上次发布递增 patch。<strong>编辑和放量操作仅写 DB，须点「部署」推送到执行面才生效。</strong>看板每 5 秒自动刷新。',
       'rollout.machine-deploy-title': '机器灰度部署',
-      'rollout.machine-deploy-desc': '按机器 {0} 分池：{1}。Edge 按 {2} CRC32C hash 分池灰度，与 engine/gateway 共用同一份 canary%。',
+      'rollout.machine-deploy-desc': '按机器 <code>bucket</code> 分池：<code>PENDING→CANARY(5/20/50)→FULL(100)→FINALIZED</code>。Edge 按 <code>device_id</code> CRC32C hash 分池灰度，与 engine/gateway 共用同一份 canary%。',
       'rollout.desc-placeholder': '变更说明',
       'rollout.btn-prepare-engine': '📦 准备 Engine',
       'rollout.btn-prepare-gateway': '📦 准备 Gateway',
@@ -450,7 +450,7 @@
 
       // Audit Center
       'ac.title': '审计中心',
-      'ac.desc': '按 {0} 查询 {1}（review/block/captcha 等）及 allow 日志文件。allow 请求不入库，仅写入各层 JSONL 备档。',
+      'ac.desc': '按 <code>trace_id</code> 查询 <code>tb_audit_events</code>（review/block/captcha 等）及 allow 日志文件。allow 请求不入库，仅写入各层 JSONL 备档。',
       'ac.search-hint': '输入 trace_id',
       'ac.btn-search': '查询',
       'ac.tb-audit-title': 'tb_audit_events（{0}）',
@@ -500,7 +500,7 @@
       'dlp.custom-regex': 'custom_regex',
       'dlp.priority': 'priority',
       'dlp.pattern-label': 'pattern（custom_regex 必填）',
-      'dlp.mask-template': 'mask_template（可选，含 {0}）',
+      'dlp.mask-template': 'mask_template（可选，含 <code>{seq}</code>）',
       'dlp.placeholder-mask': '{{VIRBIUS_PHONE_CN_{seq}}}',
 
       // Rollout time
@@ -526,25 +526,25 @@
       'gw.scope.edge-service': 'service（指定 app_ids）',
 
       // Bind scope hint
-      'gw.scope-hint': 'Route：按 scene 精确匹配（scenes 须已在 SceneRegistry 中注册）。Service 绑 {0}（来自 context_bindings 的 {1}）。{2}：仅 {3} / {4}；发布时按 App 拆 manifest，SDK 不做运行时 bind。',
+      'gw.scope-hint': 'Route：按 scene 精确匹配（scenes 须已在 SceneRegistry 中注册）。Service 绑 <code>app_ids</code>（来自 context_bindings 的 <code>app_id</code>）。<strong>端 edge</strong>：仅 <code>global</code> / <code>service(app_ids)</code>；发布时按 App 拆 manifest，SDK 不做运行时 bind。',
 
       // Groovy hint
-      'hint.groovy': 'Groovy 脚本实现 {0}，返回 {1}（命中）/ {2}（未命中）。可用 {3}、{4}、{5}、{6}。命中后 intent / risk / reason / enforce 取自规则行。',
+      'hint.groovy': 'Groovy 脚本实现 <code>decide(ctx)</code>，返回 <code>true</code>（命中）/ <code>false</code>（未命中）。可用 <code>ctx.listMatch(name)</code>、<code>ctx.listMatch(name, value)</code>、<code>ctx.getCumulative(name)</code>、<code>ctx.var(\'logical\')</code>。命中后 intent / risk / reason / enforce 取自规则行。',
 
       // Lua hint
-      'hint.lua': 'Lua 脚本实现 {0}，返回 boolean。可用全局 {1}、{2}、{3}。',
+      'hint.lua': 'Lua 脚本实现 <code>decide(ctx)</code>，返回 boolean。可用全局 <code>listMatch(name, value)</code>、<code>getCumulative(name)</code>、<code>ctx.var(\'logical\')</code>。',
 
       // Prompt hint
-      'hint.prompt': '填写{0}（保存后进入 engine【安全规则矩阵】，由 1B 模型判定 {1}）。仅需配置 {2}；无需名单/累计等触发条件表单。',
+      'hint.prompt': '填写<strong>自然语言描述</strong>（保存后进入 engine【安全规则矩阵】，由 1B 模型判定 <code>triggered_id</code>）。仅需配置 <code>bind_scope</code>；无需名单/累计等触发条件表单。',
 
       // Edge DSL hint
-      'hint.edge-dsl': '端 L0 关键词规则：{0} + {1}。简单模式用表单；高级模式直接编辑 JSON body。',
+      'hint.edge-dsl': '端 L0 关键词规则：<code>list_type</code> + <code>keywords</code>。简单模式用表单；高级模式直接编辑 JSON body。',
 
       // DLP DSL hint
-      'hint.dlp-dsl': '端 DLP 脱敏规则：检测 PII 实体并替换占位符（{0} 仅检测不脱敏）。{1} 固定 {2}，不参与 ActionMerge。',
+      'hint.dlp-dsl': '端 DLP 脱敏规则：检测 PII 实体并替换占位符（<code>dry_run</code> 仅检测不脱敏）。<code>intent_action</code> 固定 <code>allow</code>，不参与 ActionMerge。',
 
       // Rules hint
-      'hint.rules': '新建规则默认为 {0}（不进执行面）；保存后请到左侧「{1}」点 {2} 进入 {3} 观测。停用后可 {4} 再编辑。管/云 {5} / {6} / {7} 可配 {8}（含 Route）；{9} 用关键词表单 + {10} / {11}。',
+      'hint.rules': '新建规则默认为 <code>draft</code>（不进执行面）；保存后请到左侧「<strong>策略上线</strong>」点 <code>上线</code> 进入 <code>dry_run</code> 观测。停用后可 <code>恢复草稿</code> 再编辑。管/云 <code>prompt</code> / <code>lua</code> / <code>groovy</code> 可配 <code>bind_scope</code>（含 Route）；<strong>端 edge</strong> 用关键词表单 + <code>global</code> / <code>service(app_ids)</code>。',
     },
 
     en: {
@@ -589,7 +589,7 @@
 
       // Tenants
       'tenants.title': 'Tenants & API Credentials',
-      'tenants.desc': 'Roles: {0} (Edge manifest + read-only), {1} (write/rollout/publish/tenant keys), {2} (tenant management). When auth is enabled ({3}), fill in API Key in the top bar.',
+      'tenants.desc': 'Roles: <code>tenant_viewer</code> (Edge manifest + read-only), <code>tenant_admin</code> (write/rollout/publish/tenant keys), <code>platform_admin</code> (tenant management). When auth is enabled (<code>VIRBIUS_API_KEY_AUTH_ENABLED=true</code>), fill in API Key in the top bar.',
       'tenants.placeholder-id': 'tenant_id (lowercase)',
       'tenants.placeholder-name': 'Display name',
       'tenants.btn-create': 'Create Tenant',
@@ -615,7 +615,7 @@
 
       // Lists
       'lists.title': 'Named Lists',
-      'lists.desc': 'Lists define {0} + dimension + plain values; block/allow is determined by script rules {1} + rule {2} / {3}. For Header/Query matching: select dimension {4} (e.g. {5}), fill plain values (e.g. {6}), write script {7}. {8}: {9} / {10} → memory (gateway JSON + Engine reload); {11} / {12} / {13} → Redis ZSET (supports per-entry expiry). Memory lists have a{14}limit of 1000{15}; after saving, gateway artifacts, Redis and Engine are auto-refreshed.',
+      'lists.desc': 'Lists define <code>list_name</code> + dimension + plain values; block/allow is determined by script rules <code>listMatch(...)</code> + rule row <code>intent_action</code> / <code>risk_score</code>. For Header/Query matching: select dimension <code>var:logical_variable</code> (e.g. <code>var:app_id</code>), fill plain values (e.g. <code>evil</code>), write script <code>listMatch(\'list\', ctx.var(\'app_id\'))</code>. <strong>Storage</strong>: <code>keyword</code> / <code>ip_cidr</code> → memory (gateway JSON + Engine reload); <code>user_id</code> / <code>device_id</code> / <code>var:*</code> → Redis ZSET (supports per-entry expiry). Memory lists have a<strong>limit of 1000 active entries</strong>; after saving, gateway artifacts, Redis and Engine are auto-refreshed.',
       'lists.placeholder-name': 'list_name',
       'lists.dim-logical': 'Logical Variable',
       'lists.placeholder-remark-list': 'List remark',
@@ -650,7 +650,7 @@
 
       // Cumulatives
       'cum.title': 'Cumulatives (tb_cumulative)',
-      'cum.desc': 'Define sliding windows and default counting dimensions (CounterStore); refreshes gateway artifacts on save. Create {0} in "Rules", reference {1}, configure {2} (threshold/compare) plus reason/risk/intent. Use{3}different{4}{5} for Global vs Route rate limiting. For Header/Query counting: select dimension {6} + logical variable (configure in Bindings first, e.g. {7} ← {8}).',
+      'cum.desc': 'Define sliding windows and default counting dimensions (CounterStore); refreshes gateway artifacts on save. Create <code>runtime=cumulative</code> in "Rules", reference <code>cumulative_name</code>, configure <code>condition</code> (threshold/compare) plus reason/risk/intent. Use<strong>different</strong> <code>cumulative_name</code> for Global vs Route rate limiting. For Header/Query counting: select dimension <code>var</code> + logical variable (configure in Bindings first, e.g. <code>app_id</code> ← <code>X-App-Id</code>).',
       'cum.btn-new': 'New Cumulative',
       'cum.btn-refresh': 'Refresh List',
       'cum.header-name': 'Name',
@@ -669,7 +669,7 @@
       'cum.rolling-hour': 'Hours',
       'cum.label-duration': 'Duration',
       'cum.label-timezone': 'Timezone',
-      'cum.var-hint': 'var dimension reads from {0} in Context Bindings; unmapped vars skip ingest/evaluation.',
+      'cum.var-hint': 'var dimension reads from <code>vars</code> in Context Bindings; unmapped vars skip ingest/evaluation.',
       'cum.btn-save': 'Save',
       'cum.btn-delete': 'Delete',
       'cum.no-mapping': '— No mapping —',
@@ -683,7 +683,7 @@
 
       // Bindings
       'bind.title': 'Context Bindings',
-      'bind.desc': 'Logical name → HTTP source; policies and lists only reference logical names. If wire is left empty, it defaults to the logical name (e.g. logical name {0} → query parameter {0}).',
+      'bind.desc': 'Logical name → HTTP source; policies and lists only reference logical names. If wire is left empty, it defaults to the logical name (e.g. logical name <code>debug_flag</code> → query parameter <code>debug_flag</code>).',
       'bind.header-logical': 'Logical Name',
       'bind.header-from': 'Source',
       'bind.header-wire': 'wire name / field',
@@ -694,7 +694,7 @@
 
       // Scene Registry
       'sr.title': 'Scene Registry',
-      'sr.desc': 'Each {0} belongs to a unique {1}; one app can have multiple scenes. At runtime, the scene is resolved by {2} (see {3} in Bindings). {4} must be covered by Gateway Routes (supports {5}). Adding/removing/changing fail switches{6}writes to DB; click{7}to push artifacts.',
+      'sr.desc': 'Each <code>scene_id</code> belongs to a unique <code>app_id</code>; one app can have multiple scenes. At runtime, the scene is resolved by <code>(app_id, uri, match)</code> (see <code>app_id</code> in Bindings). <strong>uris</strong> must be covered by Gateway Routes (supports <code>/path/*</code>). <strong>Adding/removing/changing fail switches</strong> writes to DB; click<strong>Sync to Gateway</strong>to push artifacts.',
       'sr.header-scene': 'scene_id',
       'sr.header-app': 'app_id',
       'sr.header-default': 'default',
@@ -716,7 +716,7 @@
 
       // Gateway Routes
       'gw.title': 'Gateway Routes',
-      'gw.desc': 'Define which URIs enter gateway evaluation (exact path or trailing {0} prefix, e.g. {1}); scenes are resolved by Scene Registry. Save then "Sync to Gateway" to push artifacts.',
+      'gw.desc': 'Define which URIs enter gateway evaluation (exact path or trailing <code>*</code> prefix, e.g. <code>/v1/chat/*</code>); scenes are resolved by Scene Registry. Save then "Sync to Gateway" to push artifacts.',
       'gw.header-uri': 'uri',
       'gw.header-methods': 'methods',
       'gw.placeholder-uri': '/v1/chat/* or /v1/chat/completions',
@@ -751,7 +751,7 @@
       'rules.action-type': 'Action Type',
       'rules.stream-key': 'Stream Key',
       'rules.webhook-url': 'URL',
-      'rules.msg-content': 'Message Content (supports {0} placeholders)',
+      'rules.msg-content': 'Message Content (supports <code>&#123;&#123;variable}}</code> placeholders)',
       'rules.avail-vars': 'Available Variables',
       'rules.live-preview': 'Live Preview',
       'rules.async-hint': 'Click a variable name to insert at cursor. Async rule intent_action is fixed to allow; only executes the async action on hit.',
@@ -837,9 +837,9 @@
 
       // Rollout
       'rollout.title': 'Rollout',
-      'rollout.desc': 'Draft rules must first {0} to enter dry_run; once criteria are met, click {1} (backend still validates gates, force bypass available). Leave version blank to auto-increment patch from last release. {2}Dashboard auto-refreshes every 5 seconds.',
+      'rollout.desc': 'Draft rules must first <code>Publish</code> to enter dry_run; once criteria are met, click <code>Upgrade / Next Step</code> (backend still validates gates, force bypass available). Leave version blank to auto-increment patch from last release. <strong>Editing and rollout operations only write to DB; you must click "Deploy" to push to the execution plane.</strong>Dashboard auto-refreshes every 5 seconds.',
       'rollout.machine-deploy-title': 'Canary Deploy',
-      'rollout.machine-deploy-desc': 'Pool machines by {0}: {1}. Edge pools by {2} CRC32C hash, sharing the same canary% as engine/gateway.',
+      'rollout.machine-deploy-desc': 'Pool machines by <code>bucket</code>: <code>PENDING→CANARY(5/20/50)→FULL(100)→FINALIZED</code>. Edge pools by <code>device_id</code> CRC32C hash, sharing the same canary% as engine/gateway.',
       'rollout.desc-placeholder': 'Change description',
       'rollout.btn-prepare-engine': '📦 Prepare Engine',
       'rollout.btn-prepare-gateway': '📦 Prepare Gateway',
@@ -996,7 +996,7 @@
 
       // Audit Center
       'ac.title': 'Audit Center',
-      'ac.desc': 'Query {0} by {1} (review/block/captcha, etc.) and allow log files. Allow requests are not persisted to DB, only written as JSONL files.',
+      'ac.desc': 'Query <code>tb_audit_events</code> by <code>trace_id</code> (review/block/captcha, etc.) and allow log files. Allow requests are not persisted to DB, only written as JSONL files.',
       'ac.search-hint': 'Enter trace_id',
       'ac.btn-search': 'Search',
       'ac.tb-audit-title': 'tb_audit_events ({0})',
@@ -1046,7 +1046,7 @@
       'dlp.custom-regex': 'custom_regex',
       'dlp.priority': 'priority',
       'dlp.pattern-label': 'pattern (required for custom_regex)',
-      'dlp.mask-template': 'mask_template (optional, with {0})',
+      'dlp.mask-template': 'mask_template (optional, with <code>{seq}</code>)',
       'dlp.placeholder-mask': '{{VIRBIUS_PHONE_CN_{seq}}}',
 
       // Rollout time
@@ -1072,25 +1072,25 @@
       'gw.scope.edge-service': 'service (specific app_ids)',
 
       // Bind scope hint
-      'gw.scope-hint': 'Route: exact scene match (scenes must be registered in SceneRegistry). Service binds {0} (from context_bindings {1}). {2}: {3} / {4} only; per-App manifest on publish, SDK does not do runtime bind.',
+      'gw.scope-hint': 'Route: exact scene match (scenes must be registered in SceneRegistry). Service binds <code>app_ids</code> (from context_bindings <code>app_id</code>). <strong>Edge</strong>: <code>global</code> / <code>service(app_ids)</code> only; per-App manifest on publish, SDK does not do runtime bind.',
 
       // Groovy hint
-      'hint.groovy': 'Groovy script implements {0}, returns {1} (hit) / {2} (no hit). Available: {3}, {4}, {5}, {6}. intent/risk/reason/enforce come from the rule definition.',
+      'hint.groovy': 'Groovy script implements <code>decide(ctx)</code>, returns <code>true</code> (hit) / <code>false</code> (no hit). Available: <code>ctx.listMatch(name)</code>, <code>ctx.listMatch(name, value)</code>, <code>ctx.getCumulative(name)</code>, <code>ctx.var(\'logical\')</code>. intent/risk/reason/enforce come from the rule definition.',
 
       // Lua hint
-      'hint.lua': 'Lua script implements {0}, returns boolean. Available globals: {1}, {2}, {3}.',
+      'hint.lua': 'Lua script implements <code>decide(ctx)</code>, returns boolean. Available globals: <code>listMatch(name, value)</code>, <code>getCumulative(name)</code>, <code>ctx.var(\'logical\')</code>.',
 
       // Prompt hint
-      'hint.prompt': 'Write a{0} (on save, enters Engine "Security Rule Matrix", judged by 1B model for {1}). Only {2} needs configuration; no list/cumulative conditions needed.',
+      'hint.prompt': 'Write a<strong>natural language description</strong> (on save, enters Engine "Security Rule Matrix", judged by 1B model for <code>triggered_id</code>). Only <code>bind_scope</code> needs configuration; no list/cumulative conditions needed.',
 
       // Edge DSL hint
-      'hint.edge-dsl': 'Edge L0 keyword rule: {0} + {1}. Use form in simple mode; edit JSON body directly in advanced mode.',
+      'hint.edge-dsl': 'Edge L0 keyword rule: <code>list_type</code> + <code>keywords</code>. Use form in simple mode; edit JSON body directly in advanced mode.',
 
       // DLP DSL hint
-      'hint.dlp-dsl': 'Edge DLP masking rule: detects PII entities and replaces placeholders ({0} detects only, does not mask). {1} is fixed to {2}, does not participate in ActionMerge.',
+      'hint.dlp-dsl': 'Edge DLP masking rule: detects PII entities and replaces placeholders (<code>dry_run</code> detects only, does not mask). <code>intent_action</code> is fixed to <code>allow</code>, does not participate in ActionMerge.',
 
       // Rules hint
-      'hint.rules': 'New rules default to {0} (not in execution plane); after saving, go to "{1}" on the left and click {2} to enter {3} for observation. After disabling, click {4} to edit again. Gateway/Cloud {5} / {6} / {7} support {8} (including Route); {9} uses keyword form + {10} / {11}.',
+      'hint.rules': 'New rules default to <code>draft</code> (not in execution plane); after saving, go to "<strong>Rollout</strong>" on the left and click <code>Publish</code> to enter <code>dry_run</code> for observation. After disabling, click <code>Restore Draft</code> to edit again. Gateway/Cloud <code>prompt</code> / <code>lua</code> / <code>groovy</code> support <code>bind_scope</code> (including Route); <strong>Edge</strong> uses keyword form + <code>global</code> / <code>service(app_ids)</code>.',
     }
   };
 
@@ -1149,6 +1149,25 @@
           el.innerHTML = __(key);
         } else {
           el.textContent = __(key);
+        }
+      }
+    });
+    document.querySelectorAll('[data-i18n-html]').forEach(el => {
+      const txt = __(el.dataset.i18nHtml);
+      const children = Array.from(el.children);
+      if (children.length === 0) {
+        el.innerHTML = txt;
+      } else {
+        const parts = txt.split(/(\{\d+\})/);
+        el.innerHTML = '';
+        for (const part of parts) {
+          const m = part.match(/^\{(\d+)\}$/);
+          if (m) {
+            const idx = parseInt(m[1], 10);
+            if (idx < children.length) el.appendChild(children[idx]);
+          } else {
+            el.appendChild(document.createTextNode(part));
+          }
         }
       }
     });

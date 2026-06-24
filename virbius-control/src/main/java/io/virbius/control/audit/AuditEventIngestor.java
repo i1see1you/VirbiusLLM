@@ -1,6 +1,7 @@
 package io.virbius.control.audit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.virbius.control.config.SqlDialectConfig;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -10,10 +11,25 @@ import org.springframework.stereotype.Component;
 public class AuditEventIngestor {
 
     private final JdbcTemplate jdbc;
+    private final SqlDialectConfig dialect;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public AuditEventIngestor(JdbcTemplate jdbc) {
+    private final String insertIgnorePrefix;
+    private final String hourExpr;
+
+    public AuditEventIngestor(JdbcTemplate jdbc, SqlDialectConfig dialect) {
         this.jdbc = jdbc;
+        this.dialect = dialect;
+        if (dialect.isMysql()) {
+            this.insertIgnorePrefix = "INSERT IGNORE INTO";
+            this.hourExpr = "DATE_FORMAT(NOW(), '%Y-%m-%d %H:00:00')";
+        } else if (dialect.isPostgresql()) {
+            this.insertIgnorePrefix = "INSERT INTO";
+            this.hourExpr = "DATE_TRUNC('hour', NOW())";
+        } else {
+            this.insertIgnorePrefix = "INSERT OR IGNORE INTO";
+            this.hourExpr = "strftime('%Y-%m-%d %H:00:00', 'now')";
+        }
     }
 
     public IngestResult ingestEvent(Map<String, Object> event) {
@@ -24,15 +40,14 @@ public class AuditEventIngestor {
                 return IngestResult.rejected("missing trace_id or tenant_id");
             }
             String eventId = traceId + ":" + str(event.get("rule_id")) + ":" + str(event.get("intercepted_at"));
-            int updated = jdbc.update(
-                    """
-                    INSERT OR IGNORE INTO tb_audit_events (
-                      event_id, trace_id, trace_id_source, tenant_id, scene, layer,
-                      rule_id, rule_revision, reason_code, effective_action, max_risk_score,
-                      rollout_state, canary_percent, in_canary_bucket, degraded, sampled_allow,
-                      intercepted_at, user_id, device_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
+            String insertSql = insertIgnorePrefix
+                    + " INTO tb_audit_events ("
+                    + "  event_id, trace_id, trace_id_source, tenant_id, scene, layer,"
+                    + "  rule_id, rule_revision, reason_code, effective_action, max_risk_score,"
+                    + "  rollout_state, canary_percent, in_canary_bucket, degraded, sampled_allow,"
+                    + "  intercepted_at, user_id, device_id"
+                    + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            int updated = jdbc.update(insertSql,
                     eventId,
                     traceId,
                     str(event.get("trace_id_source")),
@@ -95,13 +110,15 @@ public class AuditEventIngestor {
             }
         }
         int increment = (int) Math.max(1, Math.round(weight));
-        jdbc.update(
-                """
-                INSERT INTO tb_tenant_request_stats_1h (tenant_id, scene, layer, hour_bucket, cnt_total)
-                VALUES (?, ?, ?, strftime('%Y-%m-%d %H:00:00', 'now'), ?)
-                ON CONFLICT(tenant_id, scene, layer, hour_bucket) DO UPDATE SET
-                  cnt_total = cnt_total + excluded.cnt_total
-                """,
+        String onConflict;
+        if (dialect.isMysql()) {
+            onConflict = "ON DUPLICATE KEY UPDATE cnt_total = cnt_total + VALUES(cnt_total)";
+        } else {
+            onConflict = "ON CONFLICT(tenant_id, scene, layer, hour_bucket) DO UPDATE SET cnt_total = cnt_total + excluded.cnt_total";
+        }
+        String sql = "INSERT INTO tb_tenant_request_stats_1h (tenant_id, scene, layer, hour_bucket, cnt_total) "
+                + "VALUES (?, ?, ?, " + hourExpr + ", ?) " + onConflict;
+        jdbc.update(sql,
                 tenantId,
                 scene.isBlank() ? "default" : scene,
                 layer.isBlank() ? "edge" : layer,

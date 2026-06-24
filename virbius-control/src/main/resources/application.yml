@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 logging:
   file:
@@ -12,31 +12,20 @@ logging:
 spring:
   application:
     name: virbius-control
-  datasource:
-    # 任意 JDBC 数据库：配置 url + driver-class-name，并把对应驱动 jar 加入 classpath
-    url: ${VIRBIUS_JDBC_URL:jdbc:sqlite:${virbius.data-dir:./data}/virbius-control.db}
-    driver-class-name: ${VIRBIUS_JDBC_DRIVER:org.sqlite.JDBC}
-    # username / password 按目标库填写，例如 PostgreSQL：
-    # url: jdbc:postgresql://127.0.0.1:5432/virbius
-    # driver-class-name: org.postgresql.Driver
-    # username: virbius
-    # password: virbius
-  sql:
-    init:
-      mode: always
-      schema-locations: classpath:db/schema.sql
-      data-locations: classpath:db/seed.sql
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
 
 virbius:
   data-dir: ${VIRBIUS_DATA_DIR:./data}
-  security:
-    api-key:
-      enabled: ${VIRBIUS_API_KEY_AUTH_ENABLED:false}
+  redis:
+    url: ${VIRBIUS_REDIS_URL:redis://127.0.0.1:6379}
+  engine:
+    base-url: ${VIRBIUS_ENGINE_URL:http://127.0.0.1:8082}
   gateway:
     artifact:
       enabled: ${VIRBIUS_GATEWAY_ARTIFACT_ENABLED:true}
-      storage: ${VIRBIUS_GATEWAY_ARTIFACT_STORAGE:redis}
       local-fallback: ${VIRBIUS_GATEWAY_ARTIFACT_LOCAL_FALLBACK:false}
+      storage: ${VIRBIUS_GATEWAY_ARTIFACT_STORAGE:redis}
       redis:
         blob-prefix: virbius:artifacts:gateway
         pointer-prefix: virbius:config:gateway
@@ -50,15 +39,11 @@ virbius:
         access-key: ${VIRBIUS_GATEWAY_OSS_ACCESS_KEY:}
         secret-key: ${VIRBIUS_GATEWAY_OSS_SECRET_KEY:}
         authorization-header: ${VIRBIUS_GATEWAY_OSS_AUTH_HEADER:}
-  redis:
-    url: ${VIRBIUS_REDIS_URL:redis://127.0.0.1:6379}
   lists:
     redis:
       enabled: true
       key-prefix: virbius:lists
       sweep-cron: "0 0 3 * * *"
-  engine:
-    base-url: ${VIRBIUS_ENGINE_URL:http://127.0.0.1:8082}
   audit:
     allow-log-path: ${VIRBIUS_AUDIT_ALLOW_PATH:${virbius.data-dir}/audit-allow.jsonl}
     gateway-allow-log-path: ${VIRBIUS_GATEWAY_AUDIT_ALLOW_PATH:${virbius.data-dir}/gateway-audit-allow.jsonl}
@@ -66,24 +51,15 @@ virbius:
 
 audit:
   publish:
-    backend: redis-stream
     async: true
     queue-max: 2000
     flush-batch-size: 64
     flush-interval-ms: 100
-    redis:
-      stream-key: virbius:audit:events
   ingest:
-    enabled: true
-    backend: redis-stream
     poll-ms: 1000
     batch-size: 256
-    redis:
-      stream-key: virbius:audit:events
     consumer-group: virbius-audit-ingest
     http:
-      enabled: true
-      token: ${AUDIT_INGEST_TOKEN:}
       max-batch-size: 100
   edge:
     ingest-url: ${VIRBIUS_AUDIT_INGEST_URL:http://127.0.0.1:8080/api/v1/internal/audit/events}

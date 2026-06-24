@@ -1,6 +1,7 @@
 package io.virbius.control.audit;
 
 import io.virbius.control.config.ControlJedisPools;
+import io.virbius.control.config.SqlDialectConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -12,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import redis.clients.jedis.Jedis;
@@ -21,6 +23,7 @@ import redis.clients.jedis.params.XReadParams;
 import redis.clients.jedis.resps.StreamEntry;
 
 @Service
+@Profile({"dev", "staging"})
 public class AuditIngestService {
 
     private static final Logger log = LoggerFactory.getLogger(AuditIngestService.class);
@@ -29,6 +32,7 @@ public class AuditIngestService {
     private final Optional<JedisPool> pool;
     private final AuditEventIngestor ingestor;
     private final AuditIngestCheckpointRepository checkpointRepository;
+    private final SqlDialectConfig dialect;
     private final String streamKey;
     private final boolean enabled;
     private final int batchSize;
@@ -41,6 +45,7 @@ public class AuditIngestService {
             ControlJedisPools jedisPools,
             AuditEventIngestor ingestor,
             AuditIngestCheckpointRepository checkpointRepository,
+            SqlDialectConfig dialectConfig,
             @Value("${audit.ingest.enabled:true}") boolean enabled,
             @Value("${audit.ingest.redis.stream-key:virbius:audit:events}") String streamKey,
             @Value("${audit.ingest.batch-size:256}") int batchSize,
@@ -48,6 +53,7 @@ public class AuditIngestService {
         this.pool = jedisPools.pool();
         this.ingestor = ingestor;
         this.checkpointRepository = checkpointRepository;
+        this.dialect = dialectConfig;
         this.enabled = enabled;
         this.streamKey = streamKey;
         this.batchSize = batchSize > 0 ? batchSize : 256;
@@ -140,13 +146,22 @@ public class AuditIngestService {
                     """,
                     tenantId);
         }
+        String timeExpr;
+        Object timeArg;
+        if (dialect.isMysql()) {
+            timeExpr = "DATE_SUB(NOW(), INTERVAL ? HOUR)";
+            timeArg = hours;
+        } else if (dialect.isPostgresql()) {
+            timeExpr = "NOW() - INTERVAL '?' HOUR";
+            timeArg = hours;
+        } else {
+            timeExpr = "datetime('now', ?)";
+            timeArg = "-" + hours + " hours";
+        }
         return jdbcCount(
-                """
-                SELECT COUNT(*) FROM tb_audit_events
-                WHERE tenant_id = ? AND intercepted_at >= datetime('now', ?)
-                """,
+                "SELECT COUNT(*) FROM tb_audit_events WHERE tenant_id = ? AND intercepted_at >= " + timeExpr,
                 tenantId,
-                "-" + hours + " hours");
+                timeArg);
     }
 
     private Long jdbcCount(String sql, Object... args) {

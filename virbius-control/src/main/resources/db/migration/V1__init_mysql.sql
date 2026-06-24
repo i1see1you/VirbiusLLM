@@ -1,13 +1,13 @@
 -- virbius-control 表结构（PostgreSQL / MySQL / SQLite 通用 JDBC 方言）
 -- 时间列用 TIMESTAMP；主键/短文本用 VARCHAR；JSON 用 TEXT
 
-CREATE TABLE IF NOT EXISTS tb_tenants (
+CREATE TABLE tb_tenants (
     tenant_id   VARCHAR(64) PRIMARY KEY,
     name        VARCHAR(255) NOT NULL,
     created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS tb_bundles (
+CREATE TABLE tb_bundles (
     tenant_id       VARCHAR(64) NOT NULL,
     bundle_id       VARCHAR(128) NOT NULL,
     version         VARCHAR(64) NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS tb_bundles (
     PRIMARY KEY (tenant_id, bundle_id, version)
 );
 
-CREATE TABLE IF NOT EXISTS tb_rules_current (
+CREATE TABLE tb_rules_current (
     tenant_id         VARCHAR(64) NOT NULL,
     rule_id           VARCHAR(128) NOT NULL,
     current_revision  INTEGER NOT NULL,
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS tb_rules_current (
     PRIMARY KEY (tenant_id, rule_id)
 );
 
-CREATE TABLE IF NOT EXISTS tb_rule_history (
+CREATE TABLE tb_rule_history (
     tenant_id       VARCHAR(64) NOT NULL,
     rule_id         VARCHAR(128) NOT NULL,
     rule_revision   INTEGER NOT NULL,
@@ -65,16 +65,16 @@ CREATE TABLE IF NOT EXISTS tb_rule_history (
     )
 );
 
-CREATE INDEX IF NOT EXISTS idx_tb_rule_history_tenant_layer
+CREATE INDEX idx_tb_rule_history_tenant_layer
     ON tb_rule_history (tenant_id, layer);
 
-CREATE INDEX IF NOT EXISTS idx_tb_rule_history_effective
+CREATE INDEX idx_tb_rule_history_effective
     ON tb_rule_history (tenant_id, rule_id, effective_to);
 
 -- risk_score：0=放行，1–99=灰区，100=应拦截
 -- 旧库请 VIRBIUS_REBUILD_DB=1 重建
 
-CREATE TABLE IF NOT EXISTS tb_access_list (
+CREATE TABLE tb_access_list (
     tenant_id    VARCHAR(64) NOT NULL,
     polarity     VARCHAR(16) NOT NULL,
     dimension    VARCHAR(32) NOT NULL,
@@ -85,11 +85,11 @@ CREATE TABLE IF NOT EXISTS tb_access_list (
     CHECK (dimension IN ('keyword', 'user_id', 'device_id', 'ip_cidr', 'var'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_tb_access_list_tenant
+CREATE INDEX idx_tb_access_list_tenant
     ON tb_access_list (tenant_id, polarity, dimension);
 
 -- Named access lists (list_name model; allow/deny via list_match rule risk_score)
-CREATE TABLE IF NOT EXISTS tb_access_list_meta (
+CREATE TABLE tb_access_list_meta (
     tenant_id    VARCHAR(64) NOT NULL,
     list_name    VARCHAR(128) NOT NULL,
     dimension    VARCHAR(32) NOT NULL,
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS tb_access_list_meta (
     PRIMARY KEY (tenant_id, list_name)
 );
 
-CREATE TABLE IF NOT EXISTS tb_access_list_entry (
+CREATE TABLE tb_access_list_entry (
     tenant_id    VARCHAR(64) NOT NULL,
     list_name    VARCHAR(128) NOT NULL,
     value        VARCHAR(512) NOT NULL,
@@ -109,11 +109,11 @@ CREATE TABLE IF NOT EXISTS tb_access_list_entry (
     PRIMARY KEY (tenant_id, list_name, value)
 );
 
-CREATE INDEX IF NOT EXISTS idx_tb_access_list_entry_tenant
+CREATE INDEX idx_tb_access_list_entry_tenant
     ON tb_access_list_entry (tenant_id, list_name);
 
 -- Cumulative counter definitions (window + dimension only; conditions on rules)
-CREATE TABLE IF NOT EXISTS tb_cumulative (
+CREATE TABLE tb_cumulative (
     tenant_id              VARCHAR(64) NOT NULL,
     cumulative_name        VARCHAR(128) NOT NULL,
     description            VARCHAR(512),
@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS tb_cumulative (
     CHECK (status IN ('active', 'disabled'))
 );
 
-CREATE TABLE IF NOT EXISTS tb_tenant_rollout_policy (
+CREATE TABLE tb_tenant_rollout_policy (
     tenant_id                   VARCHAR(64) PRIMARY KEY,
     auto_mode                   VARCHAR(16) NOT NULL DEFAULT 'assisted',
     canary_ladder_json          TEXT NOT NULL DEFAULT '[5,20,50,100]',
@@ -148,7 +148,7 @@ CREATE TABLE IF NOT EXISTS tb_tenant_rollout_policy (
     updated_at                  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS tb_rule_ladder_state (
+CREATE TABLE tb_rule_ladder_state (
     tenant_id          VARCHAR(64) NOT NULL,
     rule_id            VARCHAR(128) NOT NULL,
     ladder_status      VARCHAR(16) NOT NULL DEFAULT 'idle',
@@ -157,8 +157,8 @@ CREATE TABLE IF NOT EXISTS tb_rule_ladder_state (
     PRIMARY KEY (tenant_id, rule_id)
 );
 
-CREATE TABLE IF NOT EXISTS tb_rule_rollout_event (
-    id               INTEGER PRIMARY KEY,
+CREATE TABLE tb_rule_rollout_event (
+    id               INTEGER PRIMARY KEY AUTO_INCREMENT,
     tenant_id        VARCHAR(64) NOT NULL,
     rule_id          VARCHAR(128) NOT NULL,
     rule_revision    INTEGER NOT NULL,
@@ -169,8 +169,8 @@ CREATE TABLE IF NOT EXISTS tb_rule_rollout_event (
     effective_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS tb_rule_gate_log (
-    id                    INTEGER PRIMARY KEY,
+CREATE TABLE tb_rule_gate_log (
+    id                    INTEGER PRIMARY KEY AUTO_INCREMENT,
     tenant_id             VARCHAR(64) NOT NULL,
     rule_id               VARCHAR(128) NOT NULL,
     from_state            VARCHAR(16),
@@ -183,8 +183,8 @@ CREATE TABLE IF NOT EXISTS tb_rule_gate_log (
     created_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS tb_audit_events (
-    id                INTEGER PRIMARY KEY,
+CREATE TABLE tb_audit_events (
+    id                INTEGER PRIMARY KEY AUTO_INCREMENT,
     event_id          VARCHAR(128),
     trace_id          VARCHAR(128) NOT NULL,
     trace_id_source   VARCHAR(16),
@@ -207,18 +207,18 @@ CREATE TABLE IF NOT EXISTS tb_audit_events (
     created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_tb_audit_events_rule ON tb_audit_events (tenant_id, rule_id, intercepted_at);
+CREATE INDEX idx_tb_audit_events_rule ON tb_audit_events (tenant_id, rule_id, intercepted_at);
 
-CREATE TABLE IF NOT EXISTS tb_audit_ingest_checkpoint (
+CREATE TABLE tb_audit_ingest_checkpoint (
     stream_key      VARCHAR(128) PRIMARY KEY,
     last_entry_id   VARCHAR(64) NOT NULL,
     updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_audit_tenant_rule_time
+CREATE INDEX idx_audit_tenant_rule_time
   ON tb_audit_events(tenant_id, rule_id, intercepted_at);
 
-CREATE TABLE IF NOT EXISTS tb_rule_metrics_1h (
+CREATE TABLE tb_rule_metrics_1h (
     tenant_id           VARCHAR(64) NOT NULL,
     rule_id             VARCHAR(128) NOT NULL,
     hour_bucket         TIMESTAMP NOT NULL,
@@ -233,7 +233,7 @@ CREATE TABLE IF NOT EXISTS tb_rule_metrics_1h (
     PRIMARY KEY (tenant_id, rule_id, hour_bucket)
 );
 
-CREATE TABLE IF NOT EXISTS tb_tenant_request_stats_1h (
+CREATE TABLE tb_tenant_request_stats_1h (
     tenant_id    VARCHAR(64) NOT NULL,
     scene        VARCHAR(64) NOT NULL,
     layer        VARCHAR(16) NOT NULL,
@@ -242,7 +242,7 @@ CREATE TABLE IF NOT EXISTS tb_tenant_request_stats_1h (
     PRIMARY KEY (tenant_id, scene, layer, hour_bucket)
 );
 
-CREATE TABLE IF NOT EXISTS tb_edge_artifact_meta (
+CREATE TABLE tb_edge_artifact_meta (
     tenant_id         VARCHAR(64) NOT NULL,
     app_id            VARCHAR(128) NOT NULL,
     pool              VARCHAR(16) NOT NULL DEFAULT 'stable',
@@ -252,7 +252,7 @@ CREATE TABLE IF NOT EXISTS tb_edge_artifact_meta (
     PRIMARY KEY (tenant_id, app_id, pool)
 );
 
-CREATE TABLE IF NOT EXISTS tb_tenant_api_credential (
+CREATE TABLE tb_tenant_api_credential (
     credential_id   VARCHAR(36)  NOT NULL,
     tenant_id       VARCHAR(64)  NOT NULL,
     role            VARCHAR(32)  NOT NULL,
@@ -270,10 +270,10 @@ CREATE TABLE IF NOT EXISTS tb_tenant_api_credential (
     CHECK (status IN ('active', 'revoked'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_tb_tenant_api_cred_tenant
+CREATE INDEX idx_tb_tenant_api_cred_tenant
     ON tb_tenant_api_credential (tenant_id, status);
 
-CREATE TABLE IF NOT EXISTS tb_deploy_state (
+CREATE TABLE tb_deploy_state (
     tenant_id   VARCHAR(64) NOT NULL,
     layer       VARCHAR(16) NOT NULL,
     deployed_at TIMESTAMP NOT NULL,
@@ -282,7 +282,7 @@ CREATE TABLE IF NOT EXISTS tb_deploy_state (
     CHECK (layer IN ('gateway', 'cloud', 'edge'))
 );
 
-CREATE TABLE IF NOT EXISTS tb_bundle_releases (
+CREATE TABLE tb_bundle_releases (
     tenant_id        VARCHAR(64) NOT NULL,
     bundle_id        VARCHAR(128) NOT NULL,
     version          VARCHAR(64) NOT NULL,
@@ -294,7 +294,7 @@ CREATE TABLE IF NOT EXISTS tb_bundle_releases (
     CHECK (status IN ('deploying', 'active', 'superseded', 'failed'))
 );
 
-CREATE TABLE IF NOT EXISTS tb_bundle_active (
+CREATE TABLE tb_bundle_active (
     tenant_id        VARCHAR(64) NOT NULL,
     bundle_id        VARCHAR(128) NOT NULL,
     release_version  VARCHAR(64) NOT NULL,
@@ -302,7 +302,7 @@ CREATE TABLE IF NOT EXISTS tb_bundle_active (
     PRIMARY KEY (tenant_id, bundle_id)
 );
 
-CREATE TABLE IF NOT EXISTS tb_bundle_staging (
+CREATE TABLE tb_bundle_staging (
     tenant_id        VARCHAR(64) NOT NULL,
     bundle_id        VARCHAR(128) NOT NULL,
     layer            VARCHAR(16) NOT NULL,
@@ -316,7 +316,7 @@ CREATE TABLE IF NOT EXISTS tb_bundle_staging (
     CHECK (status IN ('editing', 'deploying', 'deployed'))
 );
 
-CREATE TABLE IF NOT EXISTS tb_gateway_artifact_meta (
+CREATE TABLE tb_gateway_artifact_meta (
     tenant_id              VARCHAR(64) PRIMARY KEY,
     artifact_revision      BIGINT       NOT NULL DEFAULT 0,
     access_lists_sha256    VARCHAR(64)  NOT NULL,
@@ -328,7 +328,7 @@ CREATE TABLE IF NOT EXISTS tb_gateway_artifact_meta (
 );
 
 -- Deploy rollout: machine-bucket canary deployment of a bundle release across cloud + gateway.
-CREATE TABLE IF NOT EXISTS tb_deploy_rollout (
+CREATE TABLE tb_deploy_rollout (
     deploy_id              VARCHAR(64)  PRIMARY KEY,
     tenant_id              VARCHAR(64)  NOT NULL,
     bundle_id              VARCHAR(128) NOT NULL DEFAULT 'poc-default',
@@ -352,14 +352,14 @@ CREATE TABLE IF NOT EXISTS tb_deploy_rollout (
     CHECK (state IN ('pending','canary','paused','full','edge_done','rolled_back','finalized'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_tb_deploy_rollout_tenant
+CREATE INDEX idx_tb_deploy_rollout_tenant
     ON tb_deploy_rollout (tenant_id, started_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_tb_deploy_rollout_active
+CREATE INDEX idx_tb_deploy_rollout_active
     ON tb_deploy_rollout (tenant_id, state);
 
 -- Deploy event audit log (state transitions, rule demotions, gate evaluations).
-CREATE TABLE IF NOT EXISTS tb_deploy_event (
+CREATE TABLE tb_deploy_event (
     event_id     VARCHAR(64)  PRIMARY KEY,
     deploy_id    VARCHAR(64)  NOT NULL,
     tenant_id    VARCHAR(64)  NOT NULL,
@@ -376,8 +376,8 @@ CREATE TABLE IF NOT EXISTS tb_deploy_event (
     created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_tb_deploy_event_deploy
+CREATE INDEX idx_tb_deploy_event_deploy
     ON tb_deploy_event (deploy_id, created_at);
 
-CREATE INDEX IF NOT EXISTS idx_tb_deploy_event_rule
+CREATE INDEX idx_tb_deploy_event_rule
     ON tb_deploy_event (tenant_id, rule_id);
