@@ -18,16 +18,16 @@ public class RolloutDashboardService {
     public Map<String, Object> metrics(String tenantId, String ruleId, int hours) {
         List<Map<String, Object>> series = jdbc.query(
                 """
-                SELECT hour_bucket, rollout_state, canary_percent,
+                SELECT minute_bucket, rollout_state, canary_percent,
                        cnt_review, cnt_block, cnt_captcha, cnt_allow, cnt_total_requests
-                FROM tb_rule_metrics_1h
+                FROM tb_rule_metrics_1m
                 WHERE tenant_id = ? AND rule_id = ?
-                  AND hour_bucket >= datetime('now', ?)
-                ORDER BY hour_bucket
+                  AND minute_bucket >= datetime('now', ?)
+                ORDER BY minute_bucket
                 """,
                 (rs, i) -> {
                     Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("bucket", rs.getString("hour_bucket"));
+                    row.put("bucket", rs.getString("minute_bucket"));
                     row.put("review", rs.getInt("cnt_review"));
                     row.put("block", rs.getInt("cnt_block"));
                     row.put("captcha", rs.getInt("cnt_captcha"));
@@ -217,21 +217,21 @@ public class RolloutDashboardService {
     public Map<String, Object> aggregateMetrics(String tenantId, int hours) {
         List<Map<String, Object>> series = jdbc.query(
                 """
-                SELECT hour_bucket,
+                SELECT minute_bucket,
                        SUM(cnt_review) AS cnt_review,
                        SUM(cnt_block) AS cnt_block,
                        SUM(cnt_captcha) AS cnt_captcha,
                        SUM(cnt_allow) AS cnt_allow,
                        SUM(cnt_total_requests) AS cnt_total_requests
-                FROM tb_rule_metrics_1h
+                FROM tb_rule_metrics_1m
                 WHERE tenant_id = ?
-                  AND hour_bucket >= datetime('now', ?)
-                GROUP BY hour_bucket
-                ORDER BY hour_bucket
+                  AND minute_bucket >= datetime('now', ?)
+                GROUP BY minute_bucket
+                ORDER BY minute_bucket
                 """,
                 (rs, i) -> {
                     Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("bucket", rs.getString("hour_bucket"));
+                    row.put("bucket", rs.getString("minute_bucket"));
                     row.put("review", rs.getInt("cnt_review"));
                     row.put("block", rs.getInt("cnt_block"));
                     row.put("captcha", rs.getInt("cnt_captcha"));

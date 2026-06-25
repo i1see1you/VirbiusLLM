@@ -2,15 +2,15 @@
 
 **中文:** [用户使用手册](./user-guide.md)
 
-This guide is for **app, server, and Rust client** integrators. It covers runtime integration with Virbius LLM security. For rule configuration, use the admin console (`ops.html`) and [POC-SEED-API.md](./POC-SEED-API.md).
+This guide is for **app, server, and Rust client** integrators. It covers runtime integration with Virbius LLM security. For rule configuration, use the admin console (`ops.html`) and [seed-api.md](./seed-api.md).
 
 **Related docs**
 
 | Doc | Purpose |
 |-----|---------|
 | [DESIGN.md](./DESIGN.md) | Architecture and design |
-| [POC-SEED-API.md](./POC-SEED-API.md) | Local PoC, admin APIs, curl examples |
-| [POC-REPO.md](./POC-REPO.md) | Repo layout and local startup |
+| [seed-api.md](./seed-api.md) | Local PoC, admin APIs, curl examples |
+| [repo-layout.md](./repo-layout.md) | Repo layout and local startup |
 
 ---
 
@@ -131,7 +131,7 @@ When `VIRBIUS_API_KEY_AUTH_ENABLED=true` on control:
 
 ### 3.4 Example / CI environment variables
 
-See §3.2 in the Chinese guide or [POC-SEED-API.md §6.5](./POC-SEED-API.md).
+See §3.2 in the Chinese guide or [seed-api.md §6.5](./seed-api.md).
 
 | Variable | Description |
 |----------|-------------|
@@ -364,7 +364,7 @@ See [user-guide.md §7](./user-guide.md) for a complete Rust `chat()` example.
 ## 10. Versions and contracts
 
 - SDK: `virbius-core` 0.1.x
-- Edge manifest: `manifest_version: "1"` ([POC-SEED-API.md §6](./POC-SEED-API.md))
+- Edge manifest: `manifest_version: "1"` ([seed-api.md §6](./seed-api.md))
 - Architecture: [DESIGN.md](./DESIGN.md)
 
-For integration issues, compare with `cargo run --example rust_client_demo` and curl examples in [POC-SEED-API.md](./POC-SEED-API.md).
+For integration issues, compare with `cargo run --example rust_client_demo` and curl examples in [seed-api.md](./seed-api.md).

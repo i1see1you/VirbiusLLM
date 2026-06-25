@@ -4,10 +4,10 @@
 
 - **JDK 17**（继承父 `pom.xml`）
 - 端口：`8080`
-- Admin / Edge API：[docs/POC-SEED-API.md](../docs/POC-SEED-API.md)
+- Admin / Edge API：[docs/seed-api.md](../docs/seed-api.md)
 - 规则真源：**`tb_rule_history`**（见 [DESIGN §8.5](../docs/DESIGN.md)、[用户使用手册 §6](../docs/user-guide.md) 放量与执行面）
 - PoC 种子：**`src/main/resources/db/seed.sql`**
-- 操作说明：[docs/POC-SEED-API.md](../docs/POC-SEED-API.md)
+- 操作说明：[docs/seed-api.md](../docs/seed-api.md)
 
 ## 运营入口（唯一）
 
@@ -104,5 +104,4 @@ Edge 产物路径（`ArtifactService` 写入）：
 ```bash
 mvn -q -pl virbius-control spring-boot:run
 # 日常：运营台「策略上线」对单条规则 publish / evaluate / apply
-# Legacy 整包：POST .../bundles/.../publish（OpenAPI [Legacy]；运营台无 Bundle 状态页）
 ```

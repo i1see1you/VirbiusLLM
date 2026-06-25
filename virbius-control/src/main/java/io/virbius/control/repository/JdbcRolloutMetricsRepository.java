@@ -16,9 +16,9 @@ public class JdbcRolloutMetricsRepository implements RolloutMetricsRepository {
     public long countReview24h(String tenantId, String ruleId) {
         Long n = jdbc.queryForObject(
                 """
-                SELECT COALESCE(SUM(cnt_review), 0) FROM tb_rule_metrics_1h
+                SELECT COALESCE(SUM(cnt_review), 0) FROM tb_rule_metrics_1m
                 WHERE tenant_id = ? AND rule_id = ?
-                  AND hour_bucket >= datetime('now', '-24 hours')
+                  AND minute_bucket >= datetime('now', '-24 hours')
                 """,
                 Long.class,
                 tenantId,
@@ -30,8 +30,8 @@ public class JdbcRolloutMetricsRepository implements RolloutMetricsRepository {
     public long countTotalRequests24h(String tenantId) {
         Long n = jdbc.queryForObject(
                 """
-                SELECT COALESCE(SUM(cnt_total_requests), 0) FROM tb_rule_metrics_1h
-                WHERE tenant_id = ? AND hour_bucket >= datetime('now', '-24 hours')
+                SELECT COALESCE(SUM(cnt_total_requests), 0) FROM tb_rule_metrics_1m
+                WHERE tenant_id = ? AND minute_bucket >= datetime('now', '-24 hours')
                 """,
                 Long.class,
                 tenantId);
@@ -42,9 +42,9 @@ public class JdbcRolloutMetricsRepository implements RolloutMetricsRepository {
     public long countBlockInCanary24h(String tenantId, String ruleId) {
         Long n = jdbc.queryForObject(
                 """
-                SELECT COALESCE(SUM(cnt_block), 0) FROM tb_rule_metrics_1h
+                SELECT COALESCE(SUM(cnt_block), 0) FROM tb_rule_metrics_1m
                 WHERE tenant_id = ? AND rule_id = ? AND rollout_state = 'canary'
-                  AND hour_bucket >= datetime('now', '-24 hours')
+                  AND minute_bucket >= datetime('now', '-24 hours')
                 """,
                 Long.class,
                 tenantId,
@@ -58,13 +58,13 @@ public class JdbcRolloutMetricsRepository implements RolloutMetricsRepository {
                 """
                 SELECT COALESCE(SUM(daily_review), 0) / 7.0
                 FROM (
-                  SELECT strftime('%%Y-%%m-%%d', hour_bucket) AS day,
+                  SELECT strftime('%%Y-%%m-%%d', minute_bucket) AS day,
                          SUM(cnt_review) AS daily_review
-                  FROM tb_rule_metrics_1h
+                  FROM tb_rule_metrics_1m
                   WHERE tenant_id = ? AND rule_id = ?
                     AND rollout_state = 'dry_run'
-                    AND hour_bucket >= datetime('now', '-8 days')
-                    AND hour_bucket < datetime('now', '-1 day')
+                    AND minute_bucket >= datetime('now', '-8 days')
+                    AND minute_bucket < datetime('now', '-1 day')
                   GROUP BY day
                 )
                 """,
@@ -78,12 +78,12 @@ public class JdbcRolloutMetricsRepository implements RolloutMetricsRepository {
     public int countBaselineDaysWithData(String tenantId, String ruleId) {
         Integer n = jdbc.queryForObject(
                 """
-                SELECT COUNT(DISTINCT strftime('%%Y-%%m-%%d', hour_bucket))
-                FROM tb_rule_metrics_1h
+                SELECT COUNT(DISTINCT strftime('%%Y-%%m-%%d', minute_bucket))
+                FROM tb_rule_metrics_1m
                 WHERE tenant_id = ? AND rule_id = ?
                   AND rollout_state = 'dry_run'
-                  AND hour_bucket >= datetime('now', '-8 days')
-                  AND hour_bucket < datetime('now', '-1 day')
+                  AND minute_bucket >= datetime('now', '-8 days')
+                  AND minute_bucket < datetime('now', '-1 day')
                 """,
                 Integer.class,
                 tenantId,

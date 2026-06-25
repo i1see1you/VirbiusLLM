@@ -29,11 +29,11 @@ public class MonitorController {
     @GetMapping("/rule-ranking")
     public ApiResult<Map<String, Object>> ruleRanking(
             @PathVariable("tenantId") String tenantId,
-            @RequestParam(defaultValue = "24") int hours,
-            @RequestParam(defaultValue = "10") int limit) {
+            @RequestParam(name = "hours", defaultValue = "24") int hours,
+            @RequestParam(name = "limit", defaultValue = "10") int limit) {
         String timeExpr = dialect.isMysql()
-                ? " hour_bucket >= NOW() - INTERVAL ? HOUR"
-                : " hour_bucket >= datetime('now', ?)";
+                ? " minute_bucket >= NOW() - INTERVAL ? HOUR"
+                : " minute_bucket >= datetime('now', ?)";
         List<Map<String, Object>> ranking = jdbc.query(
                 """
                 SELECT rule_id,
@@ -44,7 +44,7 @@ public class MonitorController {
                        SUM(cnt_allow) AS cnt_allow,
                        SUM(cnt_total_requests) AS cnt_total_requests,
                        SUM(cnt_degraded) AS cnt_degraded
-                FROM tb_rule_metrics_1h
+                FROM tb_rule_metrics_1m
                 WHERE tenant_id = ? AND """ + timeExpr + """
                 GROUP BY rule_id
                 ORDER BY total_hits DESC
@@ -79,7 +79,7 @@ public class MonitorController {
     @GetMapping("/scene-traffic")
     public ApiResult<Map<String, Object>> sceneTraffic(
             @PathVariable("tenantId") String tenantId,
-            @RequestParam(defaultValue = "24") int hours) {
+            @RequestParam(name = "hours", defaultValue = "24") int hours) {
         String timeExpr = dialect.isMysql()
                 ? " hour_bucket >= NOW() - INTERVAL ? HOUR"
                 : " hour_bucket >= datetime('now', ?)";
@@ -108,23 +108,23 @@ public class MonitorController {
     @GetMapping("/degradation")
     public ApiResult<Map<String, Object>> degradation(
             @PathVariable("tenantId") String tenantId,
-            @RequestParam(defaultValue = "24") int hours) {
+            @RequestParam(name = "hours", defaultValue = "24") int hours) {
         String timeExpr = dialect.isMysql()
-                ? " hour_bucket >= NOW() - INTERVAL ? HOUR"
-                : " hour_bucket >= datetime('now', ?)";
+                ? " minute_bucket >= NOW() - INTERVAL ? HOUR"
+                : " minute_bucket >= datetime('now', ?)";
         List<Map<String, Object>> series = jdbc.query(
                 """
-                SELECT hour_bucket,
+                SELECT minute_bucket,
                        SUM(cnt_degraded) AS cnt_degraded,
                        SUM(cnt_total_requests) AS cnt_total_requests
-                FROM tb_rule_metrics_1h
+                FROM tb_rule_metrics_1m
                 WHERE tenant_id = ? AND """ + timeExpr + """
-                GROUP BY hour_bucket
-                ORDER BY hour_bucket
+                GROUP BY minute_bucket
+                ORDER BY minute_bucket
                 """,
                 (rs, i) -> {
                     Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("bucket", rs.getString("hour_bucket"));
+                    row.put("bucket", rs.getString("minute_bucket"));
                     int degraded = rs.getInt("cnt_degraded");
                     int total = rs.getInt("cnt_total_requests");
                     row.put("degraded", degraded);
@@ -142,8 +142,8 @@ public class MonitorController {
     @GetMapping("/event-timeline")
     public ApiResult<Map<String, Object>> eventTimeline(
             @PathVariable("tenantId") String tenantId,
-            @RequestParam(defaultValue = "48") int hours,
-            @RequestParam(defaultValue = "30") int limit) {
+            @RequestParam(name = "hours", defaultValue = "48") int hours,
+            @RequestParam(name = "limit", defaultValue = "30") int limit) {
         String timeExpr = dialect.isMysql()
                 ? " e.effective_at >= NOW() - INTERVAL ? HOUR"
                 : " e.effective_at >= datetime('now', ?)";

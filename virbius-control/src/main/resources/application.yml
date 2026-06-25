@@ -61,10 +61,6 @@ audit:
     poll-ms: 1000
     batch-size: 256
     consumer-group: virbius-audit-ingest
-    http:
-      max-batch-size: 100
-  edge:
-    ingest-url: ${VIRBIUS_AUDIT_INGEST_URL:http://127.0.0.1:8080/api/v1/internal/audit/events}
 
 rollout:
   metrics:

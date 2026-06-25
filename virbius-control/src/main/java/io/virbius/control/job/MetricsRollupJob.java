@@ -25,13 +25,13 @@ public class MetricsRollupJob {
         String hourBucket;
         String sinceExpr;
         if (dialect.isMysql()) {
-            hourBucket = "DATE_FORMAT(intercepted_at, '%Y-%m-%d %H:00:00')";
+            hourBucket = "DATE_FORMAT(intercepted_at, '%Y-%m-%d %H:%i:00')";
             sinceExpr = "DATE_SUB(NOW(), INTERVAL 2 HOUR)";
         } else if (dialect.isPostgresql()) {
-            hourBucket = "TO_CHAR(DATE_TRUNC('hour', intercepted_at), 'YYYY-MM-DD HH24:00:00')";
+            hourBucket = "TO_CHAR(DATE_TRUNC('minute', intercepted_at), 'YYYY-MM-DD HH24:MI:00')";
             sinceExpr = "NOW() - INTERVAL '2 hours'";
         } else {
-            hourBucket = "strftime('%Y-%m-%d %H:00:00', intercepted_at)";
+            hourBucket = "strftime('%Y-%m-%d %H:%M:00', intercepted_at)";
             sinceExpr = "datetime('now', '-2 hours')";
         }
 
@@ -42,7 +42,7 @@ public class MetricsRollupJob {
 
         String select = """
                 SELECT tenant_id, rule_id,
-                       %s AS hour_bucket,
+                        %s AS minute_bucket,
                        rollout_state, canary_percent,
                        SUM(CASE WHEN effective_action = 'review' THEN 1 ELSE 0 END) AS cnt_review,
                        SUM(CASE WHEN effective_action = 'block' THEN 1 ELSE 0 END) AS cnt_block,
@@ -57,11 +57,11 @@ public class MetricsRollupJob {
                 .formatted(hourBucket, allowWeight, allowWeight, sinceExpr, hourBucket);
 
         String columns =
-                "tenant_id, rule_id, hour_bucket, rollout_state, canary_percent,"
+                "tenant_id, rule_id, minute_bucket, rollout_state, canary_percent,"
                         + " cnt_review, cnt_block, cnt_captcha, cnt_allow, cnt_total_requests, cnt_degraded";
 
         if (dialect.isMysql()) {
-            return "INSERT INTO tb_rule_metrics_1h (" + columns + ") " + select
+            return "INSERT INTO tb_rule_metrics_1m (" + columns + ") " + select
                     + " ON DUPLICATE KEY UPDATE"
                     + "   rollout_state = VALUES(rollout_state),"
                     + "   canary_percent = VALUES(canary_percent),"
@@ -72,8 +72,8 @@ public class MetricsRollupJob {
                     + "   cnt_total_requests = VALUES(cnt_total_requests),"
                     + "   cnt_degraded = VALUES(cnt_degraded)";
         } else if (dialect.isPostgresql()) {
-            return "INSERT INTO tb_rule_metrics_1h (" + columns + ") " + select
-                    + " ON CONFLICT (tenant_id, rule_id, hour_bucket) DO UPDATE SET"
+            return "INSERT INTO tb_rule_metrics_1m (" + columns + ") " + select
+                    + " ON CONFLICT (tenant_id, rule_id, minute_bucket) DO UPDATE SET"
                     + "   rollout_state = excluded.rollout_state,"
                     + "   canary_percent = excluded.canary_percent,"
                     + "   cnt_review = excluded.cnt_review,"
@@ -83,6 +83,6 @@ public class MetricsRollupJob {
                     + "   cnt_total_requests = excluded.cnt_total_requests,"
                     + "   cnt_degraded = excluded.cnt_degraded";
         }
-        return "INSERT OR REPLACE INTO tb_rule_metrics_1h (" + columns + ") " + select;
+        return "INSERT OR REPLACE INTO tb_rule_metrics_1m (" + columns + ") " + select;
     }
 }

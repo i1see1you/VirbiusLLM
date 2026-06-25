@@ -122,7 +122,7 @@
     const canvas = ensureChart('monTrafficChart');
     if (!canvas) return;
     const series = (metrics && metrics.series) || [];
-    const cutoff = Date.now() - 3600 * 1000;
+    const cutoff = Date.now() - 60000;
     const filtered = series.filter(p => {
       const d = parseUtc(p.bucket);
       return d && d.getTime() < cutoff;
@@ -133,7 +133,7 @@
     }
     const labels = filtered.map(p => {
       const d = parseUtc(p.bucket);
-      return d ? d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit' }) : '';
+      return d ? d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
     });
     const datasets = [
       { label: 'allow', data: filtered.map(p => p.allow || 0), backgroundColor: 'rgba(34,197,94,0.7)', borderColor: '#22c55e', borderWidth: 1 },
@@ -163,7 +163,7 @@
     const canvas = ensureChart('monBlockRateChart');
     if (!canvas) return;
     const series = (metrics && metrics.series) || [];
-    const cutoff = Date.now() - 3600 * 1000;
+    const cutoff = Date.now() - 60000;
     const filtered = series.filter(p => {
       const d = parseUtc(p.bucket);
       return d && d.getTime() < cutoff;
@@ -174,7 +174,7 @@
     }
     const labels = filtered.map(p => {
       const d = parseUtc(p.bucket);
-      return d ? d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit' }) : '';
+      return d ? d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
     });
     const blockRate = filtered.map(p => {
       const total = (p.total_requests || 0);
@@ -226,14 +226,14 @@
 
     const ruleSeries = (ruleMap[selected] || []).filter(p => {
       const d = parseUtc(p.bucket);
-      return d && d.getTime() < Date.now() - 3600 * 1000;
+      return d && d.getTime() < Date.now() - 60000;
     }).sort((a, b) => (parseUtc(a.bucket) || 0) - (parseUtc(b.bucket) || 0));
 
     if (!ruleSeries.length) { monRuleChart = destroyChart(monRuleChart); return; }
 
     const labels = ruleSeries.map(p => {
       const d = parseUtc(p.bucket);
-      return d ? d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit' }) : '';
+      return d ? d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
     });
     const blockRates = ruleSeries.map(p => {
       const total = (p.total_requests || 0);

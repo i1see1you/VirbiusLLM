@@ -26,8 +26,9 @@ Rules are versioned in **`rule_history` / `rule_revision`**. Publishing flows th
 | System design | [docs/DESIGN.md](docs/DESIGN.md) |
 | User guide (EN) | [docs/user-guide.en.md](docs/user-guide.en.md) |
 | User guide (中文) | [docs/user-guide.md](docs/user-guide.md) |
-| PoC seed & admin API | [docs/POC-SEED-API.md](docs/POC-SEED-API.md) |
-| Repo layout | [docs/POC-REPO.md](docs/POC-REPO.md) |
+| Seed data & admin API | [docs/seed-api.md](docs/seed-api.md) |
+| Repo layout | [docs/repo-layout.md](docs/repo-layout.md) |
+| API specs (OpenAPI) | [docs/openspec/](docs/openspec/) |
 
 ## Requirements
 
@@ -35,7 +36,7 @@ Rules are versioned in **`rule_history` / `rule_revision`**. Publishing flows th
 - **Rust** (for `virbius-core` and `virbius-gateway-agent`)
 - Optional: **Redis**, **Ollama/vLLM** (Prompt 1B rules on engine)
 
-See [docs/POC-REPO.md](docs/POC-REPO.md) for environment details.
+See [docs/repo-layout.md](docs/repo-layout.md) for environment details.
 
 ## Quick start
 
@@ -61,7 +62,7 @@ Rust clients can depend on the crate via path or git:
 
 ```toml
 [dependencies]
-virbius-core = { path = "../VirbiusLLM/virbius-core" }
+virbius-core = { git = "https://github.com/i1see1you/VirbiusLLM" }
 ```
 
 **Offline demo** (fixture manifest with DLP rules):

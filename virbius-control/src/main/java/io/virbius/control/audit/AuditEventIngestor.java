@@ -21,13 +21,13 @@ public class AuditEventIngestor {
         this.jdbc = jdbc;
         this.dialect = dialect;
         if (dialect.isMysql()) {
-            this.insertIgnorePrefix = "INSERT IGNORE INTO";
+            this.insertIgnorePrefix = "INSERT IGNORE";
             this.hourExpr = "DATE_FORMAT(NOW(), '%Y-%m-%d %H:00:00')";
         } else if (dialect.isPostgresql()) {
-            this.insertIgnorePrefix = "INSERT INTO";
+            this.insertIgnorePrefix = "INSERT";
             this.hourExpr = "DATE_TRUNC('hour', NOW())";
         } else {
-            this.insertIgnorePrefix = "INSERT OR IGNORE INTO";
+            this.insertIgnorePrefix = "INSERT OR IGNORE";
             this.hourExpr = "strftime('%Y-%m-%d %H:00:00', 'now')";
         }
     }

@@ -10,7 +10,7 @@ Integration guide: [docs/user-guide.en.md](../docs/user-guide.en.md) · 中文�
 
 ```toml
 [dependencies]
-virbius-core = { path = "../VirbiusLLM/virbius-core" }
+virbius-core = { git = "https://github.com/i1see1you/VirbiusLLM" }
 ```
 
 ```rust

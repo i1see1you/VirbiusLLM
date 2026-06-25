@@ -19,7 +19,7 @@ VirbiusLLM/
 │   └── plugins/openresty/       # access.lua（Stretch）
 ├── virbius-core/                # Rust 端 L0
 ├── virbius-compiler/            # 编译 CLI（APISIX / OpenResty / edge）
-├── docs/                        # DESIGN、用户手册、POC-SEED-API
+├── docs/                        # DESIGN、用户手册、seed-api
 └── docker-compose.poc.yml       # 本地联调（可选）
 ```
 
@@ -52,7 +52,7 @@ SDK 通过 Control Edge API 拉取（方案 B+）：
 - `GET /api/v1/edge/tenants/{tenantId}/apps/{appId}/policy-version`
 - `GET /api/v1/edge/tenants/{tenantId}/apps/{appId}/manifest`
 
-见 [POC-SEED-API §6.5](./POC-SEED-API.md)、[user-guide §3](./user-guide.md)。
+见 [seed-api §6.5](./seed-api.md)、[user-guide §3](./user-guide.md)。
 
 ## 数据库与规则种子（JDBC，默认 SQLite 文件）
 
@@ -62,7 +62,7 @@ make init-db   # 或 ./scripts/init-databases.sh
 ```
 
 - 表结构：[db/README.md](../db/README.md)
-- 种子与 API：[POC-SEED-API.md](./POC-SEED-API.md)
+- 种子与 API：[seed-api.md](./seed-api.md)
 
 ## 环境要求
 
@@ -103,5 +103,5 @@ curl -s http://127.0.0.1:9070/health
 
 ## 契约
 
-- 集成与 API 说明：[用户使用手册](./user-guide.md)、[POC-SEED-API.md](./POC-SEED-API.md)、[DESIGN.md](./DESIGN.md)
+- 集成与 API 说明：[用户使用手册](./user-guide.md)、[seed-api.md](./seed-api.md)、[DESIGN.md](./DESIGN.md)
 - 规则真源：**`rule_history`**（非 `rule_runtime`）

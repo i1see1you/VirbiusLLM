@@ -11,8 +11,9 @@ MVP 默认用 **SQLite 文件库**（`./data/*.db`），但 **`schema.sql` / `se
 | JSON | `TEXT` |
 | surrogate 主键 | 避免方言自增；审计/日志用自然键组合 `PRIMARY KEY (...)` |
 | 幂等插入 | `INSERT … SELECT … FROM (SELECT 1) AS _one WHERE NOT EXISTS (…)` |
+| 方言特化 | 三种方言各维护一个 `MetricsRollupJob` SQL 分支 + `INSERT OR IGNORE` / `INSERT IGNORE` / `ON CONFLICT` 按需选择 |
 
-不使用：`PRAGMA`、`datetime('now')`、`INSERT OR IGNORE`、`TEXT` 作主键、`AUTOINCREMENT`。
+不使用：`PRAGMA`、`TEXT` 作主键、`AUTOINCREMENT`。
 
 ## 库文件位置（SQLite 默认）
 
@@ -21,7 +22,7 @@ MVP 默认用 **SQLite 文件库**（`./data/*.db`），但 **`schema.sql` / `se
 | 组件 | 数据库文件 | 初始化脚本 |
 |------|------------|------------|
 | virbius-control | `virbius-control.db` | `virbius-control/src/main/resources/db/schema.sql` + `seed.sql` |
-| virbius-engine | `virbius-engine.db` | `virbius-engine/src/main/resources/db/schema.sql` + `seed.sql` |
+| virbius-engine | `virbius-engine.db` | Engine 无 JDBC 库，不通过 schema.sql 建表 |
 
 `virbius-compiler`、`virbius-core`、`virbius-gateway-agent` **无 JDBC 本地库**（compiler CLI；core/agent 用文件或 Redis）。
 
@@ -34,12 +35,15 @@ MVP 默认用 **SQLite 文件库**（`./data/*.db`），但 **`schema.sql` / `se
 | rules_current | `tb_rules_current` | control |
 | rule_history | `tb_rule_history` | control |
 | access_list | `tb_access_list` | control |
-| edge_artifact_meta | `tb_edge_artifact_meta` | control（方案 B+ manifest revision / sha256） |
-| tenant_api_credential | `tb_tenant_api_credential` | control（API Bearer：Admin / Edge / tenants API，含 role） |
-| gateway_artifact_meta | `tb_gateway_artifact_meta` | control（网关产物 revision / sha256；Redis/OSS 指针索引） |
+| edge_artifact_meta | `tb_edge_artifact_meta` | control（manifest revision / sha256） |
+| tenant_api_credential | `tb_tenant_api_credential` | control（API Bearer） |
+| gateway_artifact_meta | `tb_gateway_artifact_meta` | control（网关产物 revision / sha256） |
 | audit_events | `tb_audit_events` | control |
-| cache_meta | `tb_cache_meta` | engine |
-| rule_cache_entry | `tb_rule_cache_entry` | engine |
+| audit_ingest_checkpoint | `tb_audit_ingest_checkpoint` | control |
+| rule_metrics_1m | `tb_rule_metrics_1m` | control（每分钟聚合） |
+| tenant_request_stats_1h | `tb_tenant_request_stats_1h` | control（每小时请求统计） |
+| deploy_state | `tb_deploy_state` | control |
+| deploy_rollout | `tb_deploy_rollout` | control |
 
 ## 一键初始化（仅 SQLite CLI）
 
@@ -66,7 +70,7 @@ VIRBIUS_REBUILD_DB=1 bash scripts/run-local.sh
 
 ## 规则种子与 API
 
-PoC 规则（含黑名单关键字）见 **`virbius-control/src/main/resources/db/seed.sql`**，维护说明见 **[docs/POC-SEED-API.md](../docs/POC-SEED-API.md)**。
+PoC 规则（含黑名单关键字）见 **`virbius-control/src/main/resources/db/seed.sql`**，维护说明见 **[docs/seed-api.md](../docs/seed-api.md)**。
 
 写入 Registry 后需 **publish** 才会进入 engine RuleCache。
 
@@ -74,32 +78,28 @@ PoC 规则（含黑名单关键字）见 **`virbius-control/src/main/resources/d
 
 - `tb_rule_history` — 规则版本真源（追加写）
 - `tb_rules_current` — 当前 revision 指针
-- `tb_bundles` — 发布批次元数据（`metadata_json`：`scope`、`gateway.routes` 含 uri/methods 等）
+- `tb_bundles` — 发布批次元数据
 - `tb_access_list` — 名单（keyword 全层；user/device/ip 管侧）
 - `tb_edge_artifact_meta` — Edge manifest 元数据（`artifact_revision`、`content_sha256`）
-- `tb_tenant_api_credential` — API Bearer（hash 存储；`tenant_id` + `role`：`tenant_viewer` / `tenant_admin` / `platform_admin`）
+- `tb_tenant_api_credential` — API Bearer（hash 存储；`tenant_id` + `role`）
+- `tb_audit_events` — 审计事件（所有 action 均入库）
+- `tb_audit_ingest_checkpoint` — Redis Stream 消费位点
+- `tb_rule_metrics_1m` — 每分钟规则聚合（`MetricsRollupJob` 写入）
+- `tb_tenant_request_stats_1h` — 每小时租户请求统计
+- `tb_deploy_rollout` — 放量指针和状态
 
 ## 核心表（engine）
 
-- `tb_rule_cache_entry` — RuleCache 物化快照
+Engine 无 JDBC 库，RuleCache 为内存/Redis 结构，无本地持久化表。
 
-- `tb_audit_ingest_checkpoint` — audit Stream 消费位点（control ingest）
+### 审计事件流
 
-审计事件由各执行面写入 Redis Stream / 本地 jsonl，由 **virbius-control AuditIngest** 入库 **`tb_audit_events`**（**不含 `effective_action=allow`**，见下）。
+各执行面（engine / gateway-agent / edge SDK）将审计事件 **publish 到 Redis Stream**（默认 key `virbius:audit:events`），由 **virbius-control AuditIngestService** 消费入库 `tb_audit_events`。
 
-### 审计存储分工（PoC）
+| 类型 | Redis Stream | `tb_audit_events` | JSONL 备档 |
+|------|--------------|-------------------|------------|
+| review / block / captcha / degraded / allow 等 | ✅ publish | ✅ 全部入库 | 仅 allow 写 `*-audit-allow.jsonl` |
 
-| 类型 | `tb_audit_events` | Redis Stream | JSONL 备档 |
-|------|-------------------|--------------|------------|
-| review / block / captcha / degraded 等 | ✅ | ✅ publish | `*-audit.jsonl`（非 allow） |
-| **allow** | ❌ | ❌ 不 publish | `*-audit-allow.jsonl` |
+Allow 事件除入库外，还会额外通过 logback logger `virbius.audit.allow` 写入 **`*-audit-allow.jsonl`**（滚动文件，仅作留底备查）。
 
-默认 allow 日志路径（可配置，见 control `application.yml` 中 `virbius.audit.*`）：
-
-| 来源 | 默认路径 |
-|------|----------|
-| gateway-agent | `{VIRBIUS_DATA_DIR}/gateway-audit-allow.jsonl` |
-| virbius-engine | `/tmp/virbius/engine-audit-allow.jsonl` |
-| edge / HTTP ingest | `{VIRBIUS_DATA_DIR}/audit-allow.jsonl` |
-
-运营台 **「审计中心」** 按 `trace_id` 合并查询 DB 事件与上述 allow 日志，见 [POC-SEED-API.md](../docs/POC-SEED-API.md)、[用户使用手册 §5](../docs/user-guide.md)。
+运营台 **「审计中心」** 仅查询 DB（`tb_audit_events`），不读 JSONL。按 `trace_id` 检索审计记录，见 [seed-api.md](../docs/seed-api.md)、[用户使用手册 §5](../docs/user-guide.md)。

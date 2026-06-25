@@ -221,10 +221,10 @@ CREATE TABLE tb_audit_ingest_checkpoint (
 CREATE INDEX idx_audit_tenant_rule_time
   ON tb_audit_events(tenant_id, rule_id, intercepted_at);
 
-CREATE TABLE tb_rule_metrics_1h (
+CREATE TABLE tb_rule_metrics_1m (
     tenant_id           VARCHAR(64) NOT NULL,
     rule_id             VARCHAR(128) NOT NULL,
-    hour_bucket         TIMESTAMP NOT NULL,
+    minute_bucket       TIMESTAMP NOT NULL,
     rollout_state       VARCHAR(16),
     canary_percent      INTEGER,
     cnt_review          INTEGER NOT NULL DEFAULT 0,
@@ -233,7 +233,7 @@ CREATE TABLE tb_rule_metrics_1h (
     cnt_allow           INTEGER NOT NULL DEFAULT 0,
     cnt_total_requests  INTEGER NOT NULL DEFAULT 0,
     cnt_degraded        INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (tenant_id, rule_id, hour_bucket)
+    PRIMARY KEY (tenant_id, rule_id, minute_bucket)
 );
 
 CREATE TABLE tb_tenant_request_stats_1h (

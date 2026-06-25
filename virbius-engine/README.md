@@ -9,7 +9,7 @@
 |------|------|
 | HTTP Evaluate | `8082` (`POST /v1/evaluate`) |
 | HTTP admin | `8082` (`/admin/policy-version`) |
-| gRPC Evaluate | `50051`（待接入） |
+| gRPC Evaluate | `50051`（MVP 走 HTTP；gRPC 规划中） |
 
 ## Prompt 规则 + 1B 模型
 
