@@ -124,22 +124,6 @@
       }
     }
 
-    function renderRolloutMetrics(series) {
-      const tbody = document.querySelector('#roMetricsTable tbody');
-      tbody.innerHTML = '';
-      (series || []).forEach(row => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${esc(fmtTime(row.bucket))}</td>
-          <td>${renderMiniBar(row.review || 0, row.block || 0, row.captcha || 0, row.allow || 0)}</td>
-          <td>${row.review ?? 0}</td><td>${row.block ?? 0}</td><td>${row.captcha ?? 0}</td>
-          <td>${row.allow ?? 0}</td><td>${row.total_requests ?? 0}</td>`;
-        tbody.appendChild(tr);
-      });
-      if (!series || !series.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="hint">' + __('rollout.no-metrics') + '</td></tr>';
-      }
-    }
-
     function renderRolloutTimeline(events) {
       const tbody = document.querySelector('#roTimelineTable tbody');
       tbody.innerHTML = '';
@@ -316,7 +300,6 @@
           renderRolloutKpi({});
           renderRolloutBlockRate(null);
           renderRolloutCombinedChart(null, null);
-          renderRolloutMetrics([]);
           renderRolloutTimeline([]);
           renderRolloutSamples([]);
           updateRolloutActions(null);
@@ -345,7 +328,6 @@
         renderRolloutKpi(metrics.totals || {});
         renderRolloutBlockRate(metrics.totals || null);
         renderRolloutCombinedChart(metrics.series || [], metrics.series_1m || []);
-        renderRolloutMetrics(metrics.series || []);
         renderRolloutTimeline(timeline);
         renderRolloutSamples(samples);
       } finally {

@@ -8,6 +8,30 @@
         <td>${esc(rolloutStateLabel(h.rollout_state, h.canary_percent))}</td>`;
     }
 
+    async function loadAuditRecent(limit) {
+      const dbTbody = document.querySelector('#acDbTable tbody');
+      const summary = document.getElementById('acSummary');
+      summary.textContent = __('common.loading');
+      dbTbody.innerHTML = '<tr><td colspan="8" class="hint">' + __('common.loading') + '</td></tr>';
+      try {
+        const data = await admin('/audit/recent?limit=' + (limit || 100));
+        document.getElementById('acDbCount').textContent = data.db_count ?? 0;
+        summary.textContent = data.note || '';
+        dbTbody.innerHTML = '';
+        (data.db_events || []).forEach(h => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = renderAuditEventRow(h);
+          dbTbody.appendChild(tr);
+        });
+        if (!(data.db_events || []).length) {
+          dbTbody.innerHTML = '<tr><td colspan="8" class="hint">' + __('ac.no-db-records') + '</td></tr>';
+        }
+      } catch (e) {
+        summary.textContent = e.message;
+        dbTbody.innerHTML = `<tr><td colspan="8" class="hint">${esc(e.message)}</td></tr>`;
+      }
+    }
+
     async function searchAuditCenter(traceId) {
       const tid = (traceId || document.getElementById('acTraceId').value || '').trim();
       if (!tid) {

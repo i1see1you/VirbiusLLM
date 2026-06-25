@@ -55,6 +55,8 @@
         if (q) {
           document.getElementById('acTraceId').value = q;
           searchAuditCenter(q).catch(e => log(e.message, 'err'));
+        } else {
+          loadAuditRecent(100).catch(e => log(e.message, 'err'));
         }
       }
       if (tab === 'tenants') {

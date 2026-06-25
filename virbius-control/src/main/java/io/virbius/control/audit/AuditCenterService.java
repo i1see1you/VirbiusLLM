@@ -28,4 +28,14 @@ public class AuditCenterService {
                         + "Unsampled allow requests are archived as JSONL files only.");
         return out;
     }
+
+    public Map<String, Object> recent(String tenantId, int limit) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("tenant_id", tenantId);
+        List<Map<String, Object>> dbEvents = dashboardService.recent(tenantId, limit);
+        out.put("db_events", dbEvents);
+        out.put("db_count", dbEvents.size());
+        out.put("note", "Recent " + limit + " audit events (ordered by intercepted_at DESC).");
+        return out;
+    }
 }

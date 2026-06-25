@@ -176,6 +176,13 @@ public class RolloutAdminController {
         return ApiResult.ok(auditCenterService.traceDetail(tenantId, traceId));
     }
 
+    @GetMapping("/audit/recent")
+    public ApiResult<Map<String, Object>> auditRecent(
+            @PathVariable("tenantId") String tenantId,
+            @RequestParam(value = "limit", defaultValue = "100") int limit) {
+        return ApiResult.ok(auditCenterService.recent(tenantId, limit));
+    }
+
     @GetMapping("/rules/{ruleId}/rollout/gates")
     public ApiResult<List<Map<String, Object>>> gateLogs(
             @PathVariable("tenantId") String tenantId,

@@ -6,16 +6,43 @@ VirbiusLLM is a security platform for large language model applications. It supp
 
 The architecture follows an **edge–gateway–cloud** model with a **unified control plane** and **layered enforcement**:
 
-| Component | Role |
-|-----------|------|
-| **`virbius-control`** | Registry API, admin console, single HTTP surface; source of truth for rules |
-| **`virbius-engine`** | Cloud-side Prompt / Groovy evaluation and final merge (no OPA/Rego) |
-| **`virbius-compiler`** | Compiles bundles into edge manifests, gateway artifacts, and engine inputs |
-| **`virbius-core`** | Edge L0 SDK (Rust + C ABI): local keywords, blacklist, DLP desensitization |
-| **`virbius-gateway`** | APISIX/Kong plugins + shared Lua core |
-| **`virbius-gateway-agent`** | Gateway sidecar that calls `virbius-engine` |
+```
+User request
+   │
+   ▼
+┌────────────────────┐
+│ ① Edge L0 SDK     │  virbius-core (Rust / C ABI)
+│   scan + DLP      │  local sync, sub-millisecond
+└────────┬───────────┘
+         │ HTTP + Virbius headers
+         ▼
+┌────────────────────┐
+│ ② Gateway         │  APISIX/Kong + virbius-guard
+│   Lua rules       │  on-path, tens to hundreds of ms
+└────────┬───────────┘
+         │ gateway-agent sidecar
+         ▼
+┌────────────────────┐
+│ ③ Cloud Engine    │  virbius-engine
+│   Prompt L1 +     │  on-demand Evaluate
+│   Groovy L3       │  policy merge (ActionMerge)
+└────────┬───────────┘
+         ▼
+       LLM API
+```
 
-Rules are versioned in **`rule_history` / `rule_revision`**. Publishing flows through **Compiler + PublishOrchestrator** to CDN (edge), etcd/Kong (gateway), and **Registry DB → RuleCache** (engine).
+| Layer | Responsibility | Component |
+|-------|---------------|-----------|
+| **① Edge** | Local keyword / blacklist / DLP desensitization; synchronous, sub-ms. Can work offline. | `virbius-core` |
+| **② Gateway** | On-path real-time firewall: static Lua rules, access lists, rate limiting. Forwards to engine on demand via sidecar. | `virbius-gateway` (APISIX/Kong plugins) + `virbius-gateway-agent` (Rust sidecar) |
+| **③ Cloud** | Semantic detection (Prompt L1), Groovy policy (L3), multi-rule merge. Called selectively per risk level. | `virbius-engine` |
+
+| Cross-cutting | Role | Component |
+|---------------|------|-----------|
+| **Control Plane** | Single source of truth for rules, rollout state, and admin UI. Publishes artifacts to all layers. | `virbius-control` |
+| **Compiler** | Transforms registry rules into layer-specific artifacts (edge manifest, gateway JSON, engine input). | `virbius-compiler` |
+
+Rules are versioned in **`rule_history` / `rule_revision`**. Publishing flows through **Compiler + PublishOrchestrator**: edge via CDN, gateway via etcd/file, engine via **Registry DB → RuleCache**.
 
 **MVP scope (frozen):** edge L0 + **APISIX gateway (required)** + engine (L1 Prompt + Groovy); rollout modes `dry_run` / `canary` / `full`.
 
@@ -95,11 +122,108 @@ cargo run --example gateway_http_client
 
 More detail: [virbius-core/README.md](virbius-core/README.md) · [docs/user-guide.en.md](docs/user-guide.en.md).
 
-## Gateway (APISIX)
+## Gateway
+
+VirbiusLLM supports two gateway backends:
+
+| Backend | Status | Integration |
+|---------|--------|-------------|
+| **APISIX** | MVP (required) | `virbius-guard` plugin via shared Lua `lib/` |
+| **OpenResty** | Stretch (supported) | Compiler-flattened `effective-*.json` + `access.lua` |
+
+Both share the same Lua core (`virbius-gateway/lib/`) and runtime data (access lists, scene registry) written by `virbius-control`.
+
+### APISIX
 
 PoC route/service samples: [examples/gateway/poc-default/0.1.0/](examples/gateway/poc-default/0.1.0/).
 
 Binding order: **Global → Service (tenant) → Route (scene)**. The `virbius-guard` plugin runs local access lists, then calls gateway-agent → engine.
+
+### OpenResty
+
+Compile-time flatten via `virbius-compiler`. The compiler merges bundle, scene registry, and access lists into `effective-*.json` consumed by `access.lua`.
+
+```bash
+./scripts/compile-openresty-poc.sh
+```
+
+- Nginx template: [examples/gateway/openresty-poc/0.1.0/](examples/gateway/openresty-poc/0.1.0/)
+- Spec: [docs/openspec/openresty-gateway.md](docs/openspec/openresty-gateway.md)
+- Integration: [virbius-gateway/README.md](virbius-gateway/README.md)
+
+## Layer responsibilities
+
+### ① Edge: lightweight interaction protection & behavior sensing
+
+The edge is the first touch point between users and LLMs. It performs local filtering and behavior baseline collection without degrading user experience.
+
+- **Risk control & behavior analysis**: collect typing cadence, device fingerprint, request sequences via lightweight probes. Flag script bots, credential stuffing, or abnormal traversal.
+- **Challenge-response**: protocol validation and optional CAPTCHA against批量 injection and DDoS.
+- **Pre-compliance filtering**: local sensitive-word lists and regex for obvious policy violations, reducing noise sent upstream.
+
+### ② Gateway: real-time semantic interception & protocol validation
+
+The gateway is the real-time firewall on the request path, focusing on prompt injection, jailbreak, and DLP.
+
+- **Bidirectional detection**: layered detection on both request and streaming response. Input side uses instruction restructuring to strip malicious intent while preserving legitimate business semantics. Output side intercepts bias, violence, hallucination, or non-compliant content.
+- **DLP**: real-time PII/credit-card/code identification via regex and privacy computing. Mask, sanitize, or block per policy.
+- **API governance**: access control, parameter tampering detection, rate limiting based on least-privilege principle.
+
+**L1 vs L2**:
+
+| | L1 | L2 |
+|--|----|----|
+| Means | Lightweight model, regex, signature rules | Semantic model, instruction restructuring |
+| Target latency | < 50ms | Heavier, triggered on high-risk only |
+| Scenario | Known jailbreak templates, obvious injection | Variant attacks, ambiguous prompts |
+
+### ③ Cloud main path: global policy computation & disposition
+
+The online decision center aggregates data from edge and gateway, computes risk scores, and issues dispositions.
+
+- **Multi-dimensional correlation**: real-time fusion of edge behavior logs, gateway traffic logs, user profiles, and historical risk records.
+- **Dynamic policy computation**: comprehensive risk scoring per session (including multi-turn jailbreak and topic drift). Supports tenant + scene + role 3D policy, adjustable thresholds.
+- **Security auto-reply**: for high-sensitivity queries, return preset compliant responses without calling the LLM, ensuring safety while reducing latency.
+
+### ④ Cloud async: intelligence evolution & model tuning
+
+The async path operates out-of-band, driving long-cycle threat hunting and model iteration.
+
+- **Feature collection**: full telemetry (including blocked samples and normal traffic) builds a security corpus for offline analysis.
+- **ML & adversarial training**: continuous fine-tuning on attack datasets. Red-teaming simulations proactively surface logic and multi-turn vulnerabilities.
+- **Model tuning & policy optimization**: quantifies false-positive and false-negative rates. Periodically pushes updated model parameters, threat signatures, and refined policies to gateway and edge, forming a detect–analyze–optimize–deploy closed loop.
+
+## Roadmap
+
+### P0 — Core
+
+| Item | Description |
+|------|-------------|
+| **MVP edge–gateway–cloud** | 10–12 wk: edge L0 + APISIX + engine + Registry publishing; dry_run / canary / full. See [DESIGN §11.6](docs/DESIGN.md). |
+| **Detection grading L0–L3** | L0 edge; L1/L2 cloud (RPC from gateway); L3 cloud policy. Gateway only executes static skills. |
+| **Unified decision model** | All layers produce (risk_score + action); `ActionMerge` in `virbius-engine` consolidates instead of each layer acting independently. |
+| **Streaming output audit spec** | Chunk size, buffer window, hold-then-release for high-compliance scenarios. |
+| **Skill lifecycle** | draft → publish → dry_run → canary → full. See [DESIGN.md](docs/DESIGN.md) and [seed-api.md](docs/seed-api.md). |
+| **Fail policy table** | Per-tenant: financial systems fail-close, internal tools fail-open + async alert. |
+
+### P1 — Differentiation
+
+| Item | Description |
+|------|-------------|
+| **Session-level risk scoring** | Maintain session risk score across turns (multi-turn jailbreak, topic drift). |
+| **Attack taxonomy** | Classify skills per MITRE-like categories (direct injection, indirect injection, jailbreak template, data exfiltration). |
+| **Human-in-the-loop queue** | Gray zone (0.4–0.7 score) routed to manual review or secondary model. |
+| **Business context binding** | Same prompt → different policy based on tenant + scene + role (general chat vs medical vs code assistant). |
+| **Agent guardrails for skill generation** | Agent may only produce candidate rules + test cases; auto-regression required before merge. No direct push to production. |
+
+### P2 — Long term (not yet planned)
+
+| Item | Description |
+|------|-------------|
+| **Lightweight security model** | Distilled classifier/NER model on gateway, reducing dependency on secondary LLM calls. |
+| **Adversarial sample ops** | Public benchmark (e.g. JailbreakBench) + in-house samples; weekly auto-regression. |
+| **Explainability** | Show rule ID, similar samples, risk dimensions on block reasons for user/operator appeal. |
+| **Supply chain** | Plugin signature, permission whitelist, invocation budget for third-party MCP/plugins. |
 
 ## License
 

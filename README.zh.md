@@ -4,11 +4,153 @@ License: [MIT](LICENSE) · English: [README.md](README.md)
 
 VirbiusLLM 是一款为大模型定制的安全防护工具，支持实时 Skill 与近线 Skill 配置，通过 Agent 辅助生成和优化规则 Skill，主要应用场景是大模型 prompt 越狱和敏感指令的拦截，以及大模型输出的二次审计。
 
-整体技术方案基于 **「端-管-云」协同架构** 与 **统一安全编排与策略控制面、分层执行面**：**`virbius-control`（单 Java 进程）** 承载 Registry API 与 Admin 运营台，**对外一套 HTTP**，为规则唯一真源；**`virbius-engine`** 负责云侧 Prompt/Groovy 执行与终判（**不用 OPA/Rego**）。发布时由 **Compiler + PublishOrchestrator** 同步：端/管为文件推送（CDN、etcd/Kong）；**virbius-engine** 为 **Registry DB→RuleCache**（§8.8.8）。规则版本真源为 **`rule_history` / `rule_revision`**；MVP 审计为本地 jsonl（§13.1）。`manifest.yaml` 仅作可选导出/审计格式。**MVP 端-管-云**（**已冻结**，[§11.6.0](docs/DESIGN.md)）：端 L0 + **APISIX 必达** + engine（L1 Prompt + Groovy）；Kong decK 为 stretch；`rule_history` + 本地审计 jsonl。
+整体技术方案基于 **「端-管-云」协同架构** 与 **统一控制面、分层执行面**：
 
-**详细设计**：[docs/DESIGN.md](docs/DESIGN.md) · **用户使用手册**：[docs/user-guide.md](docs/user-guide.md)（中文）· [docs/user-guide.en.md](docs/user-guide.en.md)（English）· **PoC 种子与运营 API**：[docs/seed-api.md](docs/seed-api.md) · **PoC 代码布局**：[docs/repo-layout.md](docs/repo-layout.md)
+```
+用户请求
+   │
+   ▼
+┌────────────────────┐
+│ ① 端 L0 SDK       │  virbius-core（Rust / C ABI）
+│   scan + DLP      │  本地同步，毫秒级
+└────────┬───────────┘
+         │ HTTP + Virbius headers
+         ▼
+┌────────────────────┐
+│ ② 管 网关         │  APISIX/Kong + virbius-guard
+│   Lua 规则        │  必经流量，十～数百 ms
+└────────┬───────────┘
+         │ gateway-agent sidecar
+         ▼
+┌────────────────────┐
+│ ③ 云 Engine       │  virbius-engine
+│   Prompt L1 +     │  按需 Evaluate
+│   Groovy L3       │  策略合并（ActionMerge）
+└────────┬───────────┘
+         ▼
+       LLM API
+```
 
-**本地构建**：JDK **17**、Maven 3.9+、Rust（gateway-agent / virbius-core）；详见 [repo-layout.md §环境要求](docs/repo-layout.md)。
+| 层 | 职责 | 组件 |
+|----|------|------|
+| **① 端** | 本地违禁词/黑名单/DLP 脱敏；同步、毫秒级；可离线 | `virbius-core` |
+| **② 管** | 实时防火墙：静态 Lua 规则、名单、限流；按需调 engine | `virbius-gateway`（APISIX/Kong 插件）+ `virbius-gateway-agent`（Rust sidecar） |
+| **③ 云** | 语义检测（Prompt L1）、Groovy 策略（L3）、多规则合并；按风险等级选择性调用 | `virbius-engine` |
+
+| 跨层 | 职责 | 组件 |
+|------|------|------|
+| **控制面** | 规则唯一真源、放量状态、运营台；发布产物到各层 | `virbius-control` |
+| **Compiler** | Registry 规则 → 各层产物（edge manifest、gateway JSON、engine 输入） | `virbius-compiler` |
+
+版本真源为 **`rule_history` / `rule_revision`**。发布流：**Compiler + PublishOrchestrator** —— 端走 CDN、管走 etcd/文件、云走 **Registry DB → RuleCache**。
+
+**MVP 范围（已冻结）**：端 L0 + **APISIX 必达** + engine（L1 Prompt + Groovy）；放量模式 `dry_run` / `canary` / `full`。
+
+## 文档
+
+| 主题 | 链接 |
+|------|------|
+| 系统设计 | [docs/DESIGN.md](docs/DESIGN.md) |
+| 用户使用手册（中文） | [docs/user-guide.md](docs/user-guide.md) |
+| User guide (EN) | [docs/user-guide.en.md](docs/user-guide.en.md) |
+| 种子数据与运营 API | [docs/seed-api.md](docs/seed-api.md) |
+| 仓库布局 | [docs/repo-layout.md](docs/repo-layout.md) |
+| API 契约（OpenAPI） | [docs/openspec/](docs/openspec/) |
+
+## 环境要求
+
+- **JDK 17**，**Maven 3.9+**
+- **Rust**（用于 `virbius-core` 和 `virbius-gateway-agent`）
+- 可选：**Redis**、**Ollama/vLLM**（Engine Prompt 1B 规则）
+
+详见 [docs/repo-layout.md](docs/repo-layout.md)。
+
+## 快速开始
+
+```bash
+# 1. 构建
+mvn clean install -DskipTests          # virbius-control + virbius-engine
+cargo build --release                   # gateway-agent + virbius-core
+
+# 2. 本地启动（H2 内存数据库，自动建表）
+cd virbius-control
+mvn spring-boot:run \
+  -Dspring-boot.run.profiles=local
+
+# 3. smoke test：创建租户 → 创建 Skill → 发布 → 验证放量
+curl -s -X POST http://localhost:8080/api/tenants \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"smoke-tenant","code":"smoke"}'
+# 详见 docs/user-guide.md
+```
+
+**最低要求**：JDK 17、Maven 3.9+、Rust（详见 [repo-layout.md §环境要求](docs/repo-layout.md)）。
+
+### 端侧 SDK（virbius-core）
+
+Rust 实现的端侧规则引擎，提供 C ABI，可嵌入移动端/Web/小程序：
+
+```rust
+use virbius_core::engine::Engine;
+
+let mut engine = Engine::new("path/to/manifest.yaml");
+engine.load_blocklist("blocklist.txt");
+engine.load_sensitive_words("sensitive.txt");
+
+let result = engine.evaluate(&request);
+match result.action {
+    Action::Block => println!("拦截"),
+    Action::Allow => println!("放行"),
+    Action::Mask   => println!("脱敏"),
+}
+```
+
+**本地运行 gate-way-agent**：
+
+```bash
+cd gateway-agent
+cargo run -- --config-path ./config.yaml
+```
+
+详见 [docs/user-guide.md](docs/user-guide.md)。
+
+### 网关插件
+
+支持 **APISIX** 和 **OpenResty** 两种部署：
+
+**APISIX**：
+```yaml
+# 在 routes 中引用
+plugins:
+  - virbius-guard
+virbius-guard:
+  agent_host: 127.0.0.1
+  agent_port: 9081
+  enable: true
+```
+
+**OpenResty**（直接 Lua 加载，不需额外网关层）：
+```nginx
+http {
+    lua_package_path "/path/to/virbius-gateway/lualib/?.lua;;";
+    init_worker_by_lua_block {
+        local guard = require("virbius.guard")
+        guard.init()
+    }
+    server {
+        location /v1/chat {
+            access_by_lua_block {
+                local guard = require("virbius.guard")
+                guard.handle()
+            }
+        }
+    }
+}
+```
+
+API 生命周期由 **virbius-control** Admin API 统一管理；详见 [docs/seed-api.md](docs/seed-api.md)。
+
+## 分层职责
 
 ### 一、 端侧：轻量级交互防护与行为感知
 
@@ -48,11 +190,11 @@ VirbiusLLM 是一款为大模型定制的安全防护工具，支持实时 Skill
 
 该方案通过端侧的轻量过滤、网关的实时阻断、云主链路的精准决策以及云异步链路的持续进化，构建了一个动静结合、纵深防御的大模型安全免疫系统，能够有效应对从传统内容违规到复杂智能体攻击的全方位挑战。
 
-### 五、架构改进建议（路线图）
+## 路线图
 
 以下改进项按优先级划分，指导从 MVP 到生产级平台的演进。
 
-#### P0：核心模块
+### P0：核心模块
 
 | 建议 | 说明 |
 |------|------|
@@ -63,7 +205,7 @@ VirbiusLLM 是一款为大模型定制的安全防护工具，支持实时 Skill
 | **Skill 生命周期** | `draft` → **publish** → **dry_run** → **canary** → **full**；详见 [DESIGN.md](docs/DESIGN.md) 与 [seed-api.md](docs/seed-api.md) |
 | **Fail 策略表** | 按租户配置：核心金融 fail-close，内部工具 fail-open + 异步告警。 |
 
-#### P1：差异化与竞争力
+### P1：差异化与竞争力
 
 | 建议 | 说明 |
 |------|------|
@@ -73,7 +215,7 @@ VirbiusLLM 是一款为大模型定制的安全防护工具，支持实时 Skill
 | **与业务上下文绑定** | 同一句话在「通用聊天」vs「医疗问诊」vs「代码助手」策略不同，需要 tenant + scene + role 三维策略。 |
 | **Agent 生成 skill 的护栏** | Agent 只产出候选规则 + 测试用例，禁止直推生产；自动跑回归集通过后才可合并。 |
 
-#### P2：中长期演进，暂不实现
+### P2：中长期演进，暂不实现
 
 | 建议 | 说明 |
 |------|------|
@@ -82,11 +224,11 @@ VirbiusLLM 是一款为大模型定制的安全防护工具，支持实时 Skill
 | **可解释性输出** | 拦截原因对用户/运营可见（规则 ID、相似样本、风险维度），方便申诉与调优。 |
 | **Supply chain** | 若接第三方 MCP/插件，增加插件签名、权限白名单、调用预算。 |
 
-### 六、系统分层说明
+## 系统分层说明
 
 在「端-管-云」架构之上，系统可进一步划分为五层。各层职责不同，通过 L0–L3 检测分级与 **`virbius-engine`** 协同工作。
 
-#### 分层总览
+### 分层总览
 
 | 层级 | 路径属性 | 典型延迟 | 是否阻塞用户请求 |
 |------|----------|----------|------------------|
@@ -98,7 +240,7 @@ VirbiusLLM 是一款为大模型定制的安全防护工具，支持实时 Skill
 
 **请求主路径**：用户输入 → 端侧 SDK（L0）→ 网关（静态 Skill）→ 云 Scan（L1/L2）+ Policy（L3）→ 大模型 → 网关 SSE 输出审计 → 用户。全程旁路日志进入异步链路；模型类 Skill 仅在云侧执行，在异步链路离线迭代后下发。
 
-#### ① 端侧 SDK
+### ① 端侧 SDK
 
 **特点**：最靠近用户；运行 L0 词库/正则与精简 Skill 包，可离线拦截；轻量嵌入 App/Web/小程序；以行为采集与风险打标为主。
 
@@ -111,7 +253,7 @@ VirbiusLLM 是一款为大模型定制的安全防护工具，支持实时 Skill
 
 **边界**：不做复杂语义越狱判断；可被绕过（直接调 API），不能作为唯一防线，需与网关配合。
 
-#### ② 网关（L1–L2、SSE）
+### ② 网关（L1–L2、SSE）
 
 **特点**：所有 LLM 流量的必经枢纽；分层检测——L1 为轻量分类/规则（低延迟），L2 为语义检测与指令重构（按需触发）；对输入与流式输出双向审计；承载实时 Skill。
 
@@ -132,7 +274,7 @@ VirbiusLLM 是一款为大模型定制的安全防护工具，支持实时 Skill
 
 **SSE 流式审计**：对大模型流式返回逐 chunk 检测；需定义缓冲窗口与是否 hold-then-release（高合规场景建议先审后发）；违规时截断或撤回已下发内容（依策略配置）。
 
-#### ③ 云主链路（L3、租户、策略）
+### ③ 云主链路（L3、租户、策略）
 
 **特点**：在线决策中心；汇聚端侧标签、网关信号、用户画像与历史风控；支持 tenant + scene + role 三维策略；由 **virbius-engine**（Groovy + Prompt）统一合并各层「风险分 + 动作」，避免重复拦截。
 
@@ -146,7 +288,7 @@ VirbiusLLM 是一款为大模型定制的安全防护工具，支持实时 Skill
 
 **与网关的关系**：网关负责快路径执行；云主链路负责准路径决策与配置。非每条请求都需 RPC 云侧，可按风险标签按需调用以控制延迟。
 
-#### ④ 异步链路
+### ④ 异步链路
 
 **特点**：旁路、不阻塞主请求；全量或采样采集日志与样本；长周期运行（评测、红队、报表、发布）。
 
@@ -160,7 +302,7 @@ VirbiusLLM 是一款为大模型定制的安全防护工具，支持实时 Skill
 
 **与云主链路的区别**：云主链路面向当前请求的毫秒～百毫秒级决策；异步链路面向未来规则与模型的持续进化，用户通常无直接感知。
 
-#### ⑤ ML 推理
+### ⑤ ML 推理
 
 **特点**：不为独立业务层，而为①～③提供检测能力，并在④中被训练与更新；常独立部署（ONNX Runtime、vLLM、Python Sidecar），与业务进程解耦；模型与评测集版本化发布。
 
@@ -177,7 +319,7 @@ VirbiusLLM 是一款为大模型定制的安全防护工具，支持实时 Skill
 
 **与 Skill 的关系**：Skill 为人可读规则，热更新快；ML 处理变体与语义模糊，更新慢但泛化强。生产环境通常采用「规则 + 模型」串联：规则先筛，模型兜底。
 
-#### 分层记忆
+### 分层记忆
 
 | 层 | 一句话 |
 |----|--------|
@@ -186,3 +328,7 @@ VirbiusLLM 是一款为大模型定制的安全防护工具，支持实时 Skill
 | 云主链路 | 租户与策略大脑，统一拍板与代答 |
 | 异步链路 | 旁路进化，评测、灰度、Agent 产规则 |
 | ML 推理 | 为各层提供检测能力，在线推断、离线变强 |
+
+## License
+
+[MIT License](LICENSE) — Copyright (c) 2026 i1see1you.
