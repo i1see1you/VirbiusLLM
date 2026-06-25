@@ -75,7 +75,7 @@ PoC 代码仍用 `rule_status` + `/status` + `/runtime`；R1 迁移。
 | 5 | L3 策略引擎选型 | **统一 `virbius-engine`（Groovy + Prompt）**，不使用 OPA/Rego |
 | 6 | 异步/ML 语言未在「端 Rust + 管 Java + 云 Java」中写明 | 明确 **Python：检测推理、训练、Agent 评测** |
 | 7 | 不支持 Web | 端侧**仅 Native**（Rust），不做 WASM |
-| 8 | 规则脚本分散、双源 | **virbius-registry 为唯一规则真源**；Compiler 按层推送；部署产物禁止手改 |
+| 8 | 规则脚本分散、双源 | **virbius-control 为唯一规则真源**；Compiler 按层推送；部署产物禁止手改 |
 | 9 | 云/管故障 Fail 策略 | 按 tenant 配置 fail-open/close + 管侧静态兜底 |
 
 在上述约束落实后，**无需变更总体架构**，可进入分阶段实现。
@@ -238,7 +238,7 @@ flowchart TB
 ```mermaid
 sequenceDiagram
   participant Op as 运营/Admin
-  participant Reg as virbius-registry
+  participant Reg as virbius-control
   participant Cmp as virbius-compiler
   participant Pub as PublishOrchestrator
   participant CDN as CDN 端
@@ -310,7 +310,7 @@ sequenceDiagram
 ```mermaid
 flowchart LR
   subgraph Shared["共用 1 套"]
-    R["virbius-registry"]
+    R["virbius-control"]
     C["virbius-gateway/core"]
     RL["rules.lua"]
     A["gateway-agent"]
@@ -472,7 +472,7 @@ APISIX ──gRPC Evaluate──► virbius-engine
 
 | 原则 | 说明 |
 |------|------|
-| **Registry 唯一真源** | 规则正文、scope、`intent_action` 由 **virbius-registry** 维护；运营经 Admin/API 写入，**不以人手维护 `manifest.yaml` 为真源** |
+| **Registry 唯一真源** | 规则正文、scope、`intent_action` 由 **virbius-control** 维护；运营经 Admin/API 写入，**不以人手维护 `manifest.yaml` 为真源** |
 | **Bundle 版本单元** | 每次发布对应 `bundle_id` + `bundle_version`；全链路（端/管/云）对齐同一版本号 |
 | **规则执行形态** | `runtime`: **`lua-dsl`**（端）、**`lua`**（管）、**`native`** / **`prompt`** / **`groovy`**（云）；见 §8.5.0 |
 | **按层推送，非跨语言编译** | 不从 Lua「编译成」Groovy；Compiler **按 `layer` 抽出 `body` 并校验**，PublishOrchestrator 经 Adapter 推送至各执行面 |
@@ -727,7 +727,7 @@ rules:
 ### 8.6 统一编排：Registry 发布 → 按层编译 → 分层同步
 
 ```text
-Admin / Agent API → virbius-registry（draft）
+Admin / Agent API → virbius-control（draft）
     ↓  Schema 校验 + 静态扫描 + Eval 门禁（Python）
 publish(bundle_version) → status: compiling
     ↓
@@ -880,7 +880,7 @@ publish(bundle_version)
 
 | 项 | 约定 |
 |----|------|
-| 唯一真源 | **virbius-registry**（规则库 API + 版本表 + 对象存储） |
+| 唯一真源 | **virbius-control**（规则库 API + 版本表 + 对象存储） |
 | 去掉的层 | 人手维护的 **`manifest.yaml` 文件真源**（可保留为导出/审计格式） |
 | 统一管理 | 运营经 Admin 维护规则；**产品语义**为「统一规则管控」 |
 | 同步时机 | **发布时** Compiler + PublishOrchestrator 同步端管云；**非**请求时 |
@@ -1323,7 +1323,7 @@ Route 插件配置示例：
 |------|------|
 | **`PublishOrchestrator`** | 读 Registry `syncing` 任务；按配置顺序调用 Adapter；聚合 ACK；写 `Registry.sync_ack`；失败置 `failed` |
 | **`PublisherAdapter`** | 接口：`publish(ctx)` → `verify(ctx)`；各 Adapter 只懂一种目标（CDN / etcd / Kong / engine 等） |
-| **`virbius-registry`（调用方）** | `compiling` 完成后触发 Orchestrator；不内嵌推送协议 |
+| **`virbius-control`（调用方）** | `compiling` 完成后触发 Orchestrator；不内嵌推送协议 |
 
 部署形态：可与 Registry **同进程**（库模块）或 **独立 `virbius-deploy` 服务**（推荐生产：与编译 Job 解耦、便于重试）。
 
@@ -1693,7 +1693,7 @@ routes:
 | **插件配置块** | `plugins.virbius-guard` | `plugins[].config`（Kong Schema） |
 
 ```text
-virbius-registry（唯一真源，bundle_version）
+virbius-control（唯一真源，bundle_version）
         │
         ▼
    virbius-compiler  --gateway=apisix|kong
@@ -2656,7 +2656,7 @@ Flink campaign 事件
 1. 模型类 Skill 不得编译到 gateway/edge。
 2. L3 终判仅在 **virbius-engine**（Groovy），管/端不得终判。
 3. scene 由服务端映射，不信任客户端伪造；**`trace_id`** 优先 App/SDK，HTTP 缺失时**网关生成**（§13.1.1）；非法格式 **400**。
-4. **virbius-registry** 为规则唯一真源；etcd/CDN/引擎制品仅经 **PublishOrchestrator / Adapter** 下发，禁止手改；端侧禁止下发可执行 `.lua`。
+4. **virbius-control** 为规则唯一真源；etcd/CDN/引擎制品仅经 **PublishOrchestrator / Adapter** 下发，禁止手改；端侧禁止下发可执行 `.lua`。
 5. virbius-engine 调用超时必须走 tenant Fail 策略。
 6. 端侧本期仅 Native，不部署 WASM。
 7. `reason_code` 全链路一致，便于申诉与报表。

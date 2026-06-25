@@ -9,7 +9,7 @@ export VIRBIUS_DATA_DIR="${VIRBIUS_DATA_DIR:-$ROOT/data}"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/virbius-gateway-agent/target}"
 export VIRBIUS_REDIS_PORT="${VIRBIUS_REDIS_PORT:-6379}"
 export VIRBIUS_REDIS_URL="${VIRBIUS_REDIS_URL:-redis://127.0.0.1:${VIRBIUS_REDIS_PORT}}"
-MVN="${MVN:-$HOME/.local/apache-maven-3.9.6/bin/mvn}"
+MVN="${MVN:-mvn}"
 AGENT_BIN="$CARGO_TARGET_DIR/release/virbius-gateway-agent"
 export VIRBIUS_GATEWAY_ARTIFACT_ENABLED="${VIRBIUS_GATEWAY_ARTIFACT_ENABLED:-true}"
 export VIRBIUS_GATEWAY_ARTIFACT_LOCAL_FALLBACK="${VIRBIUS_GATEWAY_ARTIFACT_LOCAL_FALLBACK:-false}"
@@ -94,8 +94,8 @@ ensure_redis() {
   return 1
 }
 
-if [[ ! -x "$MVN" ]]; then
-  echo "Maven not found. Install to ~/.local/apache-maven-3.9.6 or set MVN=..."
+if ! command -v "$MVN" >/dev/null 2>&1; then
+  echo "Maven not found. Install Maven 3.9+ or set MVN=/path/to/mvn"
   exit 1
 fi
 

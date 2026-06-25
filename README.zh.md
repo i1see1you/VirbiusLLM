@@ -1,6 +1,9 @@
 # VirbiusLLM
 
-License: [MIT](LICENSE) · English: [README.md](README.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Java](https://img.shields.io/badge/Java-17%2B-orange)](https://adoptium.net/)
+[![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange)](https://www.rust-lang.org/)
+English: [README.md](README.md)
 
 VirbiusLLM 是一款为大模型定制的安全防护工具，支持实时 Skill 与近线 Skill 配置，通过 Agent 辅助生成和优化规则 Skill，主要应用场景是大模型 prompt 越狱和敏感指令的拦截，以及大模型输出的二次审计。
 
@@ -55,7 +58,8 @@ VirbiusLLM 是一款为大模型定制的安全防护工具，支持实时 Skill
 | User guide (EN) | [docs/user-guide.en.md](docs/user-guide.en.md) |
 | 种子数据与运营 API | [docs/seed-api.md](docs/seed-api.md) |
 | 仓库布局 | [docs/repo-layout.md](docs/repo-layout.md) |
-| API 契约（OpenAPI） | [docs/openspec/](docs/openspec/) |
+| 术语表 | [docs/GLOSSARY.md](docs/GLOSSARY.md) |
+| 发布流程 | [docs/RELEASING.md](docs/RELEASING.md) |
 
 ## 环境要求
 
@@ -198,7 +202,7 @@ API 生命周期由 **virbius-control** Admin API 统一管理；详见 [docs/se
 
 | 建议 | 说明 |
 |------|------|
-| **MVP（端-管-云）** | 10–12 周：端 `virbius-core`（违禁词+黑名单）+ 网关双插件 + engine + Registry 发布；**含 dry_run/canary/full**。详见 [§11.6](docs/DESIGN.md)。 |
+| **MVP（端-管-云）** | 端 `virbius-core`（违禁词+黑名单）+ 网关双插件 + engine + control 发布；**含 dry_run/canary/full**。详见 [§11.6](docs/DESIGN.md)。 |
 | **定义检测分级 L0–L3** | L0 端；L1/L2 云检测（管侧 RPC 调用）；L3 云 Policy。管侧仅静态 Skill。明确每层最大延迟与触发条件。 |
 | **统一决策模型** | 多端/管/云都产出「风险分 + 动作」，由 **`virbius-engine`**（`PolicyMerger` / ActionMerge）合并（避免多处各拦各的）。 |
 | **流式输出审计规范** | 规定 chunk 大小、缓冲窗口、是否允许「先出后撤」；高合规场景建议 hold-then-release。 |

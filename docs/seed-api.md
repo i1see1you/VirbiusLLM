@@ -201,11 +201,11 @@ PoC 已实现 Control 直拉 + 租户级 Bearer；详见 [DESIGN §8.10.2.5a](DE
 
 ```bash
 export VIRBIUS_API_KEY_AUTH_ENABLED=true
-# PoC dev keys（seed）：
-#   viewer (Edge manifest): vrb_tk_dev_viewer_default
-#   admin (ops write):      vrb_tk_dev_admin_default
-#   platform (tenant CRUD): vrb_tk_dev_platform
-export VIRBIUS_EDGE_API_KEY=vrb_tk_dev_viewer_default
+# PoC dev keys (seed.sql) — replace with your own in production:
+#   viewer (Edge manifest):  <your_viewer_api_key>
+#   admin (ops write):       <your_admin_api_key>
+#   platform (tenant CRUD):  <your_platform_api_key>
+export VIRBIUS_EDGE_API_KEY=<your_viewer_api_key>
 ```
 
 | Header | 说明 |
@@ -217,10 +217,10 @@ export VIRBIUS_EDGE_API_KEY=vrb_tk_dev_viewer_default
 
 ```bash
 # 列出
-curl -s -H "Authorization: Bearer vrb_tk_dev_admin_default" \
+curl -s -H "Authorization: Bearer <your_admin_api_key>" \
   "http://127.0.0.1:8080/api/v1/admin/tenants/default/api-credentials"
 # 签发（响应 data.api_key 仅一次）
-curl -s -X POST -H "Authorization: Bearer vrb_tk_dev_admin_default" \
+curl -s -X POST -H "Authorization: Bearer <your_admin_api_key>" \
   -H "Content-Type: application/json" \
   -d '{"role":"tenant_viewer","label":"edge-sdk"}' \
   "http://127.0.0.1:8080/api/v1/admin/tenants/default/api-credentials"
@@ -232,14 +232,14 @@ curl -s -X POST -H "Authorization: Bearer vrb_tk_dev_admin_default" \
 export VIRBIUS_CONTROL_BASE_URL=http://127.0.0.1:8080
 export VIRBIUS_TENANT_ID=default
 export VIRBIUS_APP_ID=beta
-export VIRBIUS_EDGE_API_KEY=vrb_tk_dev_viewer_default   # auth 开启时
+export VIRBIUS_EDGE_API_KEY=<your_viewer_api_key>   # auth 开启时
 export VIRBIUS_EDGE_CACHE_DIR=./cache/beta
 ```
 
 验证拉取：
 
 ```bash
-curl -s -H "Authorization: Bearer vrb_tk_dev_viewer_default" \
+curl -s -H "Authorization: Bearer <your_viewer_api_key>" \
   "http://127.0.0.1:8080/api/v1/edge/tenants/default/apps/beta/policy-version"
 ```
 

@@ -96,7 +96,7 @@ let edge = VirbiusEdge::init(EdgeInitConfig {
     control_base_url: Some("http://127.0.0.1:8080".into()),
     tenant_id: "default".into(),
     app_id: "beta".into(),
-    edge_api_key: Some("vrb_tk_...".into()), // required when VIRBIUS_API_KEY_AUTH_ENABLED=true
+    edge_api_key: Some("<your_api_key>".into()), // required when VIRBIUS_API_KEY_AUTH_ENABLED=true
     cache_dir: PathBuf::from(app_cache_dir),
     offline_manifest_path: None,
 })?;
@@ -125,21 +125,30 @@ When `VIRBIUS_API_KEY_AUTH_ENABLED=true` on control:
 |------|-------------|
 | Header | `Authorization: Bearer <api_key>` or `X-Virbius-Api-Key` |
 | Scope | Key bound to **tenant_id**; path `{tenantId}` must match (`platform_admin` `*` excepted) |
-| Edge pull | Requires `tenant_viewer+`; PoC key: `vrb_tk_dev_viewer_default` |
-| Admin writes | Requires `tenant_admin+`; PoC: `vrb_tk_dev_admin_default` |
+| Edge pull | Requires `tenant_viewer+`; see [seed-api.md §6.5](./seed-api.md) for key management |
+| Admin writes | Requires `tenant_admin+`; see [seed-api.md §6.5](./seed-api.md) |
 | Issue key | `POST /api/v1/admin/tenants/{tenantId}/api-credentials` |
 
 ### 3.4 Example / CI environment variables
 
-See §3.2 in the Chinese guide or [seed-api.md §6.5](./seed-api.md).
+The following variables are used by `VirbiusEdge::new_from_env()`, examples, and automation tests. **Production apps should read from their own config**, see §3.2.
 
 | Variable | Description |
 |----------|-------------|
-| `VIRBIUS_CONTROL_BASE_URL` | Control base URL |
+| `VIRBIUS_CONTROL_BASE_URL` | Control base URL; enables remote sync when `app_id` is also set |
 | `VIRBIUS_TENANT_ID` | Tenant, default `default` |
-| `VIRBIUS_APP_ID` | App ID for manifest pull |
-| `VIRBIUS_EDGE_CACHE_DIR` | Local cache directory |
-| `VIRBIUS_EDGE_API_KEY` | Bearer when auth enabled |
+| `VIRBIUS_APP_ID` | Per-app manifest identifier for pull |
+| `VIRBIUS_EDGE_CACHE_DIR` | Local manifest + `meta.json` directory |
+| `VIRBIUS_EDGE_API_KEY` | Bearer when control `VIRBIUS_API_KEY_AUTH_ENABLED=true` (use `tenant_viewer` key) |
+| `VIRBIUS_EDGE_MANIFEST_PATH` | Offline manifest path; skips Control sync when set |
+| `VIRBIUS_DATA_DIR` | When `EDGE_CACHE_DIR` unset, cache defaults to `{DATA_DIR}/edge/{tenant}/{app}` |
+
+**Control side** (when starting virbius-control):
+
+| Variable | Description |
+|----------|-------------|
+| `VIRBIUS_API_KEY_AUTH_ENABLED` | `true` enables Admin / Edge / tenants API Bearer (default `false`) |
+| `VIRBIUS_DATA_DIR` | Artifact and SQLite directory, default `./data` |
 
 ### 3.5 Hot reload
 
@@ -174,16 +183,29 @@ match out.action {
 
 ### 3.8 DLP desensitization (edge only)
 
-Configure **`dlp-dsl`** rules in the admin console. Flow: mask before LLM → call LLM → restore placeholders in the response.
+Configure **`dlp-dsl`** rules in the admin console. They are written to manifest `dlp_rules[]` (separate from keyword `rules[]`). `intent_action` is fixed to `allow`; DLP does not participate in `scan` ActionMerge.
+
+**Flow**: desensitize before LLM → call LLM → restore placeholders in response.
 
 ```rust
+// ① Share trace_id with scan
 let scan = edge.scan_with(ctx.clone(), user_text)?;
+let trace_id = scan.trace_id;
+
+// ② Desensitize (dry_run only detects; full/canary replaces with placeholders)
 let masked = edge.desensitize_in_with(ctx.clone(), user_text)?;
-// send masked.text to LLM
-let restored = edge.desensitize_out_with(&scan.trace_id, &model_reply, ctx);
+let to_cloud = masked.text; // send to LLM
+
+// ③ Restore after model reply
+let restored = edge.desensitize_out_with(&trace_id, &model_reply, ctx);
+let to_user = restored.text;
 ```
 
-Placeholders look like `{{VIRBIUS_PHONE_CN_0}}`. Vault TTL: `sdk_config.dlp_vault_ttl_ms` (default 30 minutes).
+Placeholders look like `{{VIRBIUS_PHONE_CN_0}}`. Plaintext is held in an in-process TokenVault with TTL from `sdk_config.dlp_vault_ttl_ms` (default 30 minutes).
+
+**Entity types**: `phone_cn`, `idcard_cn`, `email`, `bank_card_cn`, `custom_regex`.
+
+Built-in entities use ASCII digit/email character boundaries (not `\b`), so Chinese characters adjacent to digits or email addresses are still matched correctly; long digit strings are not incorrectly segmented as 11-digit phone numbers.
 
 ### 3.9 C ABI (non-Rust languages)
 
@@ -333,7 +355,43 @@ DLP: `dry_run` detects only; `full`/`canary` replace placeholders and use Vault.
 
 ## 7. Full example (edge + DLP + gateway)
 
-See [user-guide.md §7](./user-guide.md) for a complete Rust `chat()` example.
+```rust
+async fn chat(
+    edge: &VirbiusEdge,
+    gateway_url: &str,
+    ctx: ScanContext,
+    user_text: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    // 1. Edge scan
+    let scan = edge.scan_with(ctx.clone(), user_text)?;
+    if scan.action == virbius_core::EffectiveAction::Block {
+        return Ok("Content blocked by local security check".into());
+    }
+    let trace_id = scan.trace_id;
+
+    // 2. DLP desensitize before sending to LLM
+    let masked = edge.desensitize_in_with(ctx.clone(), user_text)?;
+
+    // 3. Call LLM via gateway (use reqwest in production)
+    let resp = ureq::post(gateway_url)
+        .set("Content-Type", "application/json")
+        .set("X-Virbius-Trace-Id", &trace_id)
+        .set("X-Virbius-Edge-Pass", "1")
+        .send_json(serde_json::json!({
+            "model": "gpt-4",
+            "messages": [{ "role": "user", "content": masked.text }]
+        }))?;
+
+    if resp.status() == 403 {
+        return Ok("Request blocked by gateway".into());
+    }
+    let model_reply = resp.into_string()?;
+
+    // 4. DLP restore placeholders in response
+    let restored = edge.desensitize_out_with(&trace_id, &model_reply, ctx);
+    Ok(restored.text)
+}
+```
 
 ---
 
@@ -342,10 +400,12 @@ See [user-guide.md §7](./user-guide.md) for a complete Rust `chat()` example.
 | Symptom | Possible cause |
 |---------|----------------|
 | scan always Allow | Wrong manifest path; rules still `draft` |
-| DLP no replacement | Rule in `dry_run`; canary miss |
+| DLP no replacement | Rule in `dry_run`; canary miss; no word boundary for phone number |
 | Gateway 400 | Invalid `X-Virbius-Trace-Id` |
 | Gateway 403 | Gateway/cloud full/canary block |
-| Edge sync 401/403 | Auth enabled but no `edge_api_key` |
+| Cloud rules not applied | Not routed through gateway evaluate; engine RuleCache not synced |
+| Edge manifest app_id mismatch | Init `app_id` differs from manifest `app_id`; rules cleared |
+| Edge sync 401/403 | Auth enabled but no `edge_api_key`; or key `tenant_id` mismatch |
 | Edge sync 404 | No edge artifact for `app_id`; check `data/edge/{tenant}/{app}/` |
 | Gateway lists stale | Sidecar not running; check `gateway-sync.log`; poll interval ~5s |
 

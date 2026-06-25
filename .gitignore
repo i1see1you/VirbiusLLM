@@ -4,8 +4,8 @@ target/
 *.jar
 !.mvn/wrapper/maven-wrapper.jar
 
-# Go
-virbius-gateway-agent/bin/
+# Rust (gateway-agent)
+virbius-gateway-agent/target/
 
 # IDE
 .idea/

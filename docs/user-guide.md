@@ -192,7 +192,7 @@ let ctx = ScanContext {
 };
 ```
 
-### 3.5 内容防控 `scan`
+### 3.6 内容防控 `scan`
 
 对用户 **输入**（prompt）做本地关键词检测：
 
@@ -235,7 +235,7 @@ fn check_input(edge: &VirbiusEdge, ctx: ScanContext, text: &str) -> Result<(), V
 | `EmptyContent` | 空字符串 |
 | `InvalidTraceId` | 自定义 trace_id 格式非法 |
 
-### 3.6 DLP 脱敏（仅端层）
+### 3.7 DLP 脱敏（仅端层）
 
 DLP 规则在运营台以 **`dlp-dsl`** 配置，写入 manifest 的 **`dlp_rules[]`**（与关键词 `rules[]` 分离）。`intent_action` 固定 **`allow`**，不参与 scan 的 ActionMerge。
 
@@ -261,7 +261,7 @@ let to_user = restored.text;
 
 内置实体使用 **ASCII 数字/邮箱字符边界**（非 `\b`），中文紧贴数字或邮箱时仍可匹配；长串纯数字内部仍不会误切 11 位手机号。
 
-### 3.7 C ABI（非 Rust 语言）
+### 3.8 C ABI（非 Rust 语言）
 
 头文件：[virbius-core/include/virbius.h](../virbius-core/include/virbius.h)
 
@@ -272,7 +272,7 @@ let to_user = restored.text;
 | `virbius_reload` | 热更新 |
 | `virbius_free_string` | 释放 scan 返回的 C 字符串 |
 
-### 3.8 端侧示例
+### 3.9 端侧示例
 
 ```bash
 cd virbius-core

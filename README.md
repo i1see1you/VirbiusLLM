@@ -1,6 +1,9 @@
 # VirbiusLLM
 
-License: [MIT](LICENSE) · 中文：[README.zh.md](README.zh.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Java](https://img.shields.io/badge/Java-17%2B-orange)](https://adoptium.net/)
+[![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange)](https://www.rust-lang.org/)
+中文：[README.zh.md](README.zh.md)
 
 VirbiusLLM is a security platform for large language model applications. It supports real-time and near-line policy rollout, rule authoring with agent assistance, and layered defenses against prompt jailbreaks, sensitive instructions, and unsafe model output.
 
@@ -55,33 +58,44 @@ Rules are versioned in **`rule_history` / `rule_revision`**. Publishing flows th
 | User guide (中文) | [docs/user-guide.md](docs/user-guide.md) |
 | Seed data & admin API | [docs/seed-api.md](docs/seed-api.md) |
 | Repo layout | [docs/repo-layout.md](docs/repo-layout.md) |
-| API specs (OpenAPI) | [docs/openspec/](docs/openspec/) |
+| Glossary | [docs/GLOSSARY.md](docs/GLOSSARY.md) |
+| Release process | [docs/RELEASING.md](docs/RELEASING.md) |
 
 ## Requirements
 
 - **JDK 17**, **Maven 3.9+**
 - **Rust** (for `virbius-core` and `virbius-gateway-agent`)
-- Optional: **Redis**, **Ollama/vLLM** (Prompt 1B rules on engine)
+- **Redis** (for audit ingest and cumulative counters; `run-local.sh` auto-starts it)
+- Optional: **Ollama/vLLM** (for Prompt 1B rules on engine)
+- Gateway: **APISIX** (MVP required) or **OpenResty** (stretch)
 
 See [docs/repo-layout.md](docs/repo-layout.md) for environment details.
 
 ## Quick start
 
-Start control, engine, and gateway-agent locally:
+**Recommended: use `run-local.sh`** (builds and starts control + engine + gateway-agent; leverages `mvn` and `cargo` on `PATH`):
 
 ```bash
 bash scripts/run-local.sh
 ```
 
-- Control / admin UI: http://127.0.0.1:8080/ui  
-- Engine: http://127.0.0.1:8082  
-- Gateway agent: http://127.0.0.1:9070  
-
-Smoke test:
+**Manual start** (step by step):
 
 ```bash
-bash scripts/smoke-test.sh
+# 1. Build
+mvn clean install -DskipTests          # virbius-control + virbius-engine
+cargo build --release                   # gateway-agent + virbius-core
+
+# 2. Start locally (H2 in-memory, auto schema)
+cd virbius-control
+mvn spring-boot:run \
+  -Dspring-boot.run.profiles=local
+
+# 3. Smoke test
+curl -s http://localhost:8080/api/v1/health
 ```
+
+You may also set `MVN` env var to a specific Maven path before running `run-local.sh` if `mvn` is not on `PATH`.
 
 ## Edge SDK (`virbius-core`)
 
@@ -107,7 +121,7 @@ export VIRBIUS_TENANT_ID=default
 export VIRBIUS_APP_ID=beta
 export VIRBIUS_EDGE_CACHE_DIR=./cache/beta
 # optional when VIRBIUS_API_KEY_AUTH_ENABLED=true on control:
-export VIRBIUS_EDGE_API_KEY=vrb_tk_dev_viewer_default
+export VIRBIUS_EDGE_API_KEY=<your_api_key>
 cargo run --example rust_client_demo
 ```
 
@@ -199,7 +213,7 @@ The async path operates out-of-band, driving long-cycle threat hunting and model
 
 | Item | Description |
 |------|-------------|
-| **MVP edge–gateway–cloud** | 10–12 wk: edge L0 + APISIX + engine + Registry publishing; dry_run / canary / full. See [DESIGN §11.6](docs/DESIGN.md). |
+| **MVP edge–gateway–cloud** | Edge L0 + APISIX + engine + control publishing; dry_run / canary / full. See [DESIGN §11.6](docs/DESIGN.md). |
 | **Detection grading L0–L3** | L0 edge; L1/L2 cloud (RPC from gateway); L3 cloud policy. Gateway only executes static skills. |
 | **Unified decision model** | All layers produce (risk_score + action); `ActionMerge` in `virbius-engine` consolidates instead of each layer acting independently. |
 | **Streaming output audit spec** | Chunk size, buffer window, hold-then-release for high-compliance scenarios. |

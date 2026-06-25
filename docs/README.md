@@ -17,8 +17,11 @@
 
 ## API Specifications
 
+API specifications are maintained locally in `docs/openspec/` (OpenAPI YAML, protobuf, JSON schemas). See [DESIGN.md](./DESIGN.md) for architectural contracts.
+
+## Additional Documents
+
 | Document | Description |
 |----------|-------------|
-| [openspec/registry.openapi.yaml](./openspec/registry.openapi.yaml) | Control / admin API (OpenAPI) |
-| [openspec/gateway-agent.openapi.yaml](./openspec/gateway-agent.openapi.yaml) | Gateway agent HTTP API |
-| [openspec/engine-admin.openapi.yaml](./openspec/engine-admin.openapi.yaml) | Engine admin API |
+| [GLOSSARY.md](./GLOSSARY.md) | Terminology reference |
+| [RELEASING.md](./RELEASING.md) | Release process |

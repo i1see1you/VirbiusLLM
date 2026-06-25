@@ -1,3 +1,2 @@
-# PoC: run Java/Go on host (see docs/POC-REPO.md).
-# Optional placeholders for future container images.
+# PoC: Run locally (not yet containerized). See scripts/run-local.sh.
 services: {}
