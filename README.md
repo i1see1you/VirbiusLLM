@@ -5,9 +5,9 @@
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange)](https://www.rust-lang.org/)
 中文：[README.zh.md](README.zh.md)
 
-VirbiusLLM is a security platform for large language model applications. It supports real-time and near-line policy rollout, rule authoring with agent assistance, and layered defenses against prompt jailbreaks, sensitive instructions, and unsafe model output.
+VirbiusLLM is a deep security protection platform specifically designed for Large Language Models (LLMs). It innovatively adopts a three-layer, in-depth defense architecture—covering Cloud, Pipe, Endpoint. By integrating fine-tuned safety LLMs with a dynamic policy engine, the platform achieves end-to-end closed-loop protection, spanning prompt injection interception, sensitive command filtering, and secondary content auditing.
 
-The architecture follows an **edge–gateway–cloud** model with a **unified control plane** and **layered enforcement**:
+The architecture is designed with reference to the security frameworks of Alibaba and Meituan，follows an **edge–gateway–cloud** model with a **unified control plane** and **layered enforcement**:
 
 ```
 User request
