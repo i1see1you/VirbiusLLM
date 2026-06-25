@@ -222,7 +222,6 @@
         tbody.innerHTML = '';
         const rows = [];
         (detail.db_events || []).forEach(h => rows.push({ ...h, _source: 'db' }));
-        (detail.allow_log_events || []).forEach(h => rows.push({ ...h, _source: 'allow-log' }));
         rows.sort((a, b) => String(a.intercepted_at || '').localeCompare(String(b.intercepted_at || '')));
         rows.forEach(h => {
           const tr = document.createElement('tr');

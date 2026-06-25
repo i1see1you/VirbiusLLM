@@ -46,8 +46,10 @@ virbius:
       sweep-cron: "0 0 3 * * *"
   audit:
     allow-log-path: ${VIRBIUS_AUDIT_ALLOW_PATH:${virbius.data-dir}/audit-allow.jsonl}
-    gateway-allow-log-path: ${VIRBIUS_GATEWAY_AUDIT_ALLOW_PATH:${virbius.data-dir}/gateway-audit-allow.jsonl}
-    engine-allow-log-path: ${VIRBIUS_ENGINE_AUDIT_ALLOW:/tmp/virbius/engine-audit-allow.jsonl}
+    allow-log:
+      max-file-size: ${VIRBIUS_AUDIT_ALLOW_MAX_FILE_SIZE:100MB}
+      max-history: ${VIRBIUS_AUDIT_ALLOW_MAX_HISTORY_DAYS:30}
+      total-size-cap: ${VIRBIUS_AUDIT_ALLOW_TOTAL_SIZE_CAP:5GB}
 
 audit:
   publish:

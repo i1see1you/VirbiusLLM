@@ -44,6 +44,12 @@
       } else {
         stopRolloutAutoRefresh();
       }
+      if (tab === 'monitor') {
+        loadMonitorPage();
+        startMonitorRefresh();
+      } else {
+        stopMonitorRefresh();
+      }
       if (tab === 'audit-center') {
         const q = new URLSearchParams(window.location.search).get('trace_id');
         if (q) {

@@ -39,14 +39,17 @@ public class AuditEventIngestor {
             if (traceId.isBlank() || tenantId.isBlank()) {
                 return IngestResult.rejected("missing trace_id or tenant_id");
             }
-            String eventId = traceId + ":" + str(event.get("rule_id")) + ":" + str(event.get("intercepted_at"));
+            String eventId = str(event.get("event_id"));
+            if (eventId.isBlank()) {
+                eventId = traceId + ":" + str(event.get("rule_id")) + ":" + str(event.get("intercepted_at"));
+            }
             String insertSql = insertIgnorePrefix
                     + " INTO tb_audit_events ("
                     + "  event_id, trace_id, trace_id_source, tenant_id, scene, layer,"
                     + "  rule_id, rule_revision, reason_code, effective_action, max_risk_score,"
                     + "  rollout_state, canary_percent, in_canary_bucket, degraded, sampled_allow,"
-                    + "  intercepted_at, user_id, device_id"
-                    + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    + "  sample_rate_allow, intercepted_at, user_id, device_id"
+                    + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             int updated = jdbc.update(insertSql,
                     eventId,
                     traceId,
@@ -64,6 +67,7 @@ public class AuditEventIngestor {
                     boolInt(event.get("in_canary_bucket")),
                     boolInt(event.get("degraded")),
                     boolInt(event.get("sampled_allow")),
+                    doubleOrNull(event.get("sample_rate_allow")),
                     str(event.get("intercepted_at")),
                     str(event.get("user_id")),
                     str(event.get("device_id")));
@@ -137,6 +141,20 @@ public class AuditEventIngestor {
             return Integer.parseInt(str(o));
         } catch (Exception e) {
             return 0;
+        }
+    }
+
+    private static Double doubleOrNull(Object o) {
+        if (o == null) {
+            return null;
+        }
+        if (o instanceof Number n) {
+            return n.doubleValue();
+        }
+        try {
+            return Double.parseDouble(str(o));
+        } catch (Exception e) {
+            return null;
         }
     }
 

@@ -7,6 +7,7 @@ use std::sync::{Mutex, OnceLock};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AuditEvent {
+    pub event_id: String,
     pub trace_id: String,
     pub trace_id_source: String,
     pub tenant_id: String,
@@ -81,6 +82,7 @@ pub fn maybe_record(
         None
     };
     let event = AuditEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
         trace_id: trace_id.to_string(),
         trace_id_source: trace_id_source.to_string(),
         tenant_id: manifest::tenant_id(),

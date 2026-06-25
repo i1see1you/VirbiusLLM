@@ -168,6 +168,7 @@
         </div>
         <button type="button" class="nav-item" data-tab="rollout"><span class="nav-icon">🚀</span><span class="nav-label" data-i18n="nav.rollout">策略上线</span></button>
         <button type="button" class="nav-item" data-tab="audit-center"><span class="nav-icon">🔍</span><span class="nav-label" data-i18n="nav.audit-center">审计中心</span></button>
+        <button type="button" class="nav-item" data-tab="monitor"><span class="nav-icon">📈</span><span class="nav-label" data-i18n="nav.monitor">监控中心</span></button>
       </nav>
     </aside>
 
@@ -742,7 +743,7 @@
 
   <div id="panel-audit-center" class="panel card">
     <h2 style="margin:0 0 0.5rem;font-size:1rem" data-i18n="ac.title">审计中心</h2>
-    <p class="hint" data-i18n-html="ac.desc">按 <code>trace_id</code> 查询 <code>tb_audit_events</code>（review/block/captcha 等）及 allow 日志文件。allow 请求不入库，仅写入各层 JSONL 备档。</p>
+    <p class="hint" data-i18n-html="ac.desc">按 <code>trace_id</code> 查询 <code>tb_audit_events</code>（review/block/captcha 及采样命中的 allow 事件）。未采样的 allow 请求仅归档为 JSONL，不在此查询。</p>
     <div class="row">
       <label>trace_id <input id="acTraceId" placeholder="输入 trace_id" style="min-width:22rem" autocomplete="off" /></label>
       <button type="button" id="acSearch" data-i18n="ac.btn-search">查询</button>
@@ -755,19 +756,89 @@
         <tbody></tbody>
       </table>
     </div>
+  </div>
+
+  <div id="panel-monitor" class="panel card">
+    <h2 style="margin:0 0 0.5rem;font-size:1rem" data-i18n="monitor.title">监控中心</h2>
+    <p class="hint" data-i18n-html="hint.monitor">监控看板每 30 秒自动刷新。指标来自 <code>tb_rule_metrics_1h</code>，降级率 = cnt_degraded / cnt_total_requests。</p>
+    <div class="row">
+      <button type="button" class="seg mon-time-btn active" data-hours="24" onclick="setMonitorHours(24)" data-i18n="monitor.time-24h">24 小时</button>
+      <button type="button" class="seg mon-time-btn" data-hours="168" onclick="setMonitorHours(168)" data-i18n="monitor.time-7d">7 天</button>
+      <button type="button" class="seg mon-time-btn" data-hours="720" onclick="setMonitorHours(720)" data-i18n="monitor.time-30d">30 天</button>
+      <button type="button" class="secondary" id="monExportBtn" data-i18n="monitor.btn-export">导出看板</button>
+    </div>
+
+    <div id="monKpiCards" class="kpi-grid"></div>
+
     <div class="rollout-section">
-      <h3 data-i18n-html="ac.allow-log-title">allow 日志（<span id="acAllowCount">0</span>）</h3>
-      <table id="acAllowTable">
-        <thead><tr><th data-i18n="rollout.header-time">时间</th><th data-i18n="rollout.header-layer">layer</th><th>scene</th><th data-i18n="rollout.header-action">action</th><th>rule</th><th data-i18n="rollout.header-reason">reason</th><th data-i18n="rollout.header-risk">risk</th><th data-i18n="rollout.header-rollout">rollout</th></tr></thead>
-        <tbody></tbody>
+      <h3 data-i18n="monitor.overall-traffic">总流量趋势</h3>
+      <div class="chart-wrap"><canvas id="monTrafficChart"></canvas></div>
+    </div>
+
+    <div class="rollout-section">
+      <h3 data-i18n="monitor.overall-block-rate">拦截率趋势</h3>
+      <div class="chart-wrap"><canvas id="monBlockRateChart"></canvas></div>
+    </div>
+
+    <div class="rollout-section">
+      <h3 data-i18n="monitor.rule-block-rate">单规则拦截率</h3>
+      <label><span data-i18n="rollout.header-rule">规则</span> <select id="monRuleSelect" style="min-width:14rem"></select></label>
+      <div class="chart-wrap" style="margin-top:0.5rem"><canvas id="monRuleChart"></canvas></div>
+    </div>
+
+    <div class="rollout-section">
+      <h3 data-i18n="monitor.rule-ranking">规则命中排行</h3>
+      <table style="width:100%">
+        <thead><tr>
+          <th data-i18n="monitor.ranking-header-rule">规则</th>
+          <th data-i18n="monitor.ranking-header-hits">命中</th>
+          <th data-i18n="monitor.ranking-header-block">拦截</th>
+          <th data-i18n="monitor.ranking-header-review">复审</th>
+          <th>captcha</th>
+          <th data-i18n="monitor.ranking-header-hit-rate">命中率</th>
+          <th data-i18n="monitor.ranking-header-block-rate">拦截率</th>
+          <th data-i18n="monitor.kpi-total-requests">总请求</th>
+        </tr></thead>
+        <tbody id="monRankingBody"></tbody>
       </table>
     </div>
+
     <div class="rollout-section">
-      <h3 data-i18n="ac.log-files-title">allow 日志文件</h3>
-      <table id="acLogFilesTable">
-        <thead><tr><th data-i18n="ac.header-source">来源</th><th data-i18n="ac.header-path">路径</th><th data-i18n="ac.header-readable">可读</th></tr></thead>
-        <tbody></tbody>
+      <h3 data-i18n="monitor.scene-traffic">Scene 流量分布</h3>
+      <div class="chart-wrap" style="max-width:300px;margin:0 auto 0.5rem"><canvas id="monSceneChart"></canvas></div>
+      <table style="width:100%">
+        <thead><tr>
+          <th data-i18n="monitor.scene-header-scene">场景</th>
+          <th data-i18n="monitor.scene-header-layer">层</th>
+          <th data-i18n="monitor.scene-header-requests">请求数</th>
+        </tr></thead>
+        <tbody id="monSceneBody"></tbody>
       </table>
+    </div>
+
+    <div class="rollout-section">
+      <h3 data-i18n="monitor.degradation-title">降级率趋势</h3>
+      <div class="chart-wrap"><canvas id="monDegradationChart"></canvas></div>
+    </div>
+
+    <div class="rollout-section">
+      <h3 data-i18n="monitor.event-timeline">策略变更事件</h3>
+      <table style="width:100%">
+        <thead><tr>
+          <th data-i18n="monitor.event-header-time">时间</th>
+          <th data-i18n="monitor.event-header-rule">规则</th>
+          <th data-i18n="monitor.event-header-state">状态</th>
+          <th data-i18n="monitor.event-header-rev">rev</th>
+          <th data-i18n="monitor.event-header-trigger">触发</th>
+          <th data-i18n="monitor.event-header-operator">操作者</th>
+        </tr></thead>
+        <tbody id="monEventBody"></tbody>
+      </table>
+    </div>
+
+    <div class="rollout-section">
+      <h3 data-i18n="monitor.ingest-health">Ingest 健康状态</h3>
+      <div id="monIngestHealth"></div>
     </div>
   </div>
 
@@ -788,6 +859,7 @@
   <script src="js/ops-deploy.js"></script>
   <script src="js/ops-audit.js"></script>
   <script src="js/ops-tenants.js"></script>
+  <script src="js/ops-monitor.js"></script>
   <script src="js/ops-nav.js"></script>
 
   <!-- Version input modal for deploy prepare -->

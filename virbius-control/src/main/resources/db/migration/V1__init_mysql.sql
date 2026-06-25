@@ -201,6 +201,7 @@ CREATE TABLE tb_audit_events (
     in_canary_bucket  INTEGER,
     degraded          INTEGER,
     sampled_allow     INTEGER,
+    sample_rate_allow DOUBLE,
     intercepted_at    TIMESTAMP NOT NULL,
     user_id           VARCHAR(256),
     device_id         VARCHAR(256),
@@ -208,6 +209,8 @@ CREATE TABLE tb_audit_events (
 );
 
 CREATE INDEX idx_tb_audit_events_rule ON tb_audit_events (tenant_id, rule_id, intercepted_at);
+
+CREATE UNIQUE INDEX uq_tb_audit_events_event_id ON tb_audit_events (event_id);
 
 CREATE TABLE tb_audit_ingest_checkpoint (
     stream_key      VARCHAR(128) PRIMARY KEY,

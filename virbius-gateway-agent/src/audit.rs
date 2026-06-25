@@ -8,7 +8,7 @@ use std::{
     path::PathBuf,
     sync::{
         mpsc::{sync_channel, RecvTimeoutError, SyncSender},
-        OnceLock, RwLock,
+        Mutex, OnceLock, RwLock,
     },
     thread,
     time::Duration,
@@ -16,6 +16,7 @@ use std::{
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AuditEvent {
+    pub event_id: String,
     pub trace_id: String,
     pub trace_id_source: String,
     pub tenant_id: String,
@@ -60,6 +61,7 @@ struct AuditConfig {
     flush_batch: usize,
     flush_interval_ms: u64,
     audit_sample_rate_allow: f64,
+    log_retention_days: i64,
 }
 
 static CONFIG: OnceLock<RwLock<AuditConfig>> = OnceLock::new();
@@ -103,6 +105,10 @@ fn config() -> &'static RwLock<AuditConfig> {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(0.1);
+        let log_retention_days = env::var("VIRBIUS_AUDIT_LOG_RETENTION_DAYS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30);
         let cfg = AuditConfig {
             redis_url: env::var("VIRBIUS_REDIS_URL").ok().filter(|s| !s.is_empty()),
             stream_key: env::var("VIRBIUS_AUDIT_STREAM_KEY")
@@ -115,6 +121,7 @@ fn config() -> &'static RwLock<AuditConfig> {
             flush_batch,
             flush_interval_ms,
             audit_sample_rate_allow,
+            log_retention_days,
         };
         if publish_async && cfg.redis_url.is_some() {
             start_publish_worker(&cfg);
@@ -212,19 +219,93 @@ pub fn emit(mut event: AuditEvent) {
         Ok(p) => p,
         Err(_) => return,
     };
-    let log_path = if is_allow {
+    let base_path = if is_allow {
         &cfg.allow_jsonl_path
     } else {
         &cfg.jsonl_path
     };
+    let log_path = dated_path(base_path);
     if let Some(parent) = log_path.parent() {
         let _ = fs::create_dir_all(parent);
     }
-    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(log_path) {
+    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&log_path) {
         let _ = writeln!(f, "{}", payload);
     }
+    maybe_cleanup_old_logs(base_path, cfg.log_retention_days);
     if publish_to_redis {
         publish_redis(&cfg, payload);
+    }
+}
+
+/// Returns a date-stamped path next to `base`, e.g.
+/// `gateway-audit-allow.jsonl` -> `gateway-audit-allow.2026-06-25.jsonl`.
+fn dated_path(base: &PathBuf) -> PathBuf {
+    let date = Utc::now().format("%Y-%m-%d").to_string();
+    let file_name = base
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("audit.jsonl");
+    let dated = match file_name.rsplit_once('.') {
+        Some((stem, ext)) => format!("{}.{}.{}", stem, date, ext),
+        None => format!("{}.{}", file_name, date),
+    };
+    match base.parent() {
+        Some(p) => p.join(dated),
+        None => PathBuf::from(dated),
+    }
+}
+
+/// Deletes dated log files older than `retention_days`. Runs at most once per
+/// process-hour to avoid scanning the directory on every event.
+fn maybe_cleanup_old_logs(base: &PathBuf, retention_days: i64) {
+    if retention_days <= 0 {
+        return;
+    }
+    static LAST_CLEANUP: OnceLock<Mutex<i64>> = OnceLock::new();
+    let now_hour = Utc::now().timestamp() / 3600;
+    let guard = LAST_CLEANUP.get_or_init(|| Mutex::new(0));
+    if let Ok(mut last) = guard.lock() {
+        if *last == now_hour {
+            return;
+        }
+        *last = now_hour;
+    } else {
+        return;
+    }
+
+    let (dir, prefix, ext) = match (base.parent(), base.file_name().and_then(|s| s.to_str())) {
+        (Some(dir), Some(name)) => match name.rsplit_once('.') {
+            Some((stem, ext)) => (dir.to_path_buf(), stem.to_string(), Some(ext.to_string())),
+            None => (dir.to_path_buf(), name.to_string(), None),
+        },
+        _ => return,
+    };
+    let cutoff = Utc::now() - chrono::Duration::days(retention_days);
+    let entries = match fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let fname = match entry.file_name().into_string() {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        let starts = fname.starts_with(&(prefix.clone() + "."));
+        let ext_ok = match &ext {
+            Some(e) => fname.ends_with(&(".".to_string() + e)),
+            None => true,
+        };
+        if !starts || !ext_ok {
+            continue;
+        }
+        if let Ok(meta) = entry.metadata() {
+            if let Ok(modified) = meta.modified() {
+                let mtime: chrono::DateTime<Utc> = modified.into();
+                if mtime < cutoff {
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
+        }
     }
 }
 
@@ -284,6 +365,7 @@ pub fn build_event(
         None
     };
     AuditEvent {
+        event_id: uuid::Uuid::new_v4().to_string(),
         trace_id: trace_id.to_string(),
         trace_id_source: "client".into(),
         tenant_id: tenant_id(),

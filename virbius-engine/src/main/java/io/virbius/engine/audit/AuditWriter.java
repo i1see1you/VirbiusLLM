@@ -7,12 +7,10 @@ import io.virbius.engine.eval.EngineDecisionDto;
 import io.virbius.engine.eval.EvaluateRequestDto;
 import io.virbius.policy.ActionMerge;
 import io.virbius.policy.audit.AuditEventPublisher;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,22 +21,18 @@ import org.springframework.stereotype.Component;
 public class AuditWriter {
 
     private static final Logger log = LoggerFactory.getLogger(AuditWriter.class);
+    private static final Logger auditLog = LoggerFactory.getLogger("virbius.audit.events");
+    private static final Logger allowLog = LoggerFactory.getLogger("virbius.audit.allow");
 
     private final ObjectMapper mapper = new ObjectMapper();
-    private final Path auditPath;
-    private final Path allowAuditPath;
     private final AuditEventPublisher publisher;
     private final RuleCache ruleCache;
     private final double auditSampleRateAllow;
 
     public AuditWriter(
-            @Value("${virbius.audit.engine-path:/tmp/virbius/engine-audit.jsonl}") String path,
-            @Value("${virbius.audit.engine-allow-path:/tmp/virbius/engine-audit-allow.jsonl}") String allowPath,
             @Value("${virbius.audit.sample-rate-allow:0.1}") double auditSampleRateAllow,
             AuditEventPublisher publisher,
             RuleCache ruleCache) {
-        this.auditPath = Path.of(path);
-        this.allowAuditPath = Path.of(allowPath);
         this.auditSampleRateAllow = auditSampleRateAllow;
         this.publisher = publisher;
         this.ruleCache = ruleCache;
@@ -62,6 +56,7 @@ public class AuditWriter {
             }
 
             Map<String, Object> event = new HashMap<>();
+            event.put("event_id", UUID.randomUUID().toString());
             event.put("trace_id", req.traceId());
             event.put("trace_id_source", "client");
             event.put("tenant_id", req.tenantId());
@@ -96,9 +91,11 @@ public class AuditWriter {
                 }
             }
             String json = mapper.writeValueAsString(event);
-            Path logPath = isAllow ? allowAuditPath : auditPath;
-            Files.createDirectories(logPath.getParent());
-            Files.writeString(logPath, json + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            if (isAllow) {
+                allowLog.info(json);
+            } else {
+                auditLog.info(json);
+            }
             if (!isAllow || event.containsKey("sampled_allow")) {
                 publisher.publish(Map.of("payload", json));
             }
