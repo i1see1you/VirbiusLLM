@@ -14,8 +14,8 @@
   <name>virbius-engine</name>
 
   <properties>
-    <grpc.version>1.62.2</grpc.version>
-    <protobuf.version>3.25.3</protobuf.version>
+    <grpc.version>1.82.1</grpc.version>
+    <protobuf.version>3.25.5</protobuf.version>
   </properties>
 
   <dependencies>
@@ -97,23 +97,18 @@
           <pluginId>grpc-java</pluginId>
           <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
         </configuration>
-        <!-- PoC 默认跳过：Maven 提供的 grpc 插件为 x86_64，Apple Silicon 无法执行；MVP 走 HTTP /v1/evaluate -->
         <executions>
           <execution>
-            <id>default</id>
-            <phase>none</phase>
+            <goals>
+              <goal>compile</goal>
+              <goal>compile-custom</goal>
+            </goals>
           </execution>
         </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
-        <configuration>
-          <excludes>
-            <exclude>io/virbius/engine/grpc/EvaluateGrpcService.java</exclude>
-            <exclude>io/virbius/engine/grpc/GrpcServerLifecycle.java</exclude>
-          </excludes>
-        </configuration>
       </plugin>
       <plugin>
         <groupId>org.springframework.boot</groupId>

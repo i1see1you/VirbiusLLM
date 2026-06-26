@@ -32,7 +32,7 @@ message Signal {
   string layer = 6;
   string intent_action = 7;   // allow | deny | captcha | review
   string enforce_mode = 8;
-  int32 canary_percent = 9;   // optional; 0 = unset
+  optional int32 canary_percent = 9;   // optional; 0 = unset
 }
 
 // 对外扁平响应（与 HTTP EvaluateResponseDto / gateway-agent 对齐）
