@@ -425,7 +425,7 @@ function _M.check(lists_source, get_header, content, user_id, device_id, client_
         lists = file_cache.load_json(lists_source, "access_lists:" .. lists_source)
     end
     if not lists then
-        return nil, {}
+        return nil, {}, {}
     end
     local bindings = lists.context_bindings or {}
     local vars_ctx = context_vars.resolve(bindings, get_header, user_id, device_id, client_ip)
@@ -438,9 +438,9 @@ function _M.check(lists_source, get_header, content, user_id, device_id, client_
         hits[#hits + 1] = h
     end
     if #hits == 0 then
-        return nil, vars_ctx
+        return nil, vars_ctx, bindings
     end
-    return hits, vars_ctx
+    return hits, vars_ctx, bindings
 end
 
 return _M

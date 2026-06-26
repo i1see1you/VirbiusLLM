@@ -6,7 +6,7 @@
       'nav.tenants': '租户',
       'nav.lists': '名单',
       'nav.cumulatives': '累计',
-      'nav.bindings': '请求映射',
+      'nav.bindings': '请求因子',
       'nav.scene-registry': '场景注册',
       'nav.gateway-routes': '网关路由',
       'nav.rules': '规则',
@@ -88,7 +88,7 @@
       'lists.header-expires': '过期',
       'lists.header-remark': '备注',
       'lists.no-mapping': '— 无映射 —',
-      'lists.var-dim-required': 'var 维度须选择逻辑变量（先在「请求映射」配置）',
+      'lists.var-dim-required': 'var 维度须选择逻辑变量（先在「请求因子」配置）',
       'lists.var-name-invalid': '逻辑变量名须为字母/数字/下划线，且不以数字开头',
       'lists.name-required': '请填写 list_name',
       'lists.created': '名单已创建（gateway + Engine 已同步）',
@@ -146,10 +146,15 @@
       'bind.placeholder-wire': 'wire（可空，默认同逻辑名）',
       'bind.btn-add': '添加行',
       'bind.btn-save': '保存映射',
+      'bind.header-scope': '作用范围',
+      'bind.scope-global': '🌐 global',
+      'bind.scope-service': '🏢 service',
+      'bind.scope-route': '🛣️  route',
+      'bind.scope-hint': '仅含匹配 app_id/scene 的请求才解析该因子。global：所有请求都解析。',
 
       // Scene Registry
       'sr.title': '场景注册（scene_registry）',
-      'sr.desc': '每个 <code>scene_id</code> 归属唯一 <code>app_id</code>；同一 app 可有多个 scene。运行时由 <code>(app_id, uri, match)</code> 解析 scene（见「请求映射」中的 <code>app_id</code>）。<strong>uris</strong> 须已在「网关路由」覆盖（支持 <code>/path/*</code>）。<strong>添加 / 删除 / 改 fail 开关</strong>会写入 DB；点<strong>同步到网关</strong>推产物。',
+      'sr.desc': '每个 <code>scene_id</code> 归属唯一 <code>app_id</code>；同一 app 可有多个 scene。运行时由 <code>(app_id, uri, match)</code> 解析 scene（见「请求因子」中的 <code>app_id</code>）。<strong>uris</strong> 须已在「网关路由」覆盖（支持 <code>/path/*</code>）。<strong>添加 / 删除 / 改 fail 开关</strong>会写入 DB；点<strong>同步到网关</strong>推产物。',
       'sr.header-scene': 'scene_id',
       'sr.header-app': 'app_id',
       'sr.header-default': 'default',
@@ -746,6 +751,11 @@
       'bind.placeholder-wire': 'wire (optional, defaults to logical name)',
       'bind.btn-add': 'Add Row',
       'bind.btn-save': 'Save Bindings',
+      'bind.header-scope': 'Scope',
+      'bind.scope-global': '🌐 Global',
+      'bind.scope-service': '🏢 Service',
+      'bind.scope-route': '🛣️  Route',
+      'bind.scope-hint': 'Only resolves this factor for requests matching the app_id/scene. Global: all requests.',
 
       // Scene Registry
       'sr.title': 'Scene Registry',
@@ -1263,7 +1273,7 @@
     document.querySelectorAll('[data-i18n-html]').forEach(el => {
       const txt = __(el.dataset.i18nHtml);
       const children = Array.from(el.children);
-      if (children.length === 0) {
+      if (children.length === 0 || !txt.includes('{')) {
         el.innerHTML = txt;
       } else {
         const parts = txt.split(/(\{\d+\})/);

@@ -22,6 +22,18 @@ struct VarDef {
     name: Option<String>,
     #[serde(default)]
     field: Option<String>,
+    #[serde(default)]
+    scope: Option<VarScope>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct VarScope {
+    #[serde(default)]
+    bind_scope: String,
+    #[serde(default)]
+    app_ids: Vec<String>,
+    #[serde(default)]
+    scenes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -116,6 +128,7 @@ impl AccessListChecker {
         client_ip: Option<&str>,
         query: &HashMap<String, String>,
         headers: &HashMap<String, String>,
+        scene: Option<&str>,
     ) -> HashMap<String, String> {
         let lists = match self.load() {
             Ok(l) => l,
@@ -129,6 +142,7 @@ impl AccessListChecker {
             client_ip,
             query,
             headers,
+            scene,
         )
     }
 
@@ -153,6 +167,7 @@ impl AccessListChecker {
             client_ip,
             query,
             headers,
+            Some(bind.scene.as_str()),
         );
         let req = RequestCtx {
             content,
@@ -298,13 +313,16 @@ fn effective_vars_map(
     client_ip: Option<&str>,
     query: &HashMap<String, String>,
     headers: &HashMap<String, String>,
+    scene: Option<&str>,
 ) -> HashMap<String, String> {
     if let Some(v) = provided {
         if !v.is_empty() {
             return v.clone();
         }
     }
-    resolve_vars(bindings, user_id, device_id, client_ip, query, headers)
+    let mut out = resolve_vars(bindings, user_id, device_id, client_ip, query, headers);
+    filter_vars_by_scope(&mut out, bindings, scene);
+    out
 }
 
 fn resolve_vars(
@@ -347,6 +365,49 @@ fn resolve_vars(
     out
 }
 
+fn filter_vars_by_scope(
+    vars: &mut HashMap<String, String>,
+    bindings: &ContextBindings,
+    scene: Option<&str>,
+) {
+    let to_remove: Vec<String> = vars
+        .keys()
+        .filter(|logical| {
+            let Some(def) = bindings.vars.get(*logical) else {
+                return false;
+            };
+            let Some(ref scope) = def.scope else {
+                return false;
+            };
+            match scope.bind_scope.as_str() {
+                "service" => {
+                    if scope.app_ids.is_empty() {
+                        return false;
+                    }
+                    let Some(app_id) = vars.get("app_id") else {
+                        return true;
+                    };
+                    !scope.app_ids.iter().any(|id| id == app_id)
+                }
+                "route" => {
+                    if scope.scenes.is_empty() {
+                        return false;
+                    }
+                    let Some(scene) = scene else {
+                        return true;
+                    };
+                    !scope.scenes.iter().any(|s| s == scene)
+                }
+                _ => false,
+            }
+        })
+        .cloned()
+        .collect();
+    for key in to_remove {
+        vars.remove(&key);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -360,6 +421,7 @@ mod tests {
                     from: "header".into(),
                     name: Some("X-App-Id".into()),
                     field: None,
+                    scope: None,
                 },
             )]),
         };
@@ -367,7 +429,7 @@ mod tests {
         provided.insert("app_id".into(), "evil".into());
         let query = HashMap::new();
         let headers = HashMap::new();
-        let vars = effective_vars_map(Some(&provided), &bindings, None, None, None, &query, &headers);
+        let vars = effective_vars_map(Some(&provided), &bindings, None, None, None, &query, &headers, None);
         assert_eq!(vars.get("app_id").map(String::as_str), Some("evil"));
     }
 
@@ -380,6 +442,7 @@ mod tests {
                     from: "query".into(),
                     name: Some("debug".into()),
                     field: None,
+                    scope: None,
                 },
             )]),
         };
@@ -387,7 +450,7 @@ mod tests {
         let mut query = HashMap::new();
         query.insert("debug".into(), "1".into());
         let headers = HashMap::new();
-        let vars = effective_vars_map(Some(&provided), &bindings, None, None, None, &query, &headers);
+        let vars = effective_vars_map(Some(&provided), &bindings, None, None, None, &query, &headers, None);
         assert_eq!(vars.get("debug_flag").map(String::as_str), Some("1"));
     }
 }

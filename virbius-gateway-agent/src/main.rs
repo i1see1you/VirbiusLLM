@@ -144,6 +144,7 @@ async fn evaluate(
         req.client_ip.as_deref(),
         &query,
         &headers,
+        Some(&req.scene),
     );
 
     if let Some(gw) = state.lists.check(

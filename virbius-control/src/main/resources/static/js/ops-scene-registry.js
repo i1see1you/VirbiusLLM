@@ -14,7 +14,7 @@
       return chip;
     }
 
-    function renderUriChips(uris) {
+    function renderUriChips(uris, autoFocus) {
       const container = document.getElementById('srUrisContainer');
       const existingInput = container.querySelector('.uri-chip-input');
       container.innerHTML = '';
@@ -28,7 +28,7 @@
         container.appendChild(chip);
       });
       container.appendChild(input);
-      input.focus();
+      if (autoFocus !== false) input.focus();
       input.onkeydown = e => {
         if (e.key === 'Enter' || e.key === ',') {
           e.preventDefault();
@@ -276,3 +276,11 @@
 
     document.getElementById('btnSyncSceneRegistry').onclick = () =>
       saveSceneRegistry(true).catch(e => log(e.message, 'err'));
+
+    renderUriChips([], false);
+
+    renderUriChips([], false);
+
+    renderUriChips([], false);
+
+    renderUriChips([], false);

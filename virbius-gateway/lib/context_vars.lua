@@ -45,4 +45,47 @@ function _M.resolve(bindings, get_header, user_id, device_id, client_ip)
     return out
 end
 
+--- Post-filter resolved vars by scope definition.
+--- Keeps only vars whose scope matches the current app_id / scene.
+--- @param vars table  resolved vars
+--- @param bindings table  context_bindings block (with .vars)
+--- @param app_id string|nil
+--- @param scene string|nil
+--- @return table filtered vars
+function _M.filter_by_scope(vars, bindings, app_id, scene)
+    local defs = bindings and bindings.vars or {}
+    local out = {}
+    for logical, val in pairs(vars) do
+        local def = defs[logical]
+        if def and def.scope and def.scope.bind_scope then
+            local s = def.scope
+            if s.bind_scope == "service" then
+                if s.app_ids and type(s.app_ids) == "table" and app_id then
+                    local matched = false
+                    for _, id in ipairs(s.app_ids) do
+                        if id == app_id then matched = true; break end
+                    end
+                    if matched then out[logical] = val end
+                    -- else skip
+                end
+                -- no app_ids or no app_id → keep (conservative)
+            elseif s.bind_scope == "route" then
+                if s.scenes and type(s.scenes) == "table" and scene then
+                    local matched = false
+                    for _, sc in ipairs(s.scenes) do
+                        if sc == scene then matched = true; break end
+                    end
+                    if matched then out[logical] = val end
+                    -- else skip
+                end
+            else
+                out[logical] = val
+            end
+        else
+            out[logical] = val
+        end
+    end
+    return out
+end
+
 return _M

@@ -38,6 +38,7 @@
       const panel = document.getElementById('panel-' + tab);
       if (panel) panel.classList.add('active');
       setActiveNav(tab);
+      document.dispatchEvent(new CustomEvent('panel-show', { detail: 'panel-' + tab }));
       if (tab === 'rollout') {
         refreshRolloutDashboard().catch(e => log(e.message, 'err'));
         startRolloutAutoRefresh();

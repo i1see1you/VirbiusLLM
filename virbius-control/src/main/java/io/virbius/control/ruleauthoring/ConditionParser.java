@@ -80,8 +80,12 @@ public final class ConditionParser {
         String split = body.contains("||") ? "\\|\\|" : "&&";
         String[] parts = body.split(split);
         List<Map<String, Object>> children = new ArrayList<>();
-        for (String part : parts) {
-            String p = part.trim().replaceAll("^[(]+", "").replaceAll("[)]+$", "").trim();
+        for (int i = 0; i < parts.length; i++) {
+            String p = parts[i].trim();
+            // outer group wraps (... && ...): the leading ( is on first child,
+            // the trailing ) is on the last child; strip only one from each.
+            if (i == 0 && p.startsWith("(")) p = p.substring(1).trim();
+            if (i == parts.length - 1 && p.endsWith(")")) p = p.substring(0, p.length() - 1).trim();
             Map<String, Object> leaf = parseLeaf(p, lua, groovy);
             if (leaf == null) {
                 warnings.add("unparseable segment: " + p);

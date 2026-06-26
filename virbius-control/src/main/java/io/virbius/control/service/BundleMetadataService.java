@@ -154,20 +154,37 @@ public class BundleMetadataService {
             return List.of();
         }
         List<ContextVarBinding> out = new ArrayList<>();
-        for (Map<String, String> row : body.vars()) {
+        for (Map<String, Object> row : body.vars()) {
             if (row == null || row.isEmpty()) {
                 continue;
             }
-            String logical = row.get("logical");
-            String from = row.get("from");
-            String name = row.get("name");
-            String field = row.get("field");
+            String logical = row.get("logical") != null ? row.get("logical").toString() : null;
+            String from = row.get("from") != null ? row.get("from").toString() : null;
+            String name = row.get("name") != null ? row.get("name").toString() : null;
+            String field = row.get("field") != null ? row.get("field").toString() : null;
             if (from == null || from.isBlank()) {
                 from = ContextVarBinding.FROM_QUERY;
             }
-            out.add(new ContextVarBinding(logical, from, name, field));
+            out.add(new ContextVarBinding(logical, from, name, field, parseScope(row.get("scope"))));
         }
         return List.copyOf(out);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ContextVarBinding.Scope parseScope(Object raw) {
+        if (!(raw instanceof Map<?, ?> m)) {
+            return new ContextVarBinding.Scope(ContextVarBinding.SCOPE_GLOBAL, List.of(), List.of());
+        }
+        String bs = m.get("bind_scope") != null ? m.get("bind_scope").toString() : null;
+        List<String> appIds = List.of();
+        List<String> scenes = List.of();
+        if (m.get("app_ids") instanceof List<?> appList) {
+            appIds = appList.stream().map(Object::toString).toList();
+        }
+        if (m.get("scenes") instanceof List<?> sceneList) {
+            scenes = sceneList.stream().map(Object::toString).toList();
+        }
+        return new ContextVarBinding.Scope(bs, appIds, scenes);
     }
 
     private BundleVersion requireBundle(String tenantId, String bundleId, String version) {
