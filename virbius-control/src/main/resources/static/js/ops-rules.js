@@ -296,6 +296,9 @@ end`;
       (contextVars || []).forEach(v => {
         if (v.logical) vars.push({ label: 'vars.' + v.logical, desc: 'vars.' + v.logical });
       });
+      (extendedVars || []).forEach(v => {
+        if (v.logical) vars.push({ label: 'vars.' + v.logical, desc: 'ext: ' + v.logical });
+      });
       const palette = document.getElementById('asyncVarPalette');
       palette.innerHTML = vars.map(v =>
         '<span class="async-var-chip" data-var="\{\{' + escAttr(v.label) + '}}" title="' + escAttr(v.desc) + '">\{\{' + esc(v.label) + '}}</span>'
@@ -861,8 +864,10 @@ end`;
           .filter(match).map(n => ({ label: n, insert: n }));
       }
       if (kind === 'var') {
-        return contextVars.map(v => v.logical).filter(Boolean).filter(match)
-          .map(n => ({ label: n, insert: n }));
+        return [
+          ...contextVars.map(v => v.logical),
+          ...(extendedVars || []).map(v => v.logical)
+        ].filter(Boolean).filter(match).map(n => ({ label: n, insert: n }));
       }
       return [];
     }

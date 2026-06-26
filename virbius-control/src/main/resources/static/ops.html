@@ -169,6 +169,7 @@
         <button type="button" class="nav-item active" data-tab="lists"><span class="nav-icon">📋</span><span class="nav-label" data-i18n="nav.lists">名单</span></button>
         <button type="button" class="nav-item" data-tab="cumulatives"><span class="nav-icon">📊</span><span class="nav-label" data-i18n="nav.cumulatives">累计</span></button>
         <button type="button" class="nav-item" data-tab="bindings"><span class="nav-icon">🔗</span><span class="nav-label" data-i18n="nav.bindings">请求因子</span></button>
+        <button type="button" class="nav-item" data-tab="ext-bindings"><span class="nav-icon">🧮</span><span class="nav-label" data-i18n="nav.ext-bindings">扩展因子</span></button>
         <button type="button" class="nav-item" data-tab="scene-registry"><span class="nav-icon">🎭</span><span class="nav-label" data-i18n="nav.scene-registry">场景注册</span></button>
         <button type="button" class="nav-item" data-tab="gateway-routes"><span class="nav-icon">🛣</span><span class="nav-label" data-i18n="nav.gateway-routes">网关路由</span></button>
         <div class="nav-group expanded" id="navGroupRules">
@@ -346,6 +347,24 @@
       <select id="bScopeScenes" multiple size="3" style="display:none;width:8rem" data-i18n-title="bind.scope-hint"></select>
       <button type="button" id="btnBindAdd" data-i18n="bind.btn-add">添加行</button>
       <button type="button" id="btnSaveBindings" data-i18n="bind.btn-save">保存映射</button>
+    </div>
+  </div>
+
+  <div id="panel-ext-bindings" class="panel card">
+    <h2 style="margin:0 0 0.5rem;font-size:1rem" data-i18n="ext.title">扩展因子（extended_vars）</h2>
+    <p class="hint" data-i18n-html="ext.desc">通过 Lua 表达式从请求因子派生计算变量。表达式可用 <code>ctx.var('逻辑名')</code> 引用已解析的请求因子。扩展因子与请求因子共享命名空间，规则中通过 <code>ctx.var('扩展因子名')</code> 引用。<strong>计算顺序</strong>：请求因子 → scope 过滤 → 扩展因子计算 → 合并 → 规则执行。</p>
+    <table id="extVarTable">
+      <thead><tr><th data-i18n="ext.header-logical">逻辑名</th><th data-i18n="ext.header-expr">Lua 表达式</th><th data-i18n="ext.header-scope">作用范围</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="row" style="margin-top:0.5rem;flex-wrap:wrap">
+      <input id="extLogical" placeholder="is_high_risk" size="14" />
+      <textarea id="extExpr" placeholder="if ctx.var('app_id') == 'evil' then 'true' else 'false' end" rows="2" style="min-width:20rem;flex:1;font-family:monospace;font-size:0.85rem"></textarea>
+      <select id="extScope"><option value="global">🌐 global</option><option value="service">🏢 service</option><option value="route">🛣️  route</option></select>
+      <select id="extScopeAppIds" multiple size="3" style="display:none;width:8rem" data-i18n-title="bind.scope-hint"></select>
+      <select id="extScopeScenes" multiple size="3" style="display:none;width:8rem" data-i18n-title="bind.scope-hint"></select>
+      <button type="button" id="btnExtVarAdd" data-i18n="ext.btn-add">添加</button>
+      <button type="button" id="btnSaveExtVars" data-i18n="ext.btn-save">保存</button>
     </div>
   </div>
 
@@ -872,6 +891,7 @@
   <script src="js/ops-lists.js"></script>
   <script src="js/ops-cumulatives.js"></script>
   <script src="js/ops-bindings.js"></script>
+  <script src="js/ops-ext-bindings.js"></script>
   <script src="js/ops-scene-registry.js"></script>
   <script src="js/ops-gw-routes.js"></script>
   <script src="js/ops-rollout.js"></script>

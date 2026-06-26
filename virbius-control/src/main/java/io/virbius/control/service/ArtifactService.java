@@ -309,6 +309,10 @@ public class ArtifactService {
         if (!bindings.isEmpty()) {
             root.put("context_bindings", bindings);
         }
+        Map<String, Object> extVars = io.virbius.control.service.ExtendedVarsHelper.varsBlock(bundleMetadata);
+        if (!extVars.isEmpty()) {
+            root.put("extended_vars", extVars);
+        }
         Map<String, Object> sceneReg = io.virbius.control.gateway.SceneRegistryHelper.registryBlock(bundleMetadata);
         if (!sceneReg.isEmpty()) {
             root.put("scene_registry", sceneReg);

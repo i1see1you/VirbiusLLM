@@ -124,7 +124,7 @@ function _M.access(conf, ctx)
     end
     local lists_source = config_cache and config_cache.access_lists or conf.lists_file
 
-    local hits, vars_ctx, bindings = check_access_lists(lists_source, ctx, content, user_id, device_id, client_ip)
+    local hits, vars_ctx, bindings, extended_defs = check_access_lists(lists_source, ctx, content, user_id, device_id, client_ip)
 
     local scene_id = nil
     local registry = config_cache
@@ -164,6 +164,9 @@ function _M.access(conf, ctx)
     ngx.req.set_header("X-Virbius-Scene", scene_id)
 
     vars_ctx = context_vars_mod.filter_by_scope(vars_ctx, bindings, vars_ctx and vars_ctx.app_id, scene_id)
+
+    local ext_vars = context_vars_mod.compute_extended_vars(vars_ctx, extended_defs, vars_ctx and vars_ctx.app_id, scene_id)
+    for k, v in pairs(ext_vars) do vars_ctx[k] = v end
 
     local prior_signals = nil
     if hits and #hits > 0 then

@@ -2,6 +2,7 @@ package io.virbius.control.admin;
 
 import io.virbius.control.common.response.ApiResult;
 import io.virbius.control.domain.dto.request.ContextBindingsRequest;
+import io.virbius.control.domain.dto.request.ExtendedVarsRequest;
 import io.virbius.control.domain.dto.request.GatewayRoutesRequest;
 import io.virbius.control.domain.dto.request.SceneRegistryRequest;
 import io.virbius.control.service.BundleMetadataService;
@@ -42,6 +43,17 @@ public class BundleMetadataController {
             @RequestParam(value = "sync", defaultValue = "false") boolean sync) {
         List<io.virbius.control.domain.ContextVarBinding> bindings = BundleMetadataService.parseRequest(body);
         return ApiResult.ok(metadataService.updateContextBindings(tenantId, bundleId, version, bindings, sync));
+    }
+
+    @PutMapping("/extended-vars")
+    public ApiResult<Map<String, Object>> updateExtendedVars(
+            @PathVariable("tenantId") String tenantId,
+            @PathVariable("bundleId") String bundleId,
+            @PathVariable("version") String version,
+            @RequestBody ExtendedVarsRequest body,
+            @RequestParam(value = "sync", defaultValue = "false") boolean sync) {
+        List<io.virbius.control.domain.ExtendedVar> vars = BundleMetadataService.parseExtendedVarsRequest(body);
+        return ApiResult.ok(metadataService.updateExtendedVars(tenantId, bundleId, version, vars, sync));
     }
 
     @PutMapping("/gateway-routes")

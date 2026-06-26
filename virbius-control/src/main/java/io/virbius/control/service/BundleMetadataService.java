@@ -2,6 +2,8 @@ package io.virbius.control.service;
 
 import io.virbius.control.domain.BundleVersion;
 import io.virbius.control.domain.ContextVarBinding;
+import io.virbius.control.domain.ExtendedVar;
+import io.virbius.control.domain.dto.request.ExtendedVarsRequest;
 import io.virbius.control.domain.dto.request.GatewayRouteInput;
 import io.virbius.control.domain.dto.request.GatewayRoutesRequest;
 import io.virbius.control.domain.dto.request.SceneRegistryRequest;
@@ -14,6 +16,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -39,6 +42,10 @@ public class BundleMetadataService {
         out.put("context_bindings", ContextBindingsHelper.bindingsBlock(metadata));
         out.put("context_vars", ContextBindingsHelper.parseBindings(metadata).stream()
                 .map(this::varToMap)
+                .toList());
+        out.put("extended_vars", ExtendedVarsHelper.varsBlock(metadata));
+        out.put("extended_var_list", ExtendedVarsHelper.parseVars(metadata).stream()
+                .map(this::extVarToMap)
                 .toList());
         out.put("gateway", GatewayRoutesHelper.gatewayBlock(metadata));
         out.put("gateway_routes", GatewayRoutesHelper.parseRoutes(metadata).stream().map(this::routeToMap).toList());
@@ -145,6 +152,30 @@ public class BundleMetadataService {
         return out;
     }
 
+    public Map<String, Object> updateExtendedVars(
+            String tenantId, String bundleId, String version, List<ExtendedVar> vars, boolean syncArtifacts) {
+        BundleVersion bundle = requireBundle(tenantId, bundleId, version);
+        Map<String, Object> metadata = new LinkedHashMap<>(
+                bundle.metadata() != null ? bundle.metadata() : Map.of());
+        Set<String> contextLogicalNames = ContextBindingsHelper.logicalNames(metadata);
+        for (ExtendedVar v : vars) {
+            if (contextLogicalNames.contains(v.logical())) {
+                throw new IllegalArgumentException("extended var name conflicts with context binding: " + v.logical());
+            }
+        }
+        metadata.put("extended_vars", ExtendedVarsHelper.toMetadataBlock(vars));
+        store.updateBundleMetadata(tenantId, bundleId, version, metadata);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("updated", true);
+        out.put("extended_vars", ExtendedVarsHelper.varsBlock(metadata));
+        out.put("extended_var_list", vars.stream().map(this::extVarToMap).toList());
+        if (syncArtifacts) {
+            out.put("sync", accessListService.syncRules(tenantId));
+        }
+        return out;
+    }
+
     public Map<String, Object> syncGatewayArtifacts(String tenantId) {
         return accessListService.syncRules(tenantId);
     }
@@ -168,6 +199,40 @@ public class BundleMetadataService {
             out.add(new ContextVarBinding(logical, from, name, field, parseScope(row.get("scope"))));
         }
         return List.copyOf(out);
+    }
+
+    public static List<ExtendedVar> parseExtendedVarsRequest(ExtendedVarsRequest body) {
+        if (body == null || body.vars() == null) {
+            return List.of();
+        }
+        List<ExtendedVar> out = new ArrayList<>();
+        for (Map<String, Object> row : body.vars()) {
+            if (row == null || row.isEmpty()) {
+                continue;
+            }
+            String logical = row.get("logical") != null ? row.get("logical").toString() : null;
+            String expr = row.get("expr") != null ? row.get("expr").toString() : null;
+            ExtendedVar.Scope scope = parseExtScope(row.get("scope"));
+            out.add(new ExtendedVar(logical, expr, scope));
+        }
+        return List.copyOf(out);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ExtendedVar.Scope parseExtScope(Object raw) {
+        if (!(raw instanceof Map<?, ?> m)) {
+            return new ExtendedVar.Scope(ExtendedVar.SCOPE_GLOBAL, List.of(), List.of());
+        }
+        String bs = m.get("bind_scope") != null ? m.get("bind_scope").toString() : null;
+        List<String> appIds = List.of();
+        List<String> scenes = List.of();
+        if (m.get("app_ids") instanceof List<?> appList) {
+            appIds = appList.stream().map(Object::toString).toList();
+        }
+        if (m.get("scenes") instanceof List<?> sceneList) {
+            scenes = sceneList.stream().map(Object::toString).toList();
+        }
+        return new ExtendedVar.Scope(bs, appIds, scenes);
     }
 
     @SuppressWarnings("unchecked")
@@ -201,6 +266,24 @@ public class BundleMetadataService {
         }
         if (b.field() != null && !b.field().isBlank()) {
             m.put("field", b.field());
+        }
+        return m;
+    }
+
+    private Map<String, Object> extVarToMap(ExtendedVar v) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("logical", v.logical());
+        m.put("expr", v.expr());
+        if (v.scope() != null && !ExtendedVar.SCOPE_GLOBAL.equals(v.scope().bindScope())) {
+            Map<String, Object> scopeMap = new LinkedHashMap<>();
+            scopeMap.put("bind_scope", v.scope().bindScope());
+            if (!v.scope().appIds().isEmpty()) {
+                scopeMap.put("app_ids", v.scope().appIds());
+            }
+            if (!v.scope().scenes().isEmpty()) {
+                scopeMap.put("scenes", v.scope().scenes());
+            }
+            m.put("scope", scopeMap);
         }
         return m;
     }

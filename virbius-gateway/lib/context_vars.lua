@@ -88,4 +88,52 @@ function _M.filter_by_scope(vars, bindings, app_id, scene)
     return out
 end
 
+--- Compute extended vars from Lua expressions referencing resolved request-factor vars.
+--- @param vars table  resolved & scope-filtered request-factor vars
+--- @param extended_defs table  extended_vars block (with .vars)
+--- @param app_id string|nil
+--- @param scene string|nil
+--- @return table computed extended vars
+function _M.compute_extended_vars(vars, extended_defs, app_id, scene)
+    local defs = extended_defs and extended_defs.vars or {}
+    local out = {}
+    for logical, def in pairs(defs) do
+        local s = def.scope
+        if s and s.bind_scope then
+            if s.bind_scope == "service" then
+                if s.app_ids and type(s.app_ids) == "table" and app_id then
+                    local matched = false
+                    for _, id in ipairs(s.app_ids) do
+                        if id == app_id then matched = true; break end
+                    end
+                    if not matched then goto continue end
+                end
+            elseif s.bind_scope == "route" then
+                if s.scenes and type(s.scenes) == "table" and scene then
+                    local matched = false
+                    for _, sc in ipairs(s.scenes) do
+                        if sc == scene then matched = true; break end
+                    end
+                    if not matched then goto continue end
+                end
+            end
+        end
+        local expr = def.expr
+        if expr and expr ~= "" then
+            local ctx_proxy = { var = function(name) return vars[name] end }
+            local fn, err = load("return " .. expr, "@ext_" .. logical, "t", { ctx = ctx_proxy })
+            if fn then
+                local ok, val = pcall(fn)
+                if ok and val ~= nil and val ~= "" then
+                    out[logical] = tostring(val)
+                end
+            elseif err then
+                ngx.log(ngx.WARN, "extended var " .. logical .. " load error: " .. err)
+            end
+        end
+        ::continue::
+    end
+    return out
+end
+
 return _M

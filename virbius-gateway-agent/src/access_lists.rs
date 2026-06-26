@@ -27,19 +27,33 @@ struct VarDef {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-struct VarScope {
+pub struct VarScope {
     #[serde(default)]
-    bind_scope: String,
+    pub bind_scope: String,
     #[serde(default)]
-    app_ids: Vec<String>,
+    pub app_ids: Vec<String>,
     #[serde(default)]
-    scenes: Vec<String>,
+    pub scenes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 struct ContextBindings {
     #[serde(default)]
     vars: HashMap<String, VarDef>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ExtendedVarDef {
+    #[serde(default)]
+    pub expr: String,
+    #[serde(default)]
+    pub scope: Option<VarScope>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ExtendedVars {
+    #[serde(default)]
+    pub vars: HashMap<String, ExtendedVarDef>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -56,6 +70,8 @@ struct ListsFile {
     script_rules: Vec<ScriptRuleBlock>,
     #[serde(default)]
     context_bindings: ContextBindings,
+    #[serde(default)]
+    extended_vars: ExtendedVars,
 }
 
 impl ListsFile {
@@ -137,6 +153,7 @@ impl AccessListChecker {
         effective_vars_map(
             provided_vars,
             &lists.context_bindings,
+            &lists.extended_vars,
             user_id,
             device_id,
             client_ip,
@@ -162,6 +179,7 @@ impl AccessListChecker {
         let vars = effective_vars_map(
             provided_vars,
             &lists.context_bindings,
+            &lists.extended_vars,
             user_id,
             device_id,
             client_ip,
@@ -308,6 +326,7 @@ impl AccessListChecker {
 fn effective_vars_map(
     provided: Option<&HashMap<String, String>>,
     bindings: &ContextBindings,
+    extended_vars: &ExtendedVars,
     user_id: Option<&str>,
     device_id: Option<&str>,
     client_ip: Option<&str>,
@@ -322,6 +341,11 @@ fn effective_vars_map(
     }
     let mut out = resolve_vars(bindings, user_id, device_id, client_ip, query, headers);
     filter_vars_by_scope(&mut out, bindings, scene);
+    let app_id = out.get("app_id").cloned();
+    let ext = crate::script::compute_extended_vars(extended_vars, &out, app_id.as_deref(), scene);
+    for (k, v) in ext {
+        out.insert(k, v);
+    }
     out
 }
 
@@ -429,7 +453,7 @@ mod tests {
         provided.insert("app_id".into(), "evil".into());
         let query = HashMap::new();
         let headers = HashMap::new();
-        let vars = effective_vars_map(Some(&provided), &bindings, None, None, None, &query, &headers, None);
+        let vars = effective_vars_map(Some(&provided), &bindings, &ExtendedVars::default(), None, None, None, &query, &headers, None);
         assert_eq!(vars.get("app_id").map(String::as_str), Some("evil"));
     }
 
@@ -450,7 +474,72 @@ mod tests {
         let mut query = HashMap::new();
         query.insert("debug".into(), "1".into());
         let headers = HashMap::new();
-        let vars = effective_vars_map(Some(&provided), &bindings, None, None, None, &query, &headers, None);
+        let vars = effective_vars_map(Some(&provided), &bindings, &ExtendedVars::default(), None, None, None, &query, &headers, None);
         assert_eq!(vars.get("debug_flag").map(String::as_str), Some("1"));
+    }
+
+    #[test]
+    fn extended_vars_computed_from_request_vars() {
+        let bindings = ContextBindings {
+            vars: HashMap::from([(
+                "app_id".into(),
+                VarDef {
+                    from: "header".into(),
+                    name: Some("X-App-Id".into()),
+                    field: None,
+                    scope: None,
+                },
+            )]),
+        };
+        let extended = ExtendedVars {
+            vars: HashMap::from([(
+                "is_evil".into(),
+                ExtendedVarDef {
+                    expr: "ctx.var('app_id') == 'evil' and 'true' or 'false'".into(),
+                    scope: None,
+                },
+            )]),
+        };
+        let mut headers = HashMap::new();
+        headers.insert("x-app-id".into(), "evil".into());
+        let query = HashMap::new();
+        let vars = effective_vars_map(None, &bindings, &extended, None, None, None, &query, &headers, None);
+        assert_eq!(vars.get("app_id").map(String::as_str), Some("evil"));
+        assert_eq!(vars.get("is_evil").map(String::as_str), Some("true"));
+    }
+
+    #[test]
+    fn extended_vars_scope_filtered() {
+        let bindings = ContextBindings {
+            vars: HashMap::from([(
+                "app_id".into(),
+                VarDef {
+                    from: "header".into(),
+                    name: Some("X-App-Id".into()),
+                    field: None,
+                    scope: None,
+                },
+            )]),
+        };
+        let extended = ExtendedVars {
+            vars: HashMap::from([(
+                "route_only".into(),
+                ExtendedVarDef {
+                    expr: "'yes'".into(),
+                    scope: Some(VarScope {
+                        bind_scope: "route".into(),
+                        app_ids: Vec::new(),
+                        scenes: vec!["chat".into()],
+                    }),
+                },
+            )]),
+        };
+        let mut headers = HashMap::new();
+        headers.insert("x-app-id".into(), "beta".into());
+        let query = HashMap::new();
+        let vars_match = effective_vars_map(None, &bindings, &extended, None, None, None, &query, &headers, Some("chat"));
+        assert_eq!(vars_match.get("route_only").map(String::as_str), Some("yes"));
+        let vars_no_match = effective_vars_map(None, &bindings, &extended, None, None, None, &query, &headers, Some("other"));
+        assert!(vars_no_match.get("route_only").is_none());
     }
 }

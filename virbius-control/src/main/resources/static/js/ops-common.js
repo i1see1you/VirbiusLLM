@@ -4,6 +4,7 @@
     let isNewRule = false;
     let editRuleMeta = null;
     let contextVars = [];
+    let extendedVars = [];
     let gatewayRoutes = [];
     let sceneEntries = [];
     let sceneRegistryHydrating = false;

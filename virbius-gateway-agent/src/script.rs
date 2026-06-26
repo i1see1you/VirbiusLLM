@@ -1,7 +1,8 @@
 use crate::list_redis::{match_redis_list_by_name, RedisListIndexBlock};
 use crate::policy_engine::{match_list_by_name, read_cumulative_count, CumulativeDefBlock, ListDefBlock};
+use crate::access_lists::ExtendedVars;
 use mlua::{Lua, MultiValue, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub struct ScriptEnv<'a> {
     pub content: &'a str,
@@ -10,6 +11,7 @@ pub struct ScriptEnv<'a> {
     pub client_ip: Option<&'a str>,
     pub session_id: Option<&'a str>,
     pub vars: &'a HashMap<String, String>,
+    pub declared_vars: &'a HashSet<String>,
     pub tenant_id: &'a str,
     pub lists: &'a [ListDefBlock],
     pub redis_list_index: &'a [RedisListIndexBlock],
@@ -157,5 +159,78 @@ fn value_to_bool(v: Value) -> bool {
             !t.is_empty() && !t.eq_ignore_ascii_case("false") && !t.eq_ignore_ascii_case("allow")
         }
         _ => false,
+    }
+}
+
+pub fn compute_extended_vars(
+    extended: &ExtendedVars,
+    vars: &HashMap<String, String>,
+    app_id: Option<&str>,
+    scene: Option<&str>,
+) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    for (logical, def) in &extended.vars {
+        if def.expr.is_empty() {
+            continue;
+        }
+        if let Some(ref scope) = def.scope {
+            match scope.bind_scope.as_str() {
+                "service" => {
+                    if !scope.app_ids.is_empty() {
+                        let Some(aid) = app_id else { continue };
+                        if !scope.app_ids.iter().any(|id| id == aid) {
+                            continue;
+                        }
+                    }
+                }
+                "route" => {
+                    if !scope.scenes.is_empty() {
+                        let Some(s) = scene else { continue };
+                        if !scope.scenes.iter().any(|sc| sc == s) {
+                            continue;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        let lua = Lua::new();
+        let globals = lua.globals();
+        let ctx = match lua.create_table() {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let vars_for_fn = vars.clone();
+        if let Ok(var_fn) = lua.create_function(move |_, name: String| {
+            Ok(vars_for_fn.get(&name).cloned().unwrap_or_default())
+        }) {
+            let _ = ctx.set("var", var_fn);
+        }
+        let _ = globals.set("ctx", ctx);
+        let script = format!("return {}", def.expr);
+        match lua.load(&script).eval::<Value>() {
+            Ok(val) => {
+                if let Some(s) = lua_value_to_string(&val) {
+                    if !s.is_empty() {
+                        out.insert(logical.clone(), s);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("extended var {} eval error: {}", logical, e);
+            }
+        }
+    }
+    out
+}
+
+fn lua_value_to_string(v: &Value) -> Option<String> {
+    match v {
+        Value::String(s) => s.to_str().ok().map(|x| x.to_string()),
+        Value::Integer(i) => Some(i.to_string()),
+        Value::Number(n) => Some(n.to_string()),
+        Value::Boolean(b) => Some(b.to_string()),
+        Value::Nil => None,
+        _ => None,
     }
 }

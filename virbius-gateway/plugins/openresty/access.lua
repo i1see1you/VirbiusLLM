@@ -80,7 +80,7 @@ if not config_cache then
 end
 local lists_source = config_cache and config_cache.access_lists or conf.lists_file
 
-local hits, vars_ctx, bindings = access_lists.check(
+local hits, vars_ctx, bindings, extended_defs = access_lists.check(
     lists_source,
     get_header,
     content,
@@ -118,6 +118,9 @@ end
 ngx.req.set_header("X-Virbius-Scene", scene_id)
 
 vars_ctx = context_vars.filter_by_scope(vars_ctx, bindings, vars_ctx and vars_ctx.app_id, scene_id)
+
+local ext_vars = context_vars.compute_extended_vars(vars_ctx, extended_defs, vars_ctx and vars_ctx.app_id, scene_id)
+for k, v in pairs(ext_vars) do vars_ctx[k] = v end
 
 local prior_signals = nil
 if hits and #hits > 0 then
