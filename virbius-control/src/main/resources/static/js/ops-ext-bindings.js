@@ -77,7 +77,14 @@
                      <td><code style="font-size:0.8rem;word-break:break-all" title="${escAttr(row.expr)}">${esc(exprShort)}</code></td>
                      <td style="font-size:0.82rem">${formatExtScopeDisplay(row)}</td>
                      <td><button class="danger" data-i="${idx}">${esc(__('common.delete'))}</button></td>`;
-        tr.querySelector('button').onclick = () => { extendedVars.splice(idx, 1); renderExtVarsTable(); };
+        tr.querySelector('button').onclick = () => {
+          if (!confirm(__('ext.confirm-delete', row.logical))) return;
+          extendedVars.splice(idx, 1); renderExtVarsTable();
+        };
+        const codeEl = tr.querySelector('td:first-child code');
+        codeEl.style.cursor = 'pointer';
+        codeEl.title = __('bind.click-to-copy');
+        codeEl.onclick = () => copyVarRef(row.logical);
         tbody.appendChild(tr);
       });
     }
@@ -110,5 +117,36 @@
     document.addEventListener('panel-show', e => {
       if (e.detail === 'panel-ext-bindings') {
         populateExtScopeSelects();
+        populateExtVarHelp();
       }
     });
+
+    document.getElementById('extExpr').addEventListener('focus', () => populateExtVarHelp());
+
+    function populateExtVarHelp() {
+      const container = document.getElementById('extHelpVars');
+      if (!container) return;
+      const cvars = (contextVars || []).filter(v => v.logical);
+      container.innerHTML = cvars.length
+        ? cvars.map(v => '<span class="async-var-chip" style="cursor:pointer" data-var="' + escAttr("ctx.var('" + v.logical + "')") + '">' + esc(v.logical) + '</span>').join('')
+        : '<span style="color:#94a3b8;font-style:italic">(' + __('ext.help-no-vars') + ')</span>';
+      container.querySelectorAll('.async-var-chip').forEach(chip => {
+        chip.onclick = () => {
+          const ta = document.getElementById('extExpr');
+          const text = chip.dataset.var;
+          const pos = ta.selectionStart || ta.value.length;
+          ta.value = ta.value.slice(0, pos) + text + ta.value.slice(pos);
+          ta.focus();
+          ta.selectionStart = ta.selectionEnd = pos + text.length;
+        };
+      });
+      const examples = document.getElementById('extHelpExamples');
+      if (examples) {
+        examples.textContent = [
+          "if ctx.var('app_id') == 'evil' then 'true' else 'false' end",
+          "ctx.var('app_id') == 'medical-prod'",
+          "tonumber(ctx.var('risk_score') or '0') > 50",
+          "ctx.var('app_id') or 'default'"
+        ].join('\n');
+      }
+    }

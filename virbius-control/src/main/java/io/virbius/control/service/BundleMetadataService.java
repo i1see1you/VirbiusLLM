@@ -3,6 +3,7 @@ package io.virbius.control.service;
 import io.virbius.control.domain.BundleVersion;
 import io.virbius.control.domain.ContextVarBinding;
 import io.virbius.control.domain.ExtendedVar;
+import io.virbius.control.domain.RuleRevision;
 import io.virbius.control.domain.dto.request.ExtendedVarsRequest;
 import io.virbius.control.domain.dto.request.GatewayRouteInput;
 import io.virbius.control.domain.dto.request.GatewayRoutesRequest;
@@ -12,11 +13,16 @@ import io.virbius.control.gateway.GatewayUriCoverage;
 import io.virbius.control.gateway.SceneRegistryHelper;
 import io.virbius.policy.SceneRegistry;
 import io.virbius.control.repository.RegistryRepository;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -28,6 +34,62 @@ public class BundleMetadataService {
     public BundleMetadataService(RegistryRepository store, AccessListService accessListService) {
         this.store = store;
         this.accessListService = accessListService;
+    }
+
+    private static final Pattern CTX_VAR_REF =
+            Pattern.compile("ctx\\.var\\s*\\(\\s*['\"]([^'\"]+)['\"]\\s*\\)");
+
+    private void checkExtendedVarReferences(String tenantId, Map<String, Object> oldMetadata,
+                                            List<ExtendedVar> newVars) {
+        Set<String> oldNames = ExtendedVarsHelper.logicalNames(oldMetadata);
+        Set<String> newNames = newVars.stream().map(ExtendedVar::logical).collect(Collectors.toSet());
+        Set<String> deleted = new HashSet<>(oldNames);
+        deleted.removeAll(newNames);
+        if (deleted.isEmpty()) {
+            return;
+        }
+        List<RuleRevision> allRules = store.listCurrentRules(tenantId, null);
+        Map<String, List<String>> refs = new LinkedHashMap<>();
+        for (RuleRevision rule : allRules) {
+            Set<String> ruleRefs = collectReferencedVarNames(rule);
+            for (String name : deleted) {
+                if (ruleRefs.contains(name)) {
+                    refs.computeIfAbsent(name, k -> new ArrayList<>()).add(rule.ruleId());
+                }
+            }
+        }
+        if (!refs.isEmpty()) {
+            String detail = refs.entrySet().stream()
+                    .map(e -> "'" + e.getKey() + "' (" + String.join(", ", e.getValue()) + ")")
+                    .collect(Collectors.joining("; "));
+            throw new IllegalArgumentException(
+                    "Cannot delete extended var(s) still referenced by rules: " + detail);
+        }
+    }
+
+    private Set<String> collectReferencedVarNames(RuleRevision rule) {
+        Set<String> names = new HashSet<>();
+        Object body = rule.body();
+        String script = null;
+        if (body instanceof String s) {
+            script = s;
+        } else if (body instanceof Map<?, ?> m) {
+            Object expr = m.get("expr");
+            if (expr instanceof String s) {
+                script = s;
+            }
+        }
+        if (script == null || script.isBlank()) {
+            return names;
+        }
+        Matcher m = CTX_VAR_REF.matcher(script);
+        while (m.find()) {
+            String name = m.group(1).trim();
+            if (!name.isEmpty()) {
+                names.add(name);
+            }
+        }
+        return names;
     }
 
     public Map<String, Object> getMetadata(String tenantId, String bundleId, String version) {
@@ -157,13 +219,37 @@ public class BundleMetadataService {
         BundleVersion bundle = requireBundle(tenantId, bundleId, version);
         Map<String, Object> metadata = new LinkedHashMap<>(
                 bundle.metadata() != null ? bundle.metadata() : Map.of());
+
         Set<String> contextLogicalNames = ContextBindingsHelper.logicalNames(metadata);
         for (ExtendedVar v : vars) {
             if (contextLogicalNames.contains(v.logical())) {
                 throw new IllegalArgumentException("extended var name conflicts with context binding: " + v.logical());
             }
         }
-        metadata.put("extended_vars", ExtendedVarsHelper.toMetadataBlock(vars));
+
+        checkExtendedVarReferences(tenantId, metadata, vars);
+
+        // Logical deletion: mark removed vars as deleted instead of removing them
+        List<ExtendedVar> currentAll = ExtendedVarsHelper.parseAllVars(metadata);
+        Map<String, ExtendedVar> currentByLogical = new LinkedHashMap<>();
+        for (ExtendedVar v : currentAll) {
+            currentByLogical.put(v.logical(), v);
+        }
+        Set<String> incomingNames = vars.stream().map(ExtendedVar::logical).collect(Collectors.toSet());
+
+        List<ExtendedVar> toSave = new ArrayList<>(vars);
+        for (Map.Entry<String, ExtendedVar> e : currentByLogical.entrySet()) {
+            if (!incomingNames.contains(e.getKey())) {
+                if (e.getValue().isDeleted()) {
+                    toSave.add(e.getValue());
+                } else {
+                    ExtendedVar cv = e.getValue();
+                    toSave.add(new ExtendedVar(cv.logical(), cv.expr(), cv.scope(), Instant.now().toString()));
+                }
+            }
+        }
+
+        metadata.put("extended_vars", ExtendedVarsHelper.toMetadataBlock(toSave));
         store.updateBundleMetadata(tenantId, bundleId, version, metadata);
 
         Map<String, Object> out = new LinkedHashMap<>();

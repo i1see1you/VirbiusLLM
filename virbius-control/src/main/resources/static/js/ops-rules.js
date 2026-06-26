@@ -277,7 +277,7 @@ end`;
     }
 
     function renderAsyncVarPalette() {
-      const vars = [
+      const builtin = [
         { label: 'rule_id', desc: __('rules.var-desc-rule-id') },
         { label: 'rule_revision', desc: __('rules.var-desc-revision') },
         { label: 'tenant_id', desc: __('rules.var-desc-tenant') },
@@ -292,16 +292,34 @@ end`;
         { label: 'content', desc: __('rules.var-desc-content') },
         { label: 'scene', desc: __('rules.var-desc-scene') },
         { label: 'route_uri', desc: __('rules.var-desc-uri') }
-      ];
-      (contextVars || []).forEach(v => {
-        if (v.logical) vars.push({ label: 'vars.' + v.logical, desc: 'vars.' + v.logical });
+      ].map(v => ({ ...v, cat: 'builtin' }));
+      const fromMap = { header: 'Header', query: 'Query', subject: 'Subject', network: 'Network' };
+      const ctxVars = (contextVars || []).filter(v => v.logical).map(v => {
+        const wire = v.from === 'subject' || v.from === 'network' ? v.field : v.name;
+        const wirStr = wire && wire !== v.logical ? ' → ' + wire : '';
+        return {
+          label: 'vars.' + v.logical,
+          desc: v.logical + (v.from ? ' (' + (fromMap[v.from] || v.from) + wirStr + ')' : ''),
+          cat: 'context'
+        };
       });
-      (extendedVars || []).forEach(v => {
-        if (v.logical) vars.push({ label: 'vars.' + v.logical, desc: 'ext: ' + v.logical });
+      const extVars = (extendedVars || []).filter(v => v.logical).map(v => {
+        const short = v.expr ? (v.expr.length > 48 ? v.expr.substring(0, 45) + '...' : v.expr) : '';
+        return {
+          label: 'vars.' + v.logical,
+          desc: v.logical + (short ? ' — Lua: ' + short : ''),
+          cat: 'extended'
+        };
       });
+      const colors = {
+        builtin: '',
+        context: 'background:#dcfce7;color:#166534',
+        extended: 'background:#ede9fe;color:#5b21b6'
+      };
+      const all = [...builtin, ...ctxVars, ...extVars];
       const palette = document.getElementById('asyncVarPalette');
-      palette.innerHTML = vars.map(v =>
-        '<span class="async-var-chip" data-var="\{\{' + escAttr(v.label) + '}}" title="' + escAttr(v.desc) + '">\{\{' + esc(v.label) + '}}</span>'
+      palette.innerHTML = all.map(v =>
+        '<span class="async-var-chip" data-var="\{\{' + escAttr(v.label) + '}}" title="' + escAttr(v.desc) + '" style="' + (colors[v.cat] || '') + '">\{\{' + esc(v.label) + '}}</span>'
       ).join('');
       palette.querySelectorAll('.async-var-chip').forEach(chip => {
         chip.onclick = () => {
@@ -458,6 +476,7 @@ end`;
       resetSimFixture();
       clearScriptValidateMsg();
       loadBindUiFromScope({ bind_scope: 'global' });
+      resetRuleFormDirty();
     }
 
     const COMPARE_OP_SYMBOL = { gte: '>=', gt: '>', lte: '<=', lt: '<', eq: '==' };
@@ -575,6 +594,25 @@ end`;
         method: 'POST',
         body: JSON.stringify({ layer, runtime, body })
       });
+      if ((runtime === 'lua' || runtime === 'groovy') && typeof body === 'string') {
+        const declared = new Set([
+          'rule_id', 'rule_revision', 'tenant_id', 'reason_code', 'intent_action', 'risk_score', 'hit_at',
+          'user_id', 'device_id', 'client_ip', 'session_id', 'content', 'scene', 'route_uri'
+        ]);
+        (contextVars || []).forEach(v => { if (v.logical) declared.add(v.logical); });
+        (extendedVars || []).forEach(v => { if (v.logical) declared.add(v.logical); });
+        const warned = new Set();
+        const re = /ctx\.var\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+        let m;
+        while ((m = re.exec(body)) !== null) {
+          const name = m[1];
+          if (!declared.has(name) && !warned.has(name)) {
+            warned.add(name);
+            data.warnings = data.warnings || [];
+            data.warnings.push(__('rules.var-undeclared', name));
+          }
+        }
+      }
       showScriptValidateResult(data);
       if (showLog) log(data);
       return data;
@@ -665,6 +703,7 @@ end`;
     }
 
     function renderConditionLeaves() {
+      markRuleFormDirty();
       const host = document.getElementById('conditionLeaves');
       host.innerHTML = '';
       conditionLeaves.forEach((leaf, idx) => {
@@ -673,9 +712,7 @@ end`;
         if (leaf.type === 'list_match') {
           row.innerHTML = `<span>${__('rules.cond-list')}</span>
             <select data-i="${idx}" data-f="list_name">${listOptions(leaf.list_name)}</select>
-            <span>${__('rules.cond-match')}</span><select data-i="${idx}" data-f="value_source">
-              <option value="content">content</option>
-              <option value="var:app_id">var:app_id</option></select>
+            <span>${__('rules.cond-match')}</span><select data-i="${idx}" data-f="value_source">${varOptions()}</select>
             <button type="button" class="danger" data-del="${idx}">${__('common.delete')}</button>`;
           row.querySelector('[data-f="list_name"]').value = leaf.list_name || 'deny_keyword';
           row.querySelector('[data-f="value_source"]').value = leaf.value_source || 'content';
@@ -716,6 +753,24 @@ end`;
       const names = cumulativeRows.map(c => field(c, 'cumulative_name', 'cumulativeName')).filter(Boolean);
       if (!names.length) names.push('user_req_1h');
       return names.map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`).join('');
+    }
+
+    function varOptions() {
+      const seen = new Set();
+      let opts = '<option value="content">content</option>';
+      (contextVars || []).forEach(v => {
+        if (v.logical && !seen.has(v.logical)) {
+          seen.add(v.logical);
+          opts += `<option value="var:${escAttr(v.logical)}">var:${esc(v.logical)}</option>`;
+        }
+      });
+      (extendedVars || []).forEach(v => {
+        if (v.logical && !seen.has(v.logical)) {
+          seen.add(v.logical);
+          opts += `<option value="var:${escAttr(v.logical)}">var:${esc(v.logical)}</option>`;
+        }
+      });
+      return opts;
     }
 
     async function loadRecipesForLayer(layer) {
@@ -1129,7 +1184,10 @@ end`;
           <td>${r.risk_score}</td><td>${esc(r.intent_action || 'deny')}</td><td>${esc(r.enforce_mode)}${r.canary_percent ? '@'+r.canary_percent+'%' : ''}</td>
           <td>${r.is_async ? '<span class="tag" style="background:#dbeafe;color:#1e40af">async</span>' : '<span style="color:#94a3b8">—</span>'}</td>
           <td>${esc(r.reason_code)}</td>`;
-        tr.onclick = () => selectRule(r.rule_id);
+        tr.onclick = () => {
+          if (isRuleFormDirty() && !confirm(__('rules.confirm-unsaved'))) return;
+          selectRule(r.rule_id);
+        };
         tbody.appendChild(tr);
       });
     }
@@ -1189,9 +1247,13 @@ end`;
       await loadRules();
       const roSel = document.getElementById('roRuleSelect');
       if (roSel && [...roSel.options].some(o => o.value === ruleId)) roSel.value = ruleId;
+      resetRuleFormDirty();
     }
 
-    document.getElementById('btnNewRule').onclick = () => openNewRuleEditor();
+    document.getElementById('btnNewRule').onclick = () => {
+      if (isRuleFormDirty() && !confirm(__('rules.confirm-unsaved'))) return;
+      openNewRuleEditor();
+    };
     document.getElementById('fIsAsync').onchange = () => {
       syncAsyncUi();
       syncDlpIntentReadonly();
@@ -1214,13 +1276,19 @@ end`;
       if (!id) { log(__('rules.recipe-required'), 'warn'); return; }
       applyRecipe(id);
     };
-    document.getElementById('btnPreviewScript').onclick = () => previewCompiledScript().catch(e => log(e.message, 'err'));
+    document.getElementById('btnPreviewScript').onclick = () => {
+      setBtnLoading('btnPreviewScript', true);
+      previewCompiledScript().catch(e => log(e.message, 'err')).finally(() => setBtnLoading('btnPreviewScript', false));
+    };
     document.getElementById('chkEnableSimulate').onchange = () => {
       const checked = document.getElementById('chkEnableSimulate').checked;
       document.getElementById('simulateFixtureRow').style.display = checked ? '' : 'none';
       if (!checked) document.getElementById('simulatePanel').style.display = 'none';
     };
-    document.getElementById('btnSimulateRule').onclick = () => runRuleSimulate().catch(e => log(e.message, 'err'));
+    document.getElementById('btnSimulateRule').onclick = () => {
+      setBtnLoading('btnSimulateRule', true);
+      runRuleSimulate().catch(e => log(e.message, 'err')).finally(() => setBtnLoading('btnSimulateRule', false));
+    };
     document.getElementById('btnSimFixtureApplyPreset').onclick = () => {
       resetSimFixture(document.getElementById('fSimFixturePreset').value);
     };
@@ -1236,8 +1304,10 @@ end`;
       renderConditionLeaves();
       updateRuleSummaryCard();
     };
-    document.getElementById('btnValidateScript').onclick = () =>
-      validateScriptBody(true).catch(e => log(e.message, 'err'));
+    document.getElementById('btnValidateScript').onclick = () => {
+      setBtnLoading('btnValidateScript', true);
+      validateScriptBody(true).catch(e => log(e.message, 'err')).finally(() => setBtnLoading('btnValidateScript', false));
+    };
     document.querySelectorAll('#scriptSnippetRow button[data-snippet]').forEach(btn => {
       btn.onclick = () => insertAtCursor(document.getElementById('fBody'), scriptSnippet(btn.dataset.snippet));
     });
@@ -1278,60 +1348,112 @@ end`;
           return;
         }
       }
-      const body = await resolveBodyForSave();
-      if (isDlpRuntime(runtime)) {
-        if (body.entity_type === 'custom_regex' && !(body.pattern || '').trim()) {
-          log(__('rules.custom-regex-required'), 'warn');
-          return;
-        }
-      }
-      if (runtime === 'lua' || runtime === 'groovy') {
-        const vr = await admin('/rules/validate-script', {
-          method: 'POST',
-          body: JSON.stringify({ layer, runtime, body })
-        });
-        showScriptValidateResult(vr);
-        if (!vr.valid) {
-          log(__('rules.valid-fail', (vr.errors || []).join('; ')), 'err');
-          return;
-        }
-      }
-      const isAsync = document.getElementById('fIsAsync').checked;
-      const asyncActionConfig = isAsync ? buildAsyncActionConfig() : null;
+      setBtnLoading('btnSaveRule', true);
       try {
-        await admin('/rules', {
-          method: 'POST',
-          body: JSON.stringify({
-            rule_id: ruleId,
-            bundle_id: bundleId(),
-            layer,
-            runtime,
-            reason_code: document.getElementById('fReason').value,
-            risk_score: isDlpRuntime(runtime) ? 0 : Number(document.getElementById('fRisk').value),
-            intent_action: isAsync ? 'allow' : (isDlpRuntime(runtime) ? 'allow' : document.getElementById('fIntent').value),
-            scope,
-            body,
-            editor_mode: isPromptRuntime(runtime) ? null : (isSimpleEditorMode() ? 'simple' : 'advanced'),
-            condition: (isPromptRuntime(runtime) || isEdgeFormRuntime(runtime) || !isSimpleEditorMode()) ? null : readConditionPayload(),
-            is_async: isAsync,
-            async_action_config: asyncActionConfig
-          })
-        });
-        log(isNewRule ? __('rules.created') : __('rules.saved'), 'ok');
-        isNewRule = false;
-        await selectRule(ruleId);
-      } catch (e) {
-        log(__('rules.save-fail', e.message), 'err');
+        const body = await resolveBodyForSave();
+        if (isDlpRuntime(runtime)) {
+          if (body.entity_type === 'custom_regex' && !(body.pattern || '').trim()) {
+            log(__('rules.custom-regex-required'), 'warn');
+            return;
+          }
+        }
+        if (runtime === 'lua' || runtime === 'groovy') {
+          const vr = await admin('/rules/validate-script', {
+            method: 'POST',
+            body: JSON.stringify({ layer, runtime, body })
+          });
+          showScriptValidateResult(vr);
+          if (!vr.valid) {
+            log(__('rules.valid-fail', (vr.errors || []).join('; ')), 'err');
+            return;
+          }
+        }
+        const isAsync = document.getElementById('fIsAsync').checked;
+        const asyncActionConfig = isAsync ? buildAsyncActionConfig() : null;
+        try {
+          await admin('/rules', {
+            method: 'POST',
+            body: JSON.stringify({
+              rule_id: ruleId,
+              bundle_id: bundleId(),
+              layer,
+              runtime,
+              reason_code: document.getElementById('fReason').value,
+              risk_score: isDlpRuntime(runtime) ? 0 : Number(document.getElementById('fRisk').value),
+              intent_action: isAsync ? 'allow' : (isDlpRuntime(runtime) ? 'allow' : document.getElementById('fIntent').value),
+              scope,
+              body,
+              editor_mode: isPromptRuntime(runtime) ? null : (isSimpleEditorMode() ? 'simple' : 'advanced'),
+              condition: (isPromptRuntime(runtime) || isEdgeFormRuntime(runtime) || !isSimpleEditorMode()) ? null : readConditionPayload(),
+              is_async: isAsync,
+              async_action_config: asyncActionConfig
+            })
+          });
+          log(isNewRule ? __('rules.created') : __('rules.saved'), 'ok');
+          isNewRule = false;
+          await selectRule(ruleId);
+        } catch (e) {
+          log(__('rules.save-fail', e.message), 'err');
+        }
+      } finally {
+        setBtnLoading('btnSaveRule', false);
       }
     };
-    document.getElementById('btnDisableRule').onclick = () =>
-      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/rollout/disable', { method: 'POST' })
-        .then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message, 'err'));
-    document.getElementById('btnActivateRule').onclick = () =>
-      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/rollout/publish', { method: 'POST' })
-        .then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message, 'err'));
-    document.getElementById('btnEnableRule').onclick = () =>
-      admin('/rules/' + encodeURIComponent(selectedRuleId) + '/rollout/recover', { method: 'POST' })
-        .then(log).then(() => selectRule(selectedRuleId)).catch(e => log(e.message, 'err'));
+    document.getElementById('btnDisableRule').onclick = () => {
+      setBtnLoading('btnDisableRule', true);
+      return admin('/rules/' + encodeURIComponent(selectedRuleId) + '/rollout/disable', { method: 'POST' })
+        .then(log).then(() => selectRule(selectedRuleId))
+        .catch(e => log(e.message, 'err'))
+        .finally(() => setBtnLoading('btnDisableRule', false));
+    };
+    document.getElementById('btnActivateRule').onclick = () => {
+      setBtnLoading('btnActivateRule', true);
+      return admin('/rules/' + encodeURIComponent(selectedRuleId) + '/rollout/publish', { method: 'POST' })
+        .then(log).then(() => selectRule(selectedRuleId))
+        .catch(e => log(e.message, 'err'))
+        .finally(() => setBtnLoading('btnActivateRule', false));
+    };
+    document.getElementById('btnEnableRule').onclick = () => {
+      setBtnLoading('btnEnableRule', true);
+      return admin('/rules/' + encodeURIComponent(selectedRuleId) + '/rollout/recover', { method: 'POST' })
+        .then(log).then(() => selectRule(selectedRuleId))
+        .catch(e => log(e.message, 'err'))
+        .finally(() => setBtnLoading('btnEnableRule', false));
+    };
 
     initScriptAutocomplete();
+
+    window.addEventListener('beforeunload', e => {
+      if (isRuleFormDirty()) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
+
+    initRuleFormDirtyTracking();
+    function initRuleFormDirtyTracking() {
+      const tracked = [
+        'fRuleId', 'fRuntime', 'fReason', 'fRisk', 'fIntent', 'fBody',
+        'fBindScope', 'fBindScenes', 'fBindAppIds',
+        'fEdgeListType', 'fEdgeKeywords',
+        'fDlpEntityType', 'fDlpPattern', 'fDlpMaskTemplate', 'fDlpPriority',
+        'fIsAsync', 'fActionType', 'fActionStreamKey', 'fActionWebhookUrl', 'fActionMessage',
+        'fEditorMode', 'fSimFixture',
+        'wPattern', 'wListName', 'wCumName', 'wCompare', 'wThreshold',
+        'fBindUpstream', 'fBindConsumer', 'fBindApiKeyGroup',
+        'chkEnableSimulate',
+      ];
+      tracked.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener('input', markRuleFormDirty);
+          el.addEventListener('change', markRuleFormDirty);
+        }
+      });
+      document.getElementById('conditionLeaves').addEventListener('input', markRuleFormDirty);
+      document.getElementById('conditionLeaves').addEventListener('change', markRuleFormDirty);
+      document.getElementById('btnSimFixtureApplyPreset').addEventListener('click', markRuleFormDirty);
+      document.getElementById('btnSimFixtureReset').addEventListener('click', markRuleFormDirty);
+      document.getElementById('btnApplyRecipe').addEventListener('click', markRuleFormDirty);
+      document.getElementById('btnGenScript').addEventListener('click', markRuleFormDirty);
+    }

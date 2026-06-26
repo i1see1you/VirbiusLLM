@@ -82,6 +82,10 @@
         tr.innerHTML = `<td><code>${esc(row.logical)}</code></td><td>${esc(row.from)}</td><td><code>${esc(wire)}</code></td>
                      <td style="font-size:0.82rem">${formatScopeDisplay(row)}</td>
                      <td><button class="danger" data-i="${idx}">${esc(__('common.delete'))}</button></td>`;
+        const codeEl = tr.querySelector('td:first-child code');
+        codeEl.style.cursor = 'pointer';
+        codeEl.title = __('bind.click-to-copy');
+        codeEl.onclick = () => copyVarRef(row.logical);
         tr.querySelector('button').onclick = () => { contextVars.splice(idx, 1); renderBindingsTable(); };
         tbody.appendChild(tr);
       });

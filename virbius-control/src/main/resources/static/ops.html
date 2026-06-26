@@ -66,6 +66,19 @@
     button { padding: 0.4rem 0.85rem; border: none; border-radius: 4px; background: #2563eb; color: #fff; cursor: pointer; font-size: 0.85rem; }
     button.secondary { background: #64748b; }
     button.danger { background: #dc2626; }
+    button.btn-loading {
+      pointer-events: none; opacity: 0.7;
+      display: inline-flex; align-items: center; gap: 0.35rem;
+    }
+    button.btn-loading::after {
+      content: ''; display: inline-block;
+      width: 0.75rem; height: 0.75rem;
+      border: 2px solid transparent;
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: btn-spin 0.6s linear infinite;
+    }
+    @keyframes btn-spin { to { transform: rotate(360deg); } }
     button.seg { background: #e2e8f0; color: #334155; padding: 0.35rem 0.65rem; font-size: 0.82rem; }
     button.seg.active { background: #2563eb; color: #fff; }
     table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
@@ -154,6 +167,22 @@
       background: #fff; border-radius: 8px; padding: 1.25rem 1.5rem;
       min-width: 320px; max-width: 420px; box-shadow: 0 8px 30px rgba(0,0,0,0.2);
     }
+    .toast-container {
+      position: fixed; top: 1rem; right: 1rem; z-index: 9999;
+      display: flex; flex-direction: column; gap: 0.5rem; pointer-events: none;
+    }
+    .toast {
+      pointer-events: auto; padding: 0.65rem 1rem; border-radius: 6px;
+      font-size: 0.85rem; box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      max-width: 420px; word-break: break-word;
+      animation: toast-in 0.25s ease;
+    }
+    @keyframes toast-in { from { opacity:0; transform:translateX(2rem); } to { opacity:1; transform:translateX(0); } }
+    .toast.toast-ok { background: #dcfce7; color: #166534; border-left: 4px solid #16a34a; }
+    .toast.toast-err { background: #fee2e2; color: #991b1b; border-left: 4px solid #dc2626; }
+    .toast.toast-warn { background: #fef3c7; color: #92400e; border-left: 4px solid #d97706; }
+    .toast.toast-info { background: #0f172a; color: #e2e8f0; border-left: 4px solid #475569; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
@@ -366,6 +395,15 @@
       <button type="button" id="btnExtVarAdd" data-i18n="ext.btn-add">添加</button>
       <button type="button" id="btnSaveExtVars" data-i18n="ext.btn-save">保存</button>
     </div>
+    <details class="ext-help" id="extHelp" style="margin-top:0.5rem;font-size:0.8rem">
+      <summary style="color:#64748b;cursor:pointer" data-i18n="ext.help-title">📖 Lua 表达式参考</summary>
+      <div style="padding:0.5rem;background:#f8fafc;border-radius:4px;margin-top:0.25rem">
+        <div data-i18n="ext.help-avail-vars">可用请求因子（点击插入 <code>ctx.var('名称')</code>）：</div>
+        <div id="extHelpVars" style="display:flex;flex-wrap:wrap;gap:0.25rem;margin:0.3rem 0 0.5rem"></div>
+        <div data-i18n="ext.help-examples">常用示例：</div>
+        <pre id="extHelpExamples" style="margin:0.3rem 0 0;font-size:0.75rem;color:#334155;line-height:1.6;white-space:pre-wrap"></pre>
+      </div>
+    </details>
   </div>
 
   <div id="panel-scene-registry" class="panel card">
@@ -921,5 +959,6 @@
     </div>
   </div>
 
+  <div id="toastContainer" class="toast-container"></div>
 </body>
 </html>

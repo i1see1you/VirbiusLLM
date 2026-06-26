@@ -37,7 +37,7 @@ public final class ExtendedVarsHelper {
         return out;
     }
 
-    public static List<ExtendedVar> parseVars(Map<String, Object> metadata) {
+    public static List<ExtendedVar> parseAllVars(Map<String, Object> metadata) {
         Map<String, Object> block = varsBlock(metadata);
         if (block.isEmpty()) {
             return List.of();
@@ -62,6 +62,12 @@ public final class ExtendedVarsHelper {
             }
         }
         return List.copyOf(out);
+    }
+
+    public static List<ExtendedVar> parseVars(Map<String, Object> metadata) {
+        return parseAllVars(metadata).stream()
+                .filter(v -> !v.isDeleted())
+                .toList();
     }
 
     public static Map<String, Object> toMetadataBlock(List<ExtendedVar> vars) {

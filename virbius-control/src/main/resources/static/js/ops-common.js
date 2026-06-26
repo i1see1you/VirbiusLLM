@@ -19,6 +19,7 @@
     const ROLLOUT_REFRESH_MS = 5000;
     let conditionLeaves = [];
     let recipeCatalog = [];
+    let ruleFormDirty = false;
 
     const FLOW_STEPS = ['draft', 'dry_run', 'canary', 'full'];
 
@@ -86,6 +87,49 @@
       const msg = typeof x === 'string' ? x : JSON.stringify(x, null, 2);
       logEl.textContent = msg;
       logEl.className = 'log-' + (level || 'info');
+      if (level === 'err') toast(msg, level);
+    }
+
+    function toast(msg, level) {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+      const el = document.createElement('div');
+      el.className = 'toast toast-' + (level || 'info');
+      el.textContent = msg;
+      container.appendChild(el);
+      const ms = level === 'err' ? 5000 : 3000;
+      setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(2rem)'; setTimeout(() => el.remove(), 300); }, ms);
+    }
+
+    function markRuleFormDirty() { ruleFormDirty = true; }
+    function resetRuleFormDirty() { ruleFormDirty = false; }
+    function isRuleFormDirty() { return ruleFormDirty; }
+
+    function setBtnLoading(btnId, loading) {
+      const btn = document.getElementById(btnId);
+      if (!btn) return;
+      if (loading) {
+        btn.classList.add('btn-loading');
+        btn.disabled = true;
+      } else {
+        btn.classList.remove('btn-loading');
+        btn.disabled = false;
+      }
+    }
+
+    function copyVarRef(name) {
+      const text = "ctx.var('" + name + "')";
+      const done = () => log(__('bind.copied', text), 'ok');
+      const fail = () => log(__('bind.copy-failed'), 'err');
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(done, fail);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); done(); } catch (_) { fail(); }
+        document.body.removeChild(ta);
+      }
     }
 
     const DIM_HINT = {

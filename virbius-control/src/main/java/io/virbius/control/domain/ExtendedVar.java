@@ -7,7 +7,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /** Derived variable computed from a Lua expression referencing request-factor vars. */
-public record ExtendedVar(String logical, String expr, Scope scope) {
+public record ExtendedVar(String logical, String expr, Scope scope, String deletedAt) {
 
     public static final String SCOPE_GLOBAL = "global";
     public static final String SCOPE_SERVICE = "service";
@@ -24,21 +24,32 @@ public record ExtendedVar(String logical, String expr, Scope scope) {
         }
     }
 
+    public ExtendedVar(String logical, String expr, Scope scope) {
+        this(logical, expr, scope, null);
+    }
+
     public ExtendedVar {
-        if (logical == null || logical.isBlank()) {
-            throw new IllegalArgumentException("logical name required");
+        boolean hasDeletedAt = deletedAt != null && !deletedAt.isBlank();
+        if (!hasDeletedAt) {
+            if (logical == null || logical.isBlank()) {
+                throw new IllegalArgumentException("logical name required");
+            }
+            logical = logical.trim();
+            if (!logical.matches("[a-z][a-z0-9_]*")) {
+                throw new IllegalArgumentException("logical name must be lowercase snake_case: " + logical);
+            }
+            if (expr == null || expr.isBlank()) {
+                throw new IllegalArgumentException("expr required for " + logical);
+            }
+            expr = expr.trim();
         }
-        logical = logical.trim();
-        if (!logical.matches("[a-z][a-z0-9_]*")) {
-            throw new IllegalArgumentException("logical name must be lowercase snake_case: " + logical);
-        }
-        if (expr == null || expr.isBlank()) {
-            throw new IllegalArgumentException("expr required for " + logical);
-        }
-        expr = expr.trim();
         if (scope == null) {
             scope = new Scope(SCOPE_GLOBAL, List.of(), List.of());
         }
+    }
+
+    public boolean isDeleted() {
+        return deletedAt != null && !deletedAt.isBlank();
     }
 
     @SuppressWarnings("unchecked")
@@ -48,7 +59,8 @@ public record ExtendedVar(String logical, String expr, Scope scope) {
         }
         String expr = def.get("expr") != null ? def.get("expr").toString() : null;
         Scope scope = parseScope(def.get("scope"));
-        return new ExtendedVar(logical, expr, scope);
+        String deletedAt = def.get("deleted_at") != null ? def.get("deleted_at").toString() : null;
+        return new ExtendedVar(logical, expr, scope, deletedAt);
     }
 
     @SuppressWarnings("unchecked")
@@ -71,6 +83,9 @@ public record ExtendedVar(String logical, String expr, Scope scope) {
     public Map<String, Object> toMap() {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("expr", expr);
+        if (deletedAt != null) {
+            m.put("deleted_at", deletedAt);
+        }
         if (scope != null && !SCOPE_GLOBAL.equals(scope.bindScope())) {
             Map<String, Object> scopeMap = new LinkedHashMap<>();
             scopeMap.put("bind_scope", scope.bindScope());

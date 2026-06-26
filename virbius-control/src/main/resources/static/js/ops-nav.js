@@ -34,6 +34,11 @@
     }
 
     function showPanel(tab) {
+      const currentActive = document.querySelector('.panel.active');
+      if (currentActive && currentActive.id === 'panel-rules' && tab !== 'rules' && isRuleFormDirty()) {
+        if (!confirm(__('rules.confirm-unsaved'))) return;
+        resetRuleFormDirty();
+      }
       logEl.textContent = '';
       logEl.className = 'log-info';
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -96,11 +101,13 @@
 
     document.querySelectorAll('.nav-sub[data-layer]').forEach(btn => {
       btn.onclick = () => {
+        if (isRuleFormDirty() && !confirm(__('rules.confirm-unsaved'))) return;
         showPanel('rules');
         setActiveLayer(btn.dataset.layer);
         selectedRuleId = null;
         isNewRule = false;
         document.getElementById('ruleEditor').style.display = 'none';
+        resetRuleFormDirty();
         loadRules().catch(e => log(e.message, 'err'));
       };
     });

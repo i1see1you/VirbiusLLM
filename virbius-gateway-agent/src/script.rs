@@ -2,7 +2,7 @@ use crate::list_redis::{match_redis_list_by_name, RedisListIndexBlock};
 use crate::policy_engine::{match_list_by_name, read_cumulative_count, CumulativeDefBlock, ListDefBlock};
 use crate::access_lists::ExtendedVars;
 use mlua::{Lua, MultiValue, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 pub struct ScriptEnv<'a> {
     pub content: &'a str,
@@ -11,7 +11,6 @@ pub struct ScriptEnv<'a> {
     pub client_ip: Option<&'a str>,
     pub session_id: Option<&'a str>,
     pub vars: &'a HashMap<String, String>,
-    pub declared_vars: &'a HashSet<String>,
     pub tenant_id: &'a str,
     pub lists: &'a [ListDefBlock],
     pub redis_list_index: &'a [RedisListIndexBlock],

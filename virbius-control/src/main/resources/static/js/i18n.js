@@ -152,6 +152,9 @@
       'bind.scope-service': '🏢 service',
       'bind.scope-route': '🛣️  route',
       'bind.scope-hint': '仅含匹配 app_id/scene 的请求才解析该因子。global：所有请求都解析。',
+      'bind.click-to-copy': '点击复制 ctx.var(\'名称\') 到剪贴板',
+      'bind.copied': '已复制: {0}',
+      'bind.copy-failed': '复制失败',
       'ext.title': '扩展因子（extended_vars）',
       'ext.desc': '通过 Lua 表达式从请求因子派生计算变量。表达式可用 <code>ctx.var(\'逻辑名\')</code> 引用已解析的请求因子。扩展因子与请求因子共享命名空间，规则中通过 <code>ctx.var(\'扩展因子名\')</code> 引用。<strong>计算顺序</strong>：请求因子 → scope 过滤 → 扩展因子计算 → 合并 → 规则执行。',
       'ext.header-logical': '逻辑名',
@@ -162,6 +165,11 @@
       'ext.err-name': '逻辑名必须为小写 snake_case',
       'ext.err-conflict': '与已有请求因子重名',
       'ext.err-duplicate': '逻辑名已存在',
+      'ext.confirm-delete': '确定要删除扩展因子 {0}？如有规则引用将无法保存。',
+      'ext.help-title': '📖 Lua 表达式参考',
+      'ext.help-avail-vars': '可用请求因子（点击插入 <code>ctx.var(\'名称\')</code>）：',
+      'ext.help-examples': '常用示例：',
+      'ext.help-no-vars': '暂无已配置的请求因子',
 
       // Scene Registry
       'sr.title': '场景注册（scene_registry）',
@@ -307,6 +315,7 @@
       'rules.valid-pass': '校验通过',
       'rules.valid-pass-with-warn': '校验通过（{0}）',
       'rules.valid-fail': '脚本校验未通过：{0}',
+      'rules.var-undeclared': "未声明的变量 '{0}'，可能拼写错误或未在请求因子/扩展因子中定义",
       'rules.disabled-cant-edit': '规则已停用，不可修改',
       'rules.running-cant-edit': '规则为 {0} 状态，正在线上运行中。请先下线再编辑',
       'rules.id-required': '请填写 rule_id',
@@ -316,6 +325,7 @@
       'rules.created': '规则已创建',
       'rules.saved': '规则已保存',
       'rules.keywords-empty': '（空）',
+      'rules.confirm-unsaved': '当前规则有未保存的修改，确定要离开吗？',
 
       // Rollout
       'rollout.title': '策略上线',
@@ -768,6 +778,9 @@
       'bind.scope-service': '🏢 Service',
       'bind.scope-route': '🛣️  Route',
       'bind.scope-hint': 'Only resolves this factor for requests matching the app_id/scene. Global: all requests.',
+      'bind.click-to-copy': "Click to copy ctx.var('name') to clipboard",
+      'bind.copied': 'Copied: {0}',
+      'bind.copy-failed': 'Copy failed',
       'ext.title': 'Extended Vars (extended_vars)',
       'ext.desc': 'Derive computed variables from request factors via Lua expressions. Use <code>ctx.var(\'logical\')</code> to reference resolved request factors. Extended vars share the namespace with request factors; rules reference them via <code>ctx.var(\'ext_name\')</code>. <strong>Order</strong>: request factors → scope filter → extended var computation → merge → rule execution.',
       'ext.header-logical': 'Logical Name',
@@ -778,6 +791,11 @@
       'ext.err-name': 'Logical name must be lowercase snake_case',
       'ext.err-conflict': 'Conflicts with an existing request factor',
       'ext.err-duplicate': 'Logical name already exists',
+      'ext.confirm-delete': 'Delete extended var {0}? If referenced by rules, save will be rejected.',
+      'ext.help-title': 'Lua Expression Reference',
+      'ext.help-avail-vars': 'Available request factors (click to insert <code>ctx.var(\'name\')</code>):',
+      'ext.help-examples': 'Common examples:',
+      'ext.help-no-vars': 'No request factors configured',
 
       // Scene Registry
       'sr.title': 'Scene Registry',
@@ -923,6 +941,7 @@
       'rules.valid-pass': 'Validation passed',
       'rules.valid-pass-with-warn': 'Validation passed ({0})',
       'rules.valid-fail': 'Script validation failed: {0}',
+      'rules.var-undeclared': "Undeclared var '{0}' — check spelling or declare in Context Bindings / Extended Vars",
       'rules.disabled-cant-edit': 'Rule is disabled, cannot edit',
       'rules.running-cant-edit': 'Rule is {0} and running online. Please take it offline first to edit.',
       'rules.id-required': 'Please fill in rule_id',
@@ -932,6 +951,7 @@
       'rules.created': 'Rule created',
       'rules.saved': 'Rule saved',
       'rules.keywords-empty': '(empty)',
+      'rules.confirm-unsaved': 'You have unsaved changes. Leave anyway?',
 
       // Rollout
       'rollout.title': 'Rollout',
