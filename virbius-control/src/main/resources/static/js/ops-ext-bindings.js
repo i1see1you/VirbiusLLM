@@ -77,9 +77,15 @@
                      <td><code style="font-size:0.8rem;word-break:break-all" title="${escAttr(row.expr)}">${esc(exprShort)}</code></td>
                      <td style="font-size:0.82rem">${formatExtScopeDisplay(row)}</td>
                      <td><button class="danger" data-i="${idx}">${esc(__('common.delete'))}</button></td>`;
-        tr.querySelector('button').onclick = () => {
+        tr.querySelector('button').onclick = async () => {
           if (!confirm(__('ext.confirm-delete', row.logical))) return;
-          extendedVars.splice(idx, 1); renderExtVarsTable();
+          try {
+            await admin(`/bundles/${encodeURIComponent(bundleId())}/versions/${encodeURIComponent(bundleVer())}/metadata/extended-vars/${encodeURIComponent(row.logical)}`, { method: 'DELETE' });
+            extendedVars.splice(idx, 1);
+            renderExtVarsTable();
+          } catch (e) {
+            log(e.message, 'err');
+          }
         };
         const codeEl = tr.querySelector('td:first-child code');
         codeEl.style.cursor = 'pointer';

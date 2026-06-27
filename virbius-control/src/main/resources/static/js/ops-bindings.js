@@ -86,7 +86,16 @@
         codeEl.style.cursor = 'pointer';
         codeEl.title = __('bind.click-to-copy');
         codeEl.onclick = () => copyVarRef(row.logical);
-        tr.querySelector('button').onclick = () => { contextVars.splice(idx, 1); renderBindingsTable(); };
+        tr.querySelector('button').onclick = async () => {
+          if (!confirm(__('ext.confirm-delete', row.logical))) return;
+          try {
+            await admin(`/bundles/${encodeURIComponent(bundleId())}/versions/${encodeURIComponent(bundleVer())}/metadata/context-bindings/${encodeURIComponent(row.logical)}`, { method: 'DELETE' });
+            contextVars.splice(idx, 1);
+            renderBindingsTable();
+          } catch (e) {
+            log(e.message, 'err');
+          }
+        };
         tbody.appendChild(tr);
       });
     }

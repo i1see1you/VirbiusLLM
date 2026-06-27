@@ -8,17 +8,54 @@ CREATE TABLE IF NOT EXISTS tb_tenants (
 );
 
 CREATE TABLE IF NOT EXISTS tb_bundles (
-    tenant_id       VARCHAR(64) NOT NULL,
-    bundle_id       VARCHAR(128) NOT NULL,
-    version         VARCHAR(64) NOT NULL,
-    status          VARCHAR(32) NOT NULL DEFAULT 'draft',
-    publish_id      VARCHAR(64),
-    sync_ack_json   TEXT,
-    metadata_json   TEXT,
-    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    tenant_id         VARCHAR(64) NOT NULL,
+    bundle_id         VARCHAR(128) NOT NULL,
+    version           VARCHAR(64) NOT NULL,
+    status            VARCHAR(32) NOT NULL DEFAULT 'draft',
+    publish_id        VARCHAR(64),
+    sync_ack_json     TEXT,
+    metadata_json     TEXT,
+    metadata_version  INTEGER NOT NULL DEFAULT 0,
+    created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tenant_id, bundle_id, version)
 );
+
+-- 请求因子（逻辑删除；发布后该 bundle 版本只读）
+CREATE TABLE IF NOT EXISTS tb_context_bindings (
+    tenant_id    VARCHAR(64)  NOT NULL,
+    bundle_id    VARCHAR(128) NOT NULL,
+    version      VARCHAR(64)  NOT NULL,
+    logical      VARCHAR(64)  NOT NULL,
+    src_from     VARCHAR(16)  NOT NULL,
+    src_name     VARCHAR(128),
+    src_field    VARCHAR(128),
+    scope_json   TEXT,
+    deleted_at   TIMESTAMP,
+    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, bundle_id, version, logical)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ctx_bindings_lookup
+    ON tb_context_bindings (tenant_id, bundle_id, version);
+
+-- 扩展因子（逻辑删除；发布后该 bundle 版本只读）
+CREATE TABLE IF NOT EXISTS tb_extended_vars (
+    tenant_id    VARCHAR(64)  NOT NULL,
+    bundle_id    VARCHAR(128) NOT NULL,
+    version      VARCHAR(64)  NOT NULL,
+    logical      VARCHAR(64)  NOT NULL,
+    expr         TEXT NOT NULL,
+    scope_json   TEXT,
+    deleted_at   TIMESTAMP,
+    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tenant_id, bundle_id, version, logical)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ext_vars_lookup
+    ON tb_extended_vars (tenant_id, bundle_id, version);
 
 CREATE TABLE IF NOT EXISTS tb_rules_current (
     tenant_id         VARCHAR(64) NOT NULL,

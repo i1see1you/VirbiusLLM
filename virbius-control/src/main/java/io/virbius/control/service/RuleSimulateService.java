@@ -69,7 +69,7 @@ public class RuleSimulateService {
         Map<String, String> headers = stringMap(fixture.get("headers"));
         Map<String, String> query = stringMap(fixture.get("query"));
         Map<String, String> fixtureVars = stringMap(fixture.get("vars"));
-        var bindings = ContextBindingsHelper.parseBindings(metadata);
+        var bindings = store.listContextBindings(tenantId, bundleId, RuleBindScopeValidator.defaultBundleVersion());
         Map<String, String> vars = ContextVarResolver.resolve(bindings, headers, query, fixtureVars);
         steps.add(step("vars", true, Map.of("vars", vars)));
 

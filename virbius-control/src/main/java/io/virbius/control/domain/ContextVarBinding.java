@@ -1,12 +1,14 @@
 package io.virbius.control.domain;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Logical variable → HTTP/body source mapping with optional scope. */
-public record ContextVarBinding(String logical, String from, String name, String field, Scope scope) {
+/** Logical variable → HTTP/body source mapping with optional scope. Supports logical deletion. */
+public record ContextVarBinding(
+        String logical, String from, String name, String field, Scope scope, String deletedAt) {
 
     public static final String FROM_QUERY = "query";
     public static final String FROM_HEADER = "header";
@@ -28,38 +30,49 @@ public record ContextVarBinding(String logical, String from, String name, String
         }
     }
 
+    public ContextVarBinding(String logical, String from, String name, String field, Scope scope) {
+        this(logical, from, name, field, scope, null);
+    }
+
     public ContextVarBinding {
-        if (logical == null || logical.isBlank()) {
-            throw new IllegalArgumentException("logical name required");
-        }
-        logical = logical.trim();
-        if (!logical.matches("[a-z][a-z0-9_]*")) {
-            throw new IllegalArgumentException("logical name must be lowercase snake_case: " + logical);
-        }
-        if (from == null || from.isBlank()) {
-            throw new IllegalArgumentException("from required for " + logical);
-        }
-        from = from.trim().toLowerCase(Locale.ROOT);
-        switch (from) {
-            case FROM_QUERY, FROM_HEADER -> {
-                if (name == null || name.isBlank()) {
-                    name = logical;
-                } else {
-                    name = name.trim();
-                }
+        boolean hasDeletedAt = deletedAt != null && !deletedAt.isBlank();
+        if (!hasDeletedAt) {
+            if (logical == null || logical.isBlank()) {
+                throw new IllegalArgumentException("logical name required");
             }
-            case FROM_SUBJECT, FROM_NETWORK -> {
-                if (field == null || field.isBlank()) {
-                    field = logical;
-                } else {
-                    field = field.trim().toLowerCase(Locale.ROOT);
-                }
+            logical = logical.trim();
+            if (!logical.matches("[a-z][a-z0-9_]*")) {
+                throw new IllegalArgumentException("logical name must be lowercase snake_case: " + logical);
             }
-            default -> throw new IllegalArgumentException("from must be query, header, subject, or network");
+            if (from == null || from.isBlank()) {
+                throw new IllegalArgumentException("from required for " + logical);
+            }
+            from = from.trim().toLowerCase(Locale.ROOT);
+            switch (from) {
+                case FROM_QUERY, FROM_HEADER -> {
+                    if (name == null || name.isBlank()) {
+                        name = logical;
+                    } else {
+                        name = name.trim();
+                    }
+                }
+                case FROM_SUBJECT, FROM_NETWORK -> {
+                    if (field == null || field.isBlank()) {
+                        field = logical;
+                    } else {
+                        field = field.trim().toLowerCase(Locale.ROOT);
+                    }
+                }
+                default -> throw new IllegalArgumentException("from must be query, header, subject, or network");
+            }
+            if (scope == null) {
+                scope = new Scope(SCOPE_GLOBAL, List.of(), List.of());
+            }
         }
-        if (scope == null) {
-            scope = new Scope(SCOPE_GLOBAL, List.of(), List.of());
-        }
+    }
+
+    public boolean isDeleted() {
+        return deletedAt != null && !deletedAt.isBlank();
     }
 
     @SuppressWarnings("unchecked")
@@ -71,7 +84,8 @@ public record ContextVarBinding(String logical, String from, String name, String
         String name = def.get("name") != null ? def.get("name").toString() : null;
         String field = def.get("field") != null ? def.get("field").toString() : null;
         Scope scope = parseScope(def.get("scope"));
-        return new ContextVarBinding(logical, from, name, field, scope);
+        String deletedAt = def.get("deleted_at") != null ? def.get("deleted_at").toString() : null;
+        return new ContextVarBinding(logical, from, name, field, scope, deletedAt);
     }
 
     @SuppressWarnings("unchecked")
@@ -92,7 +106,7 @@ public record ContextVarBinding(String logical, String from, String name, String
     }
 
     public Map<String, Object> toMap() {
-        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        Map<String, Object> m = new LinkedHashMap<>();
         m.put("from", from);
         if (name != null && !name.isBlank()) {
             m.put("name", name);
@@ -101,7 +115,7 @@ public record ContextVarBinding(String logical, String from, String name, String
             m.put("field", field);
         }
         if (scope != null && !SCOPE_GLOBAL.equals(scope.bindScope())) {
-            Map<String, Object> scopeMap = new java.util.LinkedHashMap<>();
+            Map<String, Object> scopeMap = new LinkedHashMap<>();
             scopeMap.put("bind_scope", scope.bindScope());
             if (!scope.appIds().isEmpty()) {
                 scopeMap.put("app_ids", scope.appIds());
@@ -110,6 +124,9 @@ public record ContextVarBinding(String logical, String from, String name, String
                 scopeMap.put("scenes", scope.scenes());
             }
             m.put("scope", scopeMap);
+        }
+        if (deletedAt != null) {
+            m.put("deleted_at", deletedAt);
         }
         return m;
     }

@@ -14,7 +14,6 @@ import io.virbius.control.gateway.SceneRegistryHelper;
 import io.virbius.policy.SceneRegistry;
 import io.virbius.control.repository.RegistryRepository;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,22 +38,24 @@ public class BundleMetadataService {
     private static final Pattern CTX_VAR_REF =
             Pattern.compile("ctx\\.var\\s*\\(\\s*['\"]([^'\"]+)['\"]\\s*\\)");
 
-    private void checkExtendedVarReferences(String tenantId, Map<String, Object> oldMetadata,
-                                            List<ExtendedVar> newVars) {
-        Set<String> oldNames = ExtendedVarsHelper.logicalNames(oldMetadata);
-        Set<String> newNames = newVars.stream().map(ExtendedVar::logical).collect(Collectors.toSet());
-        Set<String> deleted = new HashSet<>(oldNames);
-        deleted.removeAll(newNames);
-        if (deleted.isEmpty()) {
+    // ===================== 因子引用校验（请求因子 / 扩展因子共用）=====================
+
+    /**
+     * 删除前校验：被删因子若仍被规则引用则拒绝。
+     *
+     * @param deletedLogicalNames 被删除的因子 logical 名集合
+     */
+    private void checkFactorReferences(String tenantId, Set<String> deletedLogicalNames) {
+        if (deletedLogicalNames == null || deletedLogicalNames.isEmpty()) {
             return;
         }
         List<RuleRevision> allRules = store.listCurrentRules(tenantId, null);
         Map<String, List<String>> refs = new LinkedHashMap<>();
         for (RuleRevision rule : allRules) {
             Set<String> ruleRefs = collectReferencedVarNames(rule);
-            for (String name : deleted) {
+            for (String name : deletedLogicalNames) {
                 if (ruleRefs.contains(name)) {
-                    refs.computeIfAbsent(name, k -> new ArrayList<>()).add(rule.ruleId());
+                    refs.computeIfAbsent(name, k -> new java.util.ArrayList<>()).add(rule.ruleId());
                 }
             }
         }
@@ -63,7 +64,7 @@ public class BundleMetadataService {
                     .map(e -> "'" + e.getKey() + "' (" + String.join(", ", e.getValue()) + ")")
                     .collect(Collectors.joining("; "));
             throw new IllegalArgumentException(
-                    "Cannot delete extended var(s) still referenced by rules: " + detail);
+                    "Cannot delete factor(s) still referenced by rules: " + detail);
         }
     }
 
@@ -92,6 +93,8 @@ public class BundleMetadataService {
         return names;
     }
 
+    // ===================== metadata 聚合查询 =====================
+
     public Map<String, Object> getMetadata(String tenantId, String bundleId, String version) {
         BundleVersion bundle = requireBundle(tenantId, bundleId, version);
         Map<String, Object> metadata = bundle.metadata() != null ? bundle.metadata() : Map.of();
@@ -101,14 +104,12 @@ public class BundleMetadataService {
         out.put("version", version);
         out.put("status", bundle.status());
         out.put("metadata", metadata);
-        out.put("context_bindings", ContextBindingsHelper.bindingsBlock(metadata));
-        out.put("context_vars", ContextBindingsHelper.parseBindings(metadata).stream()
-                .map(this::varToMap)
-                .toList());
-        out.put("extended_vars", ExtendedVarsHelper.varsBlock(metadata));
-        out.put("extended_var_list", ExtendedVarsHelper.parseVars(metadata).stream()
-                .map(this::extVarToMap)
-                .toList());
+        List<ContextVarBinding> ctxBindings = store.listContextBindings(tenantId, bundleId, version);
+        out.put("context_bindings", ContextBindingsHelper.toMetadataBlock(ctxBindings));
+        out.put("context_vars", ctxBindings.stream().map(this::varToMap).toList());
+        List<ExtendedVar> extVars = store.listExtendedVars(tenantId, bundleId, version);
+        out.put("extended_vars", ExtendedVarsHelper.toMetadataBlock(extVars));
+        out.put("extended_var_list", extVars.stream().map(this::extVarToMap).toList());
         out.put("gateway", GatewayRoutesHelper.gatewayBlock(metadata));
         out.put("gateway_routes", GatewayRoutesHelper.parseRoutes(metadata).stream().map(this::routeToMap).toList());
         out.put("scene_registry", SceneRegistryHelper.registryBlock(metadata));
@@ -116,11 +117,13 @@ public class BundleMetadataService {
         return out;
     }
 
+    // ===================== 场景注册表 =====================
+
     public Map<String, Object> updateSceneRegistry(
             String tenantId, String bundleId, String version, SceneRegistryRequest body, boolean syncArtifacts) {
         SceneRegistry registry = SceneRegistryHelper.fromRequest(body);
         SceneRegistryHelper.validate(registry);
-        BundleVersion bundle = requireBundle(tenantId, bundleId, version);
+        BundleVersion bundle = requireDraftBundle(tenantId, bundleId, version);
         Map<String, Object> metadata = new LinkedHashMap<>(
                 bundle.metadata() != null ? bundle.metadata() : Map.of());
         SceneRegistryHelper.putRegistryMetadata(metadata, registry);
@@ -129,7 +132,7 @@ public class BundleMetadataService {
                 .map(r -> r.uri().trim())
                 .toList();
         GatewayUriCoverage.validateSceneRegistryUris(gatewayUris, registry);
-        store.updateBundleMetadata(tenantId, bundleId, version, metadata);
+        store.updateBundleMetadata(tenantId, bundleId, version, metadata, bundle.metadataVersion());
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("updated", true);
@@ -142,13 +145,15 @@ public class BundleMetadataService {
         return out;
     }
 
+    // ===================== 网关路由 =====================
+
     public Map<String, Object> updateGatewayRoutes(
             String tenantId, String bundleId, String version, GatewayRoutesRequest body, boolean syncArtifacts) {
         if (body == null || body.routes() == null) {
             throw new IllegalArgumentException("routes required");
         }
         GatewayRoutesHelper.validateRoutes(body.routes());
-        BundleVersion bundle = requireBundle(tenantId, bundleId, version);
+        BundleVersion bundle = requireDraftBundle(tenantId, bundleId, version);
         Map<String, Object> metadata = new LinkedHashMap<>(
                 bundle.metadata() != null ? bundle.metadata() : Map.of());
         Map<String, Object> gateway = GatewayRoutesHelper.toGatewayMetadata(
@@ -161,7 +166,7 @@ public class BundleMetadataService {
         syncScopeFromRegistry(metadata, SceneRegistryHelper.parseRegistry(metadata), tenantId);
         List<String> gatewayUris = body.routes().stream().map(r -> r.uri().trim()).toList();
         GatewayUriCoverage.validateSceneRegistryUris(gatewayUris, SceneRegistryHelper.parseRegistry(metadata));
-        store.updateBundleMetadata(tenantId, bundleId, version, metadata);
+        store.updateBundleMetadata(tenantId, bundleId, version, metadata, bundle.metadataVersion());
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("updated", true);
@@ -196,66 +201,102 @@ public class BundleMetadataService {
         metadata.put("scope", scopeMap);
     }
 
+    // ===================== 请求因子（context bindings）=====================
+
     public Map<String, Object> updateContextBindings(
             String tenantId, String bundleId, String version, List<ContextVarBinding> bindings, boolean syncArtifacts) {
-        BundleVersion bundle = requireBundle(tenantId, bundleId, version);
-        Map<String, Object> metadata = new LinkedHashMap<>(
-                bundle.metadata() != null ? bundle.metadata() : Map.of());
-        metadata.put("context_bindings", ContextBindingsHelper.toMetadataBlock(bindings));
-        store.updateBundleMetadata(tenantId, bundleId, version, metadata);
+        requireDraftBundle(tenantId, bundleId, version);
 
+        Set<String> extNames = store.listExtendedVars(tenantId, bundleId, version).stream()
+                .map(ExtendedVar::logical).collect(Collectors.toSet());
+        for (ContextVarBinding b : bindings) {
+            if (extNames.contains(b.logical())) {
+                throw new IllegalArgumentException("context var name conflicts with extended var: " + b.logical());
+            }
+        }
+
+        Set<String> oldNames = store.listContextBindings(tenantId, bundleId, version).stream()
+                .map(ContextVarBinding::logical).collect(Collectors.toSet());
+        Set<String> newNames = bindings.stream().map(ContextVarBinding::logical).collect(Collectors.toSet());
+        Set<String> deleted = new HashSet<>(oldNames);
+        deleted.removeAll(newNames);
+        checkFactorReferences(tenantId, deleted);
+
+        store.replaceContextBindings(tenantId, bundleId, version, bindings);
+
+        List<ContextVarBinding> saved = store.listContextBindings(tenantId, bundleId, version);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("updated", true);
-        out.put("context_bindings", ContextBindingsHelper.bindingsBlock(metadata));
-        out.put("context_vars", bindings.stream().map(this::varToMap).toList());
+        out.put("context_bindings", ContextBindingsHelper.toMetadataBlock(saved));
+        out.put("context_vars", saved.stream().map(this::varToMap).toList());
         if (syncArtifacts) {
             out.put("sync", accessListService.syncRules(tenantId));
         }
         return out;
     }
 
+    // ===================== 扩展因子（extended vars）=====================
+
     public Map<String, Object> updateExtendedVars(
             String tenantId, String bundleId, String version, List<ExtendedVar> vars, boolean syncArtifacts) {
-        BundleVersion bundle = requireBundle(tenantId, bundleId, version);
-        Map<String, Object> metadata = new LinkedHashMap<>(
-                bundle.metadata() != null ? bundle.metadata() : Map.of());
+        requireDraftBundle(tenantId, bundleId, version);
 
-        Set<String> contextLogicalNames = ContextBindingsHelper.logicalNames(metadata);
+        Set<String> ctxNames = store.listContextBindings(tenantId, bundleId, version).stream()
+                .map(ContextVarBinding::logical).collect(Collectors.toSet());
         for (ExtendedVar v : vars) {
-            if (contextLogicalNames.contains(v.logical())) {
+            if (ctxNames.contains(v.logical())) {
                 throw new IllegalArgumentException("extended var name conflicts with context binding: " + v.logical());
             }
         }
 
-        checkExtendedVarReferences(tenantId, metadata, vars);
+        Set<String> oldNames = store.listExtendedVars(tenantId, bundleId, version).stream()
+                .map(ExtendedVar::logical).collect(Collectors.toSet());
+        Set<String> newNames = vars.stream().map(ExtendedVar::logical).collect(Collectors.toSet());
+        Set<String> deleted = new HashSet<>(oldNames);
+        deleted.removeAll(newNames);
+        checkFactorReferences(tenantId, deleted);
 
-        // Logical deletion: mark removed vars as deleted instead of removing them
-        List<ExtendedVar> currentAll = ExtendedVarsHelper.parseAllVars(metadata);
-        Map<String, ExtendedVar> currentByLogical = new LinkedHashMap<>();
-        for (ExtendedVar v : currentAll) {
-            currentByLogical.put(v.logical(), v);
-        }
-        Set<String> incomingNames = vars.stream().map(ExtendedVar::logical).collect(Collectors.toSet());
+        store.replaceExtendedVars(tenantId, bundleId, version, vars);
 
-        List<ExtendedVar> toSave = new ArrayList<>(vars);
-        for (Map.Entry<String, ExtendedVar> e : currentByLogical.entrySet()) {
-            if (!incomingNames.contains(e.getKey())) {
-                if (e.getValue().isDeleted()) {
-                    toSave.add(e.getValue());
-                } else {
-                    ExtendedVar cv = e.getValue();
-                    toSave.add(new ExtendedVar(cv.logical(), cv.expr(), cv.scope(), Instant.now().toString()));
-                }
-            }
-        }
-
-        metadata.put("extended_vars", ExtendedVarsHelper.toMetadataBlock(toSave));
-        store.updateBundleMetadata(tenantId, bundleId, version, metadata);
-
+        List<ExtendedVar> saved = store.listExtendedVars(tenantId, bundleId, version);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("updated", true);
-        out.put("extended_vars", ExtendedVarsHelper.varsBlock(metadata));
-        out.put("extended_var_list", vars.stream().map(this::extVarToMap).toList());
+        out.put("extended_vars", ExtendedVarsHelper.toMetadataBlock(saved));
+        out.put("extended_var_list", saved.stream().map(this::extVarToMap).toList());
+        if (syncArtifacts) {
+            out.put("sync", accessListService.syncRules(tenantId));
+        }
+        return out;
+    }
+
+    public Map<String, Object> deleteExtendedVar(
+            String tenantId, String bundleId, String version, String logical, boolean syncArtifacts) {
+        requireDraftBundle(tenantId, bundleId, version);
+        checkFactorReferences(tenantId, Set.of(logical));
+        store.deleteExtendedVar(tenantId, bundleId, version, logical);
+        List<ExtendedVar> saved = store.listExtendedVars(tenantId, bundleId, version);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("deleted", true);
+        out.put("logical", logical);
+        out.put("extended_vars", ExtendedVarsHelper.toMetadataBlock(saved));
+        out.put("extended_var_list", saved.stream().map(this::extVarToMap).toList());
+        if (syncArtifacts) {
+            out.put("sync", accessListService.syncRules(tenantId));
+        }
+        return out;
+    }
+
+    public Map<String, Object> deleteContextBinding(
+            String tenantId, String bundleId, String version, String logical, boolean syncArtifacts) {
+        requireDraftBundle(tenantId, bundleId, version);
+        checkFactorReferences(tenantId, Set.of(logical));
+        store.deleteContextBinding(tenantId, bundleId, version, logical);
+        List<ContextVarBinding> saved = store.listContextBindings(tenantId, bundleId, version);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("deleted", true);
+        out.put("logical", logical);
+        out.put("context_bindings", ContextBindingsHelper.toMetadataBlock(saved));
+        out.put("context_vars", saved.stream().map(this::varToMap).toList());
         if (syncArtifacts) {
             out.put("sync", accessListService.syncRules(tenantId));
         }
@@ -266,11 +307,13 @@ public class BundleMetadataService {
         return accessListService.syncRules(tenantId);
     }
 
+    // ===================== 请求解析 =====================
+
     public static List<ContextVarBinding> parseRequest(io.virbius.control.domain.dto.request.ContextBindingsRequest body) {
         if (body == null || body.vars() == null) {
             return List.of();
         }
-        List<ContextVarBinding> out = new ArrayList<>();
+        List<ContextVarBinding> out = new java.util.ArrayList<>();
         for (Map<String, Object> row : body.vars()) {
             if (row == null || row.isEmpty()) {
                 continue;
@@ -291,7 +334,7 @@ public class BundleMetadataService {
         if (body == null || body.vars() == null) {
             return List.of();
         }
-        List<ExtendedVar> out = new ArrayList<>();
+        List<ExtendedVar> out = new java.util.ArrayList<>();
         for (Map<String, Object> row : body.vars()) {
             if (row == null || row.isEmpty()) {
                 continue;
@@ -338,9 +381,21 @@ public class BundleMetadataService {
         return new ContextVarBinding.Scope(bs, appIds, scenes);
     }
 
+    // ===================== 辅助 =====================
+
     private BundleVersion requireBundle(String tenantId, String bundleId, String version) {
         return store.getBundle(tenantId, bundleId, version)
                 .orElseThrow(() -> new IllegalArgumentException("bundle not found"));
+    }
+
+    private BundleVersion requireDraftBundle(String tenantId, String bundleId, String version) {
+        BundleVersion bundle = requireBundle(tenantId, bundleId, version);
+        if (!"draft".equalsIgnoreCase(bundle.status())) {
+            throw new IllegalArgumentException(
+                    "bundle is not editable in status '" + bundle.status()
+                            + "'; derive a new version to modify factors or metadata");
+        }
+        return bundle;
     }
 
     private Map<String, Object> varToMap(ContextVarBinding b) {
@@ -352,6 +407,17 @@ public class BundleMetadataService {
         }
         if (b.field() != null && !b.field().isBlank()) {
             m.put("field", b.field());
+        }
+        if (b.scope() != null && !ContextVarBinding.SCOPE_GLOBAL.equals(b.scope().bindScope())) {
+            Map<String, Object> scopeMap = new LinkedHashMap<>();
+            scopeMap.put("bind_scope", b.scope().bindScope());
+            if (!b.scope().appIds().isEmpty()) {
+                scopeMap.put("app_ids", b.scope().appIds());
+            }
+            if (!b.scope().scenes().isEmpty()) {
+                scopeMap.put("scenes", b.scope().scenes());
+            }
+            m.put("scope", scopeMap);
         }
         return m;
     }

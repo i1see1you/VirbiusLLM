@@ -37,6 +37,9 @@ public class ArtifactService {
 
     private static final Logger log = LoggerFactory.getLogger(ArtifactService.class);
 
+    private static final String DEFAULT_BUNDLE_ID = "poc-default";
+    private static final String DEFAULT_BUNDLE_VERSION = "0.1.0";
+
     private final com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
     private final java.nio.file.Path dataDir;
     private final RegistryRepository registryRepo;
@@ -305,13 +308,15 @@ public class ArtifactService {
         root.put("redis_list_index", redisIndex);
         root.put("cumulatives", buildCumulativeDefBlocks(tenantId));
         root.put("script_rules", buildScriptRuleBlocks(tenantId));
-        Map<String, Object> bindings = ContextBindingsHelper.bindingsBlock(bundleMetadata);
-        if (!bindings.isEmpty()) {
-            root.put("context_bindings", bindings);
+        List<io.virbius.control.domain.ContextVarBinding> ctxBindings =
+                registryRepo.listContextBindings(tenantId, DEFAULT_BUNDLE_ID, DEFAULT_BUNDLE_VERSION);
+        if (!ctxBindings.isEmpty()) {
+            root.put("context_bindings", ContextBindingsHelper.toMetadataBlock(ctxBindings));
         }
-        Map<String, Object> extVars = io.virbius.control.service.ExtendedVarsHelper.varsBlock(bundleMetadata);
+        List<io.virbius.control.domain.ExtendedVar> extVars =
+                registryRepo.listExtendedVars(tenantId, DEFAULT_BUNDLE_ID, DEFAULT_BUNDLE_VERSION);
         if (!extVars.isEmpty()) {
-            root.put("extended_vars", extVars);
+            root.put("extended_vars", ExtendedVarsHelper.toMetadataBlock(extVars));
         }
         Map<String, Object> sceneReg = io.virbius.control.gateway.SceneRegistryHelper.registryBlock(bundleMetadata);
         if (!sceneReg.isEmpty()) {

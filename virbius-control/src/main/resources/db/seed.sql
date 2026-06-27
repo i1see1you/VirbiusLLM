@@ -7,15 +7,31 @@ WHERE NOT EXISTS (SELECT 1 FROM tb_tenants WHERE tenant_id = 'default');
 
 INSERT INTO tb_bundles (tenant_id, bundle_id, version, status, metadata_json)
 SELECT 'default', 'poc-default', '0.1.0', 'draft',
-    '{"scope":{"tenants":["default"],"scenes":["beta_chat","medical-prod_chat","medical-prod_clinical"],"apps":["beta","medical-prod"]},"scene_registry":{"version":1,"fail_on_unknown_app":false,"fail_on_unresolved_scene":false,"scenes":{"beta_chat":{"app_id":"beta","default":true,"uris":["/v1/chat/completions"],"priority":0},"medical-prod_chat":{"app_id":"medical-prod","default":true,"uris":["/v1/chat/completions"],"priority":0},"medical-prod_clinical":{"app_id":"medical-prod","uris":["/v1/chat/completions"],"priority":10,"match":{"query":{"mode":"clinical"}}}}},"gateway":{"evaluate":true,"fail_mode":"open","cloud_scan":{"agent_url":"http://127.0.0.1:9070","timeout_ms":3000},"routes":[{"uri":"/v1/chat/completions","methods":["POST"]}]},"context_bindings":{"version":1,"vars":{"app_id":{"from":"header","name":"X-App-Id"},"debug_flag":{"from":"query","name":"debug"},"model_name":{"from":"query","name":"model"}}}}'
+    '{"scope":{"tenants":["default"],"scenes":["beta_chat","medical-prod_chat","medical-prod_clinical"],"apps":["beta","medical-prod"]},"scene_registry":{"version":1,"fail_on_unknown_app":false,"fail_on_unresolved_scene":false,"scenes":{"beta_chat":{"app_id":"beta","default":true,"uris":["/v1/chat/completions"],"priority":0},"medical-prod_chat":{"app_id":"medical-prod","default":true,"uris":["/v1/chat/completions"],"priority":0},"medical-prod_clinical":{"app_id":"medical-prod","uris":["/v1/chat/completions"],"priority":10,"match":{"query":{"mode":"clinical"}}}}},"gateway":{"evaluate":true,"fail_mode":"open","cloud_scan":{"agent_url":"http://127.0.0.1:9070","timeout_ms":3000},"routes":[{"uri":"/v1/chat/completions","methods":["POST"]}]}}'
 FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (
     SELECT 1 FROM tb_bundles WHERE tenant_id = 'default' AND bundle_id = 'poc-default' AND version = '0.1.0'
 );
 
 UPDATE tb_bundles
-SET metadata_json = '{"scope":{"tenants":["default"],"scenes":["beta_chat","medical-prod_chat","medical-prod_clinical"],"apps":["beta","medical-prod"]},"scene_registry":{"version":1,"fail_on_unknown_app":false,"fail_on_unresolved_scene":false,"scenes":{"beta_chat":{"app_id":"beta","default":true,"uris":["/v1/chat/completions"],"priority":0},"medical-prod_chat":{"app_id":"medical-prod","default":true,"uris":["/v1/chat/completions"],"priority":0},"medical-prod_clinical":{"app_id":"medical-prod","uris":["/v1/chat/completions"],"priority":10,"match":{"query":{"mode":"clinical"}}}}},"gateway":{"evaluate":true,"fail_mode":"open","cloud_scan":{"agent_url":"http://127.0.0.1:9070","timeout_ms":3000},"routes":[{"uri":"/v1/chat/completions","methods":["POST"]}]},"context_bindings":{"version":1,"vars":{"app_id":{"from":"header","name":"X-App-Id"},"debug_flag":{"from":"query","name":"debug"},"model_name":{"from":"query","name":"model"}}}}'
+SET metadata_json = '{"scope":{"tenants":["default"],"scenes":["beta_chat","medical-prod_chat","medical-prod_clinical"],"apps":["beta","medical-prod"]},"scene_registry":{"version":1,"fail_on_unknown_app":false,"fail_on_unresolved_scene":false,"scenes":{"beta_chat":{"app_id":"beta","default":true,"uris":["/v1/chat/completions"],"priority":0},"medical-prod_chat":{"app_id":"medical-prod","default":true,"uris":["/v1/chat/completions"],"priority":0},"medical-prod_clinical":{"app_id":"medical-prod","uris":["/v1/chat/completions"],"priority":10,"match":{"query":{"mode":"clinical"}}}}},"gateway":{"evaluate":true,"fail_mode":"open","cloud_scan":{"agent_url":"http://127.0.0.1:9070","timeout_ms":3000},"routes":[{"uri":"/v1/chat/completions","methods":["POST"]}]}}'
 WHERE tenant_id = 'default' AND bundle_id = 'poc-default' AND version = '0.1.0';
+
+-- 请求因子种子（从 metadata_json 迁出至独立表）
+INSERT INTO tb_context_bindings (tenant_id, bundle_id, version, logical, src_from, src_name, src_field, scope_json, deleted_at, updated_at)
+SELECT 'default', 'poc-default', '0.1.0', 'app_id', 'header', 'X-App-Id', NULL, NULL, NULL, CURRENT_TIMESTAMP
+FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_context_bindings WHERE tenant_id='default' AND bundle_id='poc-default' AND version='0.1.0' AND logical='app_id');
+
+INSERT INTO tb_context_bindings (tenant_id, bundle_id, version, logical, src_from, src_name, src_field, scope_json, deleted_at, updated_at)
+SELECT 'default', 'poc-default', '0.1.0', 'debug_flag', 'query', 'debug', NULL, NULL, NULL, CURRENT_TIMESTAMP
+FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_context_bindings WHERE tenant_id='default' AND bundle_id='poc-default' AND version='0.1.0' AND logical='debug_flag');
+
+INSERT INTO tb_context_bindings (tenant_id, bundle_id, version, logical, src_from, src_name, src_field, scope_json, deleted_at, updated_at)
+SELECT 'default', 'poc-default', '0.1.0', 'model_name', 'query', 'model', NULL, NULL, NULL, CURRENT_TIMESTAMP
+FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_context_bindings WHERE tenant_id='default' AND bundle_id='poc-default' AND version='0.1.0' AND logical='model_name');
 
 INSERT INTO tb_access_list (tenant_id, polarity, dimension, value)
 SELECT 'default', 'deny', 'keyword', '招嫖' FROM (SELECT 1) AS _one

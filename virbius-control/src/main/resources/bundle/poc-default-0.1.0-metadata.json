@@ -31,26 +31,18 @@
       }
     }
   },
-  "gateway": {
-    "evaluate": true,
-    "fail_mode": "open",
-    "cloud_scan": {
-      "agent_url": "http://127.0.0.1:9070",
-      "timeout_ms": 3000
-    },
-    "routes": [
-      {
-        "uri": "/v1/chat/completions",
-        "methods": ["POST"]
-      }
-    ]
-  },
-  "context_bindings": {
-    "version": 1,
-    "vars": {
-      "app_id": { "from": "header", "name": "X-App-Id" },
-      "debug_flag": { "from": "query", "name": "debug" },
-      "model_name": { "from": "query", "name": "model" }
+    "gateway": {
+      "evaluate": true,
+      "fail_mode": "open",
+      "cloud_scan": {
+        "agent_url": "http://127.0.0.1:9070",
+        "timeout_ms": 3000
+      },
+      "routes": [
+        {
+          "uri": "/v1/chat/completions",
+          "methods": ["POST"]
+        }
+      ]
     }
   }
-}
