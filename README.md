@@ -5,7 +5,7 @@
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange)](https://www.rust-lang.org/)
 中文：[README.zh.md](README.zh.md)
 
-VirbiusLLM is a deep security protection platform specifically designed for Large Language Models (LLMs). It innovatively adopts a three-layer, in-depth defense architecture—covering Cloud, Pipe, Endpoint. By integrating fine-tuned safety LLMs with a dynamic policy engine, the platform achieves end-to-end closed-loop protection, spanning prompt injection interception, sensitive command filtering, and secondary content auditing.
+VirbiusLLM is a deep security protection platform specifically designed for Large Language Models (LLMs). It adopts a three-layer "edge–gateway–cloud" defense-in-depth architecture. By integrating fine-tuned safety LLMs with a dynamic policy engine, the platform achieves end-to-end closed-loop protection, spanning prompt injection interception, sensitive command filtering, and secondary content auditing.
 
 The architecture is designed with reference to the security frameworks of Alibaba and Meituan，follows an **edge–gateway–cloud** model with a **unified control plane** and **layered enforcement**:
 
@@ -206,6 +206,22 @@ The async path operates out-of-band, driving long-cycle threat hunting and model
 - **Feature collection**: full telemetry (including blocked samples and normal traffic) builds a security corpus for offline analysis.
 - **ML & adversarial training**: continuous fine-tuning on attack datasets. Red-teaming simulations proactively surface logic and multi-turn vulnerabilities.
 - **Model tuning & policy optimization**: quantifies false-positive and false-negative rates. Periodically pushes updated model parameters, threat signatures, and refined policies to gateway and edge, forming a detect–analyze–optimize–deploy closed loop.
+
+## Rule runtimes
+
+Each layer supports specific rule runtimes, compiled by `virbius-compiler` into layer-specific artifacts.
+
+| Layer | Runtime | Body form | Applicable scenario |
+|-------|---------|-----------|---------------------|
+| **Edge** | `lua-dsl` | JSON (`list_type` + `keywords`) | **L0 local interception**: keyword / regex / user-device blacklist. Sub-millisecond, offline-capable. Blocked requests never reach the gateway. |
+| | `dlp-dsl` | JSON (`entity_type` + `pattern` + `mask_template`) | **PII desensitization**: detects ID cards, phone numbers, emails, bank cards, etc., replaces with placeholders before sending to LLM, restores on response. Fixed `intent_action=allow`; does not participate in ActionMerge. |
+| **Gateway** | `lua` | Executable Lua script (`function decide(ctx) ... end`) | **On-path real-time firewall**: access-list matching (`listMatch`), rate limiting (`getCumulative`), static content detection. P99 < 10ms. Blocked requests never call the LLM. |
+| **Cloud** | `prompt` | Natural language description | **L1/L2 semantic detection**: 1B safety-model matrix identifies jailbreak, prompt injection, and sensitive semantics. |
+| | `groovy` | Executable Groovy script (`def decide(ctx) { ... }`) | **L3 policy final decision**: merges signals from all layers, outputs `effective_action` (`deny` > `captcha` > `review` > `allow`). The sole terminal-decision layer. |
+
+**Defense-in-depth progression**: L0 fail → no upstream; gateway static fail → no LLM call; cloud final decision → gateway executes disposition. Latency increases by layer: edge < 5ms → gateway < 10ms → cloud L3 < 30ms (excluding model inference).
+
+**Recommended combinations**: mobile/desktop low-latency → Edge (±Gateway); web/API without SDK → Gateway (±Cloud); high-compliance → all three layers.
 
 ## Roadmap
 

@@ -194,6 +194,22 @@ API 生命周期由 **virbius-control** Admin API 统一管理；详见 [docs/se
 
 该方案通过端侧的轻量过滤、网关的实时阻断、云主链路的精准决策以及云异步链路的持续进化，构建了一个动静结合、纵深防御的大模型安全免疫系统，能够有效应对从传统内容违规到复杂智能体攻击的全方位挑战。
 
+## 规则运行时
+
+各层支持特定的规则运行时，由 `virbius-compiler` 编译为各层产物。
+
+| 层 | 运行时 | Body 形态 | 适用场景 |
+|----|--------|-----------|----------|
+| **端** | `lua-dsl` | JSON（`list_type` + `keywords`） | **L0 本地拦截**：关键词 / 正则 / 用户设备黑名单。亚毫秒级，可离线。拦截后请求不上行网关。 |
+| | `dlp-dsl` | JSON（`entity_type` + `pattern` + `mask_template`） | **PII 脱敏**：识别身份证、手机号、邮箱、银行卡等实体，发送 LLM 前替换占位符，响应后还原。固定 `intent_action=allow`，不参与 ActionMerge。 |
+| **管** | `lua` | 可执行 Lua 脚本（`function decide(ctx) ... end`） | **路径上实时防火墙**：名单匹配（`listMatch`）、速率限制（`getCumulative`）、静态内容检测。P99 < 10ms。拦截后不调 LLM。 |
+| **云** | `prompt` | 自然语言描述 | **L1/L2 语义检测**：1B 安全模型矩阵识别越狱、提示注入、敏感语义。 |
+| | `groovy` | 可执行 Groovy 脚本（`def decide(ctx) { ... }`） | **L3 策略终判**：合并各层 signal，输出 `effective_action`（`deny` > `captcha` > `review` > `allow`）。唯一终判层。 |
+
+**纵深防御递进**：L0 未过不上行 → 管静态未过不调 LLM → 云终判由管执行处置。延迟递增：端 < 5ms → 管 < 10ms → 云 L3 < 30ms（不含模型推理）。
+
+**推荐组合**：移动/桌面端低延迟 → 端（±管）；Web/API 无法嵌 SDK → 管（±云）；高合规要求 → 三层全开。
+
 ## 路线图
 
 以下改进项按优先级划分，指导从 MVP 到生产级平台的演进。
