@@ -10,7 +10,7 @@
       'nav.ext-bindings': '扩展因子',
       'nav.scene-registry': '场景注册',
       'nav.gateway-routes': '网关路由',
-      'nav.rules': '规则',
+      'nav.rules': '规则配置',
       'nav.rollout': '策略上线',
       'nav.audit-center': '审计中心',
       'nav.monitor': '监控中心',
@@ -258,6 +258,7 @@
       'rules.snippet-l3': 'L3 汇总',
       'rules.snippet-var': '逻辑变量',
       'rules.snippet-hint': 'Alt+Space 补全函数/字段/名单/累计/变量',
+      'rules.editor-mode': '编辑模式',
       'rules.editor-simple': '简单（表单）',
       'rules.editor-advanced': '高级（JSON / 脚本）',
       'rules.condition-hint': '触发条件（保存时编译为脚本，不落库 AST）：',
@@ -567,6 +568,7 @@
       'ro-deploy.disabled': '待下线',
 
       // Edge
+      'edge.list-type': 'list_type',
       'edge.list-type.deny': 'deny（违禁词）',
       'edge.list-type.allow': 'allow（放行词）',
       'edge.keywords-label': 'keywords（每行一词，或英文逗号分隔）',
@@ -884,6 +886,7 @@
       'rules.snippet-l3': 'L3 Aggregate',
       'rules.snippet-var': 'Logical Var',
       'rules.snippet-hint': 'Alt+Space to autocomplete functions/fields/lists/cumulatives/vars',
+      'rules.editor-mode': 'Edit Mode',
       'rules.editor-simple': 'Simple (Form)',
       'rules.editor-advanced': 'Advanced (JSON / Script)',
       'rules.condition-hint': 'Trigger conditions (compiled to script on save, not stored as AST):',
@@ -1193,6 +1196,7 @@
       'ro-deploy.disabled': 'Disabled',
 
       // Edge
+      'edge.list-type': 'list_type',
       'edge.list-type.deny': 'deny (blocked words)',
       'edge.list-type.allow': 'allow (allowed words)',
       'edge.keywords-label': 'keywords (one per line, or comma-separated)',
