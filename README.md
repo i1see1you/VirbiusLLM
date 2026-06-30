@@ -174,7 +174,7 @@ Compile-time flatten via `virbius-compiler`. The compiler merges bundle, scene r
 The edge is the first touch point between users and LLMs. It performs local filtering and behavior baseline collection without degrading user experience.
 
 - **Risk control & behavior analysis**: collect typing cadence, device fingerprint, request sequences via lightweight probes. Flag script bots, credential stuffing, or abnormal traversal.
-- **Challenge-response**: protocol validation and optional CAPTCHA against批量 injection and DDoS.
+- **Challenge-response**: protocol validation and optional CAPTCHA against batch injection and DDoS.
 - **Pre-compliance filtering**: local sensitive-word lists and regex for obvious policy violations, reducing noise sent upstream.
 
 ### ② Gateway: real-time semantic interception & protocol validation
@@ -234,7 +234,6 @@ Each layer supports specific rule runtimes, compiled by `virbius-compiler` into 
 | **MVP edge–gateway–cloud** | Edge L0 + APISIX + engine + control publishing; dry_run / canary / full. See [DESIGN §11.6](docs/DESIGN.md). |
 | **Detection grading L0–L3** | L0 edge; L1/L2 cloud (RPC from gateway); L3 cloud policy. Gateway only executes static skills. |
 | **Unified decision model** | All layers produce (risk_score + action); `ActionMerge` in `virbius-engine` consolidates instead of each layer acting independently. |
-| **Streaming output audit spec** | Chunk size, buffer window, hold-then-release for high-compliance scenarios. |
 | **Skill lifecycle** | draft → publish → dry_run → canary → full. See [DESIGN.md](docs/DESIGN.md) and [seed-api.md](docs/seed-api.md). |
 | **Fail policy table** | Per-tenant: financial systems fail-close, internal tools fail-open + async alert. |
 
@@ -248,14 +247,120 @@ Each layer supports specific rule runtimes, compiled by `virbius-compiler` into 
 | **Business context binding** | Same prompt → different policy based on tenant + scene + role (general chat vs medical vs code assistant). |
 | **Agent guardrails for skill generation** | Agent may only produce candidate rules + test cases; auto-regression required before merge. No direct push to production. |
 
-### P2 — Long term (not yet planned)
+### P2 — Long term
 
 | Item | Description |
 |------|-------------|
 | **Lightweight security model** | Distilled classifier/NER model on gateway, reducing dependency on secondary LLM calls. |
+| **Streaming output audit spec** | Chunk size, buffer window, hold-then-release for high-compliance scenarios. |
 | **Adversarial sample ops** | Public benchmark (e.g. JailbreakBench) + in-house samples; weekly auto-regression. |
 | **Explainability** | Show rule ID, similar samples, risk dimensions on block reasons for user/operator appeal. |
 | **Supply chain** | Plugin signature, permission whitelist, invocation budget for third-party MCP/plugins. |
+
+## System layer breakdown
+
+Building on the "edge–gateway–cloud" architecture, the system can be further divided into five layers, each with distinct responsibilities, coordinated through L0–L3 detection grading and **`virbius-engine`**.
+
+### Layer overview
+
+| Layer | Path attribute | Typical latency | Blocks user request |
+|-------|---------------|-----------------|---------------------|
+| ① Edge SDK | Synchronous, local | Milliseconds | Yes (local logic only) |
+| ② Gateway (L1–L2, SSE) | Synchronous, on-path | Tens to hundreds of ms | Yes |
+| ③ Cloud main path (L3, tenant, policy) | Synchronous / nearline | Hundreds of ms | Optional (typically on-demand) |
+| ④ Async pipeline | Asynchronous, side path | Seconds to hours | No |
+| ⑤ ML inference | Called by ②/③ + offline training | Varies | Online inference blocks its layer; training does not |
+
+**Request main path**: User input → Edge SDK (L0) → Gateway (static skills) → Cloud Scan (L1/L2) + Policy (L3) → LLM → Gateway SSE output audit → User. Side-path logs flow into the async pipeline throughout; model-based skills execute only on the cloud side and are deployed after offline iteration in the async pipeline.
+
+### ① Edge SDK
+
+**Characteristics**: Closest to the user; runs L0 keyword/regex and lightweight skill packages, capable of offline blocking; lightweight embedding into apps, web, or mini-programs; primarily focused on behavior collection and risk tagging.
+
+**Role**:
+
+- Intercept clearly violating content (political, adult, etc.), reducing invalid traffic to the gateway and LLM.
+- Collect device fingerprints, typing cadence, request frequency, etc.; identify script bots, credential stuffing, and abnormal traversal; trigger CAPTCHA or elevate detection level for subsequent requests.
+- Enforce protocol validation and challenge-response on anomalous traffic to block batch injection and crawlers.
+- Pass `risk_tag`, rule hit context, and other signals to the gateway and cloud for unified policy evaluation.
+
+**Boundary**: Does not perform complex semantic jailbreak detection; can be bypassed (via direct API calls) and must not serve as the sole defense line — requires coordination with the gateway.
+
+### ② Gateway (L1–L2, SSE)
+
+**Characteristics**: Mandatory hub for all LLM traffic; layered detection — L1 is lightweight classification/rules (low latency), L2 is semantic detection and instruction restructuring (triggered on demand); bidirectional audit on both input and streaming output; hosts real-time skills.
+
+**Role**:
+
+- Acts as a real-time firewall: intercepts or restructures requests before they reach the LLM; performs compliance review on responses leaving the LLM.
+- Provides an OpenAI-compatible proxy for unified authentication, rate limiting, logging, and API governance.
+- Executes DLP (phone numbers, ID cards, keys, etc. — mask or block).
+- Executes allow, block, mask, or rewrite actions based on the decision returned by **virbius-engine**.
+
+**L1 vs L2**:
+
+| | L1 | L2 |
+|--|----|----|
+| Means | Lightweight model, regex, signature rules | Semantic model, instruction restructuring |
+| Target latency | < 50ms | Heavier, triggered on high-risk only |
+| Scenario | Known jailbreak templates, obvious injection | Variant attacks, ambiguous prompts |
+
+**SSE streaming audit**: Inspect LLM streaming responses chunk by chunk; requires defined buffer window and whether to use hold-then-release (recommended for high-compliance scenarios); truncate or recall already-delivered content on violation (per policy configuration).
+
+### ③ Cloud main path (L3, tenant, policy)
+
+**Characteristics**: Online decision center; aggregates edge labels, gateway signals, user profiles, and historical risk data; supports tenant + scene + role 3D policies; **virbius-engine** (Groovy + Prompt) unifies the risk scores and actions from all layers to avoid redundant blocking.
+
+**Role**:
+
+- Comprehensive risk scoring (including session-level risk score, multi-turn jailbreak, and topic drift).
+- Dynamic policy and fail-open / fail-close configuration per tenant.
+- Disposition rendering: allow, block, alert, mask, or **security auto-reply** (return a preset compliant response without calling the LLM).
+- Skill version management, canary ratio, rollback points; gray-zone samples pushed to the human-in-the-loop queue.
+- Hosts nearline skills (allowing more complex logic than L1/L2).
+
+**Relationship with the gateway**: The gateway handles fast-path execution; the cloud main path handles slower-path decision and configuration. Not every request needs to RPC to the cloud — it can be invoked on-demand based on risk labels to control latency.
+
+### ④ Async pipeline
+
+**Characteristics**: Side path, does not block the main request; collects logs and samples at full or sampled rate; runs long-cycle tasks (evaluation, red-teaming, reporting, release).
+
+**Role**:
+
+- Build a security corpus, mining long-tail attacks and novel adversarial samples.
+- Drive the skill lifecycle: draft → sandbox evaluation → canary → full, version-bound to datasets.
+- Agent generates candidate skills and test cases (must not push directly to production; regression required).
+- Output attack taxonomy and false-positive / false-negative reports to support operations and red-teaming.
+- Push optimized rules, vocabularies, and model parameters down to the gateway and edge, forming a detect–analyze–optimize–deploy closed loop.
+
+**Difference from the cloud main path**: The cloud main path makes millisecond-to-hundred-millisecond decisions for the current request; the async pipeline drives continuous evolution of future rules and models, typically invisible to end users.
+
+### ⑤ ML inference
+
+**Characteristics**: Not an independent business layer; provides detection capabilities for layers ①–③ and is trained/updated in ④. Often deployed independently (ONNX Runtime, vLLM, Python Sidecar), decoupled from business processes. Models and evaluation datasets are versioned.
+
+**Role**:
+
+| Type | Description | Caller |
+|------|-------------|--------|
+| Lightweight classifier | Injection/jailbreak classification, topic violation | Cloud L1 (RPC from gateway) |
+| Semantic / reconstruction model | Instruction restructuring, complex intent detection | Cloud L2 |
+| Output audit model | Streaming chunk violation detection | Cloud (called by gateway SSE pipeline) |
+| Embedding / similarity search | Explainability, similar attack samples | Cloud main path / async pipeline |
+| Training & fine-tuning | Improve recall, reduce false positives | Async pipeline only |
+| Third-party scanner | e.g. LlamaFirewall | Gateway sidecar |
+
+**Relationship with skills**: Skills are human-readable rules that update quickly via hot-reload; ML handles variants and semantic ambiguity, updating more slowly but with stronger generalization. Production environments typically use a "rule first, model second" cascade.
+
+### Layer mnemonics
+
+| Layer | One-liner |
+|-------|-----------|
+| Edge SDK | Fast local blocking + behavior profiling, reduces upstream load |
+| Gateway | Real-time shield on the traffic path, guards input and streaming output |
+| Cloud main path | Tenant and policy brain, unified decision and auto-reply |
+| Async pipeline | Side-path evolution: evaluation, canary, agent-generated rules |
+| ML inference | Provides detection capability across layers: online inference, offline improvement |
 
 ## License
 

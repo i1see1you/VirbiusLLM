@@ -10,29 +10,30 @@ VirbiusLLM 是一款专为大模型打造的深层安全防护平台。该平台
 
 整体技术方案参考了阿里和美团的安全架构，基于 **「端-管-云」协同架构** 与 **统一控制面、分层执行面**：
 
-```
-用户请求
-   │
-   ▼
-┌────────────────────┐
-│ ① 端 L0 SDK       │  virbius-core（Rust / C ABI）
-│   scan + DLP      │  本地同步，毫秒级
-└────────┬───────────┘
-         │ HTTP + Virbius headers
-         ▼
-┌────────────────────┐
-│ ② 管 网关         │  APISIX/Kong + virbius-guard
-│   Lua 规则        │  必经流量，十～数百 ms
-└────────┬───────────┘
-         │ gateway-agent sidecar
-         ▼
-┌────────────────────┐
-│ ③ 云 Engine       │  virbius-engine
-│   Prompt L1 +     │  按需 Evaluate
-│   Groovy L3       │  策略合并（ActionMerge）
-└────────┬───────────┘
-         ▼
-       LLM API
+```mermaid
+flowchart TD
+    U["用户 / App"]
+    E["① 端 L0 — virbius-core<br/>scan + DLP · 毫秒级"]
+    G["② 管 — APISIX/Kong + virbius-guard<br/>Lua 规则 · 必经流量 · ~10ms"]
+    A["gateway-agent<br/>Rust sidecar"]
+    C["③ 云 — virbius-engine<br/>Prompt L1 + Groovy L3 · ActionMerge"]
+    LLM["LLM API"]
+
+    U -->|HTTP + Virbius headers| E
+    E -->|HTTP| G
+    G -.->|forward| A
+    A --> C
+    C -->|effective_action| G
+    G -->|allow| LLM
+    G -.->|block| LLM
+
+    CP["控制面 — virbius-control<br/>运营台 · 规则注册 · 放量"]
+    COMP["virbius-compiler<br/>注册规则 → 各层产物"]
+
+    CP -.->|publish| E
+    CP -.->|publish| G
+    CP -.->|publish| C
+    COMP -.->|compile| CP
 ```
 
 | 层 | 职责 | 组件 |
@@ -222,7 +223,6 @@ API 生命周期由 **virbius-control** Admin API 统一管理；详见 [docs/se
 | **MVP（端-管-云）** | 端 `virbius-core`（违禁词+黑名单）+ 网关双插件 + engine + control 发布；**含 dry_run/canary/full**。详见 [§11.6](docs/DESIGN.md)。 |
 | **定义检测分级 L0–L3** | L0 端；L1/L2 云检测（管侧 RPC 调用）；L3 云 Policy。管侧仅静态 Skill。明确每层最大延迟与触发条件。 |
 | **统一决策模型** | 多端/管/云都产出「风险分 + 动作」，由 **`virbius-engine`**（`PolicyMerger` / ActionMerge）合并（避免多处各拦各的）。 |
-| **流式输出审计规范** | 规定 chunk 大小、缓冲窗口、是否允许「先出后撤」；高合规场景建议 hold-then-release。 |
 | **Skill 生命周期** | `draft` → **publish** → **dry_run** → **canary** → **full**；详见 [DESIGN.md](docs/DESIGN.md) 与 [seed-api.md](docs/seed-api.md) |
 | **Fail 策略表** | 按租户配置：核心金融 fail-close，内部工具 fail-open + 异步告警。 |
 
@@ -236,12 +236,13 @@ API 生命周期由 **virbius-control** Admin API 统一管理；详见 [docs/se
 | **与业务上下文绑定** | 同一句话在「通用聊天」vs「医疗问诊」vs「代码助手」策略不同，需要 tenant + scene + role 三维策略。 |
 | **Agent 生成 skill 的护栏** | Agent 只产出候选规则 + 测试用例，禁止直推生产；自动跑回归集通过后才可合并。 |
 
-### P2：中长期演进，暂不实现
+### P2：中长期演进
 
 | 建议 | 说明 |
 |------|------|
 | **专用安全小模型** | 网关用蒸馏后的轻量分类/序列标注模型，降低对大模型二次调用的依赖与成本。 |
 | **对抗样本库运营** | 公开基准（如 JailbreakBench）+ 自有线上样本；每周自动回归。 |
+| **流式输出审计规范** | 规定 chunk 大小、缓冲窗口、是否允许「先出后撤」；高合规场景建议 hold-then-release。 |
 | **可解释性输出** | 拦截原因对用户/运营可见（规则 ID、相似样本、风险维度），方便申诉与调优。 |
 | **Supply chain** | 若接第三方 MCP/插件，增加插件签名、权限白名单、调用预算。 |
 

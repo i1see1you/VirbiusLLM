@@ -28,8 +28,8 @@ class PromptSimulateServiceTest {
 
     @Test
     void hitWhenTriggeredIdMatchesDraftRule() {
-        when(llmClient.complete(anyString()))
-                .thenReturn("{\"hit_rule\": true, \"triggered_id\": \"Rule_201\", \"reason\": \"arch\"}");
+        when(llmClient.completeDetail(anyString()))
+                .thenReturn(new PromptLlmClient.CompleteResult("{\"hit_rule\": true, \"triggered_id\": \"Rule_201\", \"reason\": \"arch\"}", null));
 
         PromptSimulateResponseDto resp = service.simulate(new PromptSimulateRequestDto(
                 "Rule_201", "禁止讨论架构", "ARCH", "com.baidu.internal auth"));
@@ -38,15 +38,15 @@ class PromptSimulateServiceTest {
         assertTrue(resp.llmHitRule());
         assertEquals("Rule_201", resp.triggeredId());
         assertEquals("{\"hit_rule\": true, \"triggered_id\": \"Rule_201\", \"reason\": \"arch\"}", resp.llmResponse());
-        verify(llmClient).complete(org.mockito.ArgumentMatchers.argThat(p -> p.contains("[Rule_201]")
+        verify(llmClient).completeDetail(org.mockito.ArgumentMatchers.argThat(p -> p.contains("[Rule_201]")
                 && p.contains("禁止讨论架构")
                 && !p.contains("[Rule_202]")));
     }
 
     @Test
     void missWhenTriggeredIdDiffersFromDraftRule() {
-        when(llmClient.complete(anyString()))
-                .thenReturn("{\"hit_rule\": true, \"triggered_id\": \"Rule_999\", \"reason\": \"other\"}");
+        when(llmClient.completeDetail(anyString()))
+                .thenReturn(new PromptLlmClient.CompleteResult("{\"hit_rule\": true, \"triggered_id\": \"Rule_999\", \"reason\": \"other\"}", null));
 
         PromptSimulateResponseDto resp = service.simulate(new PromptSimulateRequestDto(
                 "Rule_201", "body", "ARCH", "hello"));
@@ -58,8 +58,8 @@ class PromptSimulateServiceTest {
 
     @Test
     void missWhenLlmSaysNoHit() {
-        when(llmClient.complete(anyString()))
-                .thenReturn("{\"hit_rule\": false, \"triggered_id\": null, \"reason\": \"\"}");
+        when(llmClient.completeDetail(anyString()))
+                .thenReturn(new PromptLlmClient.CompleteResult("{\"hit_rule\": false, \"triggered_id\": null, \"reason\": \"\"}", null));
 
         PromptSimulateResponseDto resp = service.simulate(new PromptSimulateRequestDto(
                 "Rule_201", "body", "ARCH", "hello"));
@@ -70,7 +70,8 @@ class PromptSimulateServiceTest {
 
     @Test
     void errorWhenLlmEmpty() {
-        when(llmClient.complete(anyString())).thenReturn("");
+        when(llmClient.completeDetail(anyString()))
+                .thenReturn(new PromptLlmClient.CompleteResult("", null));
 
         PromptSimulateResponseDto resp = service.simulate(new PromptSimulateRequestDto(
                 "Rule_201", "body", "ARCH", "hello"));

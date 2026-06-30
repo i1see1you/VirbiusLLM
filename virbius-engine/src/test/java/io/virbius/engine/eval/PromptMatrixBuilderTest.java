@@ -34,7 +34,7 @@ class PromptMatrixBuilderTest {
                 "http://127.0.0.1:11434", "m", "/v1/chat/completions", 3000, true, "<|im_start|>", "");
         String prompt = PromptMatrixBuilder.buildChatMlPrompt(props, List.of(r1), "hello");
         assertTrue(prompt.contains("[Rule_201]"));
-        assertTrue(prompt.contains("【User Prompt】: \"hello\""));
+        assertTrue(prompt.contains("[User Prompt]: \"hello\""));
         assertTrue(prompt.contains("hit_rule"));
     }
 
