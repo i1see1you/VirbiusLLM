@@ -188,14 +188,18 @@ end`;
 
     function loadEdgeBodyIntoForm(body) {
       const obj = body && typeof body === 'object' ? body : defaultEdgeBody();
-      document.getElementById('fEdgeListType').value = obj.list_type === 'allow' ? 'allow' : 'deny';
-      document.getElementById('fEdgeKeywords').value = formatEdgeKeywords(obj.keywords);
+      const ltEl = document.getElementById('fEdgeListType');
+      const kwEl = document.getElementById('fEdgeKeywords');
+      if (ltEl) ltEl.value = obj.list_type === 'allow' ? 'allow' : 'deny';
+      if (kwEl) kwEl.value = formatEdgeKeywords(obj.keywords);
     }
 
     function edgeBodyFromForm() {
+      const ltEl = document.getElementById('fEdgeListType');
+      const kwEl = document.getElementById('fEdgeKeywords');
       return {
-        list_type: document.getElementById('fEdgeListType').value || 'deny',
-        keywords: parseEdgeKeywords(document.getElementById('fEdgeKeywords').value)
+        list_type: ltEl ? ltEl.value : 'deny',
+        keywords: parseEdgeKeywords(kwEl ? kwEl.value : '')
       };
     }
 
@@ -205,19 +209,27 @@ end`;
 
     function loadDlpBodyIntoForm(body) {
       const obj = body && typeof body === 'object' ? body : defaultDlpBody();
-      document.getElementById('fDlpEntityType').value = obj.entity_type || 'phone_cn';
-      document.getElementById('fDlpPattern').value = obj.pattern || '';
-      document.getElementById('fDlpMaskTemplate').value = obj.mask_template || '';
-      document.getElementById('fDlpPriority').value = obj.priority != null ? obj.priority : 0;
+      const etEl = document.getElementById('fDlpEntityType');
+      const pEl = document.getElementById('fDlpPattern');
+      const mkEl = document.getElementById('fDlpMaskTemplate');
+      const prEl = document.getElementById('fDlpPriority');
+      if (etEl) etEl.value = obj.entity_type || 'phone_cn';
+      if (pEl) pEl.value = obj.pattern || '';
+      if (mkEl) mkEl.value = obj.mask_template || '';
+      if (prEl) prEl.value = obj.priority != null ? obj.priority : 0;
       syncDlpPatternUi();
     }
 
     function dlpBodyFromForm() {
-      const entityType = document.getElementById('fDlpEntityType').value || 'phone_cn';
+      const etEl = document.getElementById('fDlpEntityType');
+      const pEl = document.getElementById('fDlpPattern');
+      const mkEl = document.getElementById('fDlpMaskTemplate');
+      const prEl = document.getElementById('fDlpPriority');
+      const entityType = (etEl ? etEl.value : 'phone_cn') || 'phone_cn';
       const body = { entity_type: entityType };
-      const pattern = document.getElementById('fDlpPattern').value.trim();
-      const mask = document.getElementById('fDlpMaskTemplate').value.trim();
-      const priority = Number(document.getElementById('fDlpPriority').value);
+      const pattern = pEl ? pEl.value.trim() : '';
+      const mask = mkEl ? mkEl.value.trim() : '';
+      const priority = Number(prEl ? prEl.value : 0);
       if (entityType === 'custom_regex') body.pattern = pattern;
       else if (pattern) body.pattern = pattern;
       if (mask) body.mask_template = mask;
@@ -422,6 +434,7 @@ end`;
       syncAsyncUi();
       const rt = document.getElementById('fRuntime').value;
       document.getElementById('fBody').value = defaultRuleBody(currentLayer, rt);
+      syncBodyHighlight();
       if (isScriptRuntime(rt)) {
         conditionLeaves = [{ type: 'list_match', list_name: 'deny_keyword', value_source: 'content' }];
         document.getElementById('fEditorMode').value = 'simple';
@@ -447,6 +460,7 @@ end`;
       document.getElementById('fRuntime').onchange = () => {
         const nextRt = document.getElementById('fRuntime').value;
         document.getElementById('fBody').value = defaultRuleBody(currentLayer, nextRt);
+        syncBodyHighlight();
         if (isScriptRuntime(nextRt)) {
           if (!conditionLeaves.length) {
             conditionLeaves = [{ type: 'list_match', list_name: 'deny_keyword', value_source: 'content' }];
@@ -529,6 +543,7 @@ end`;
       if (script) {
         document.getElementById('fBody').value = script;
         clearScriptValidateMsg();
+        syncBodyHighlight();
       }
     }
 
@@ -565,6 +580,48 @@ end`;
       ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
       ta.selectionStart = ta.selectionEnd = start + text.length;
       ta.focus();
+      syncBodyHighlight();
+    }
+
+    function getHighlightLanguage(runtime) {
+      if (runtime === 'lua') return 'lua';
+      if (runtime === 'groovy') return 'groovy';
+      if (runtime === 'lua-dsl' || runtime === 'dlp-dsl') return 'json';
+      return null;
+    }
+
+    function syncBodyHighlight() {
+      const ta = document.getElementById('fBody');
+      const pre = document.getElementById('fBodyHighlight');
+      if (!ta || !pre) return;
+      const rt = currentEditorRuntime();
+      const lang = getHighlightLanguage(rt);
+      const hidden = ta.style.display === 'none';
+      if (!lang || hidden || typeof hljs === 'undefined') {
+        pre.textContent = '';
+        pre.style.display = 'none';
+        ta.style.background = '';
+        ta.style.color = '';
+        ta.style.caretColor = '';
+        return;
+      }
+      pre.style.display = '';
+      ta.style.background = 'transparent';
+      ta.style.color = 'transparent';
+      ta.style.caretColor = '#e2e8f0';
+      const text = ta.value;
+      if (text) {
+        try {
+          const result = hljs.highlight(text, { language: lang, ignoreIllegals: true });
+          pre.innerHTML = result.value;
+        } catch (_) {
+          pre.textContent = text;
+        }
+      } else {
+        pre.textContent = '';
+      }
+      pre.scrollTop = ta.scrollTop;
+      pre.scrollLeft = ta.scrollLeft;
     }
 
     function clearScriptValidateMsg() {
@@ -619,7 +676,8 @@ end`;
     }
 
     function isSimpleEditorMode() {
-      return document.getElementById('fEditorMode').value === 'simple';
+      const el = document.getElementById('fEditorMode');
+      return el ? el.value === 'simple' : false;
     }
 
     function readConditionPayload() {
@@ -661,6 +719,11 @@ end`;
     }
 
     function syncEditorModeUi() {
+      syncEditorModeUiInner();
+      syncBodyHighlight();
+    }
+
+    function syncEditorModeUiInner() {
       const runtime = currentEditorRuntime();
       if (isPromptRuntime(runtime)) {
         document.getElementById('simpleConditionPanel').style.display = 'none';
@@ -901,11 +964,58 @@ end`;
       log(data);
     }
 
-    let scriptAcState = { open: false, items: [], index: 0, replaceStart: 0, replaceEnd: 0 };
+    let scriptAcState = { open: false, items: [], index: 0, replaceStart: 0, replaceEnd: 0, kind: 'list' };
 
     function scriptAcClose() {
       scriptAcState.open = false;
       document.getElementById('scriptAcPopup').style.display = 'none';
+    }
+
+    const SCRIPT_API_ITEMS = {
+      lua: [
+        { label: 'function decide(ctx)', insert: 'function decide(ctx)\n  \nend', detail: 'kw' },
+        { label: 'listMatch(name, value)', insert: "listMatch('', ctx.content)", detail: 'fn' },
+        { label: 'getCumulative(name)', insert: "getCumulative('')", detail: 'fn' },
+        { label: 'ctx.var(logical)', insert: "ctx.var('')", detail: 'fn' },
+        { label: 'ctx.content', insert: 'ctx.content', detail: 'field' },
+        { label: 'ctx.user_id', insert: 'ctx.user_id', detail: 'field' },
+        { label: 'ctx.device_id', insert: 'ctx.device_id', detail: 'field' },
+        { label: 'ctx.client_ip', insert: 'ctx.client_ip', detail: 'field' },
+        { label: 'ctx.session_id', insert: 'ctx.session_id', detail: 'field' },
+        { label: 'ctx.scene', insert: 'ctx.scene', detail: 'field' },
+        { label: 'ctx.route_uri', insert: 'ctx.route_uri', detail: 'field' },
+        { label: 'return', insert: 'return ', detail: 'kw' },
+        { label: 'if then else end', insert: 'if  then\n  \nelse\n  \nend', detail: 'kw' },
+        { label: 'end', insert: 'end', detail: 'kw' }
+      ],
+      groovy: [
+        { label: 'def decide(ctx)', insert: 'def decide(ctx) {\n  \n}', detail: 'kw' },
+        { label: 'ctx.listMatch(name)', insert: "ctx.listMatch('')", detail: 'fn' },
+        { label: 'ctx.listMatch(name, value)', insert: "ctx.listMatch('', ctx.content)", detail: 'fn' },
+        { label: 'ctx.getCumulative(name)', insert: "ctx.getCumulative('')", detail: 'fn' },
+        { label: 'ctx.var(logical)', insert: "ctx.var('')", detail: 'fn' },
+        { label: 'ctx.wouldHitBlock()', insert: 'ctx.wouldHitBlock()', detail: 'fn' },
+        { label: 'ctx.content', insert: 'ctx.content', detail: 'field' },
+        { label: 'ctx.user_id', insert: 'ctx.user_id', detail: 'field' },
+        { label: 'ctx.device_id', insert: 'ctx.device_id', detail: 'field' },
+        { label: 'ctx.client_ip', insert: 'ctx.client_ip', detail: 'field' },
+        { label: 'ctx.session_id', insert: 'ctx.session_id', detail: 'field' },
+        { label: 'ctx.scene', insert: 'ctx.scene', detail: 'field' },
+        { label: 'ctx.route_uri', insert: 'ctx.route_uri', detail: 'field' },
+        { label: 'return', insert: 'return ', detail: 'kw' },
+        { label: 'if else', insert: 'if () {\n  \n} else {\n  \n}', detail: 'kw' }
+      ]
+    };
+
+    function scriptApiItems(filter) {
+      const rt = currentEditorRuntime();
+      const base = SCRIPT_API_ITEMS[rt] || [];
+      const q = (filter || '').toLowerCase();
+      console.log('[ac] apiItems:', { rt, filter: q, baseCount: base.length });
+      if (!q) return base.slice();
+      const result = base.filter(it => it.label.toLowerCase().includes(q));
+      console.log('[ac] apiItems result:', result.length);
+      return result;
     }
 
     function scriptAcItems(kind, filter) {
@@ -924,11 +1034,15 @@ end`;
           ...(extendedVars || []).map(v => v.logical)
         ].filter(Boolean).filter(match).map(n => ({ label: n, insert: n }));
       }
+      if (kind === 'api') {
+        return scriptApiItems(filter);
+      }
       return [];
     }
 
     function detectScriptAcTrigger(ta) {
       const head = ta.value.slice(0, ta.selectionStart);
+      console.log('[ac] detectTrigger head:', JSON.stringify(head));
       const triggers = [
         { re: /(?:^|[^\w])listMatch\s*\(\s*['"]?([^'"]*)$/, kind: 'list' },
         { re: /(?:^|[^\w])getCumulative\s*\(\s*['"]?([^'"]*)$/, kind: 'cum' },
@@ -938,23 +1052,34 @@ end`;
       for (const t of triggers) {
         const m = head.match(t.re);
         if (m) {
+          console.log('[ac] trigger matched:', t.kind, m[1]);
           return { kind: t.kind, filter: m[1] || '', replaceStart: head.length - (m[1] || '').length };
         }
       }
+      const word = head.match(/[\w.]+$/);
+      if (word) {
+        console.log('[ac] word match:', word[0]);
+        return { kind: 'api', filter: word[0], replaceStart: head.length - word[0].length };
+      }
+      console.log('[ac] no trigger');
       return null;
     }
 
+    const SCRIPT_AC_BADGE = { fn: 'ƒ', field: '·', kw: '⌘', list: '☰', cum: 'Σ', var: 'x' };
+
     function scriptAcRender(items) {
       const ul = document.getElementById('scriptAcPopup');
+      console.log('[ac] render:', { itemsCount: items.length, ul });
       if (!items.length) {
         scriptAcClose();
         return;
       }
-      ul.innerHTML = items.map((it, i) =>
-        `<li class="${i === scriptAcState.index ? 'sel' : ''}" data-i="${i}">${esc(it.label)}</li>`
-      ).join('');
+      ul.innerHTML = items.map((it, i) => {
+        const badge = SCRIPT_AC_BADGE[it.detail] || SCRIPT_AC_BADGE[scriptAcState.kind] || '';
+        return `<li class="${i === scriptAcState.index ? 'sel' : ''}" data-i="${i}">`
+          + `<span class="ac-badge">${esc(badge)}</span>${esc(it.label)}</li>`;
+      }).join('');
       ul.style.display = 'block';
-      ul.style.top = '2rem';
       scriptAcState.open = true;
       scriptAcState.items = items;
       ul.querySelectorAll('li').forEach(li => {
@@ -965,12 +1090,48 @@ end`;
       });
     }
 
+    function positionScriptAcPopup(ta) {
+      const ul = document.getElementById('scriptAcPopup');
+      if (!ul) return;
+      const coords = caretCoordinates(ta, ta.selectionStart);
+      ul.style.top = (coords.top - ta.scrollTop + coords.height + 2) + 'px';
+      ul.style.left = Math.max(0, coords.left - ta.scrollLeft) + 'px';
+    }
+
+    function caretCoordinates(ta, position) {
+      const div = document.createElement('div');
+      const style = getComputedStyle(ta);
+      const props = ['boxSizing', 'width', 'paddingTop', 'paddingRight', 'paddingBottom',
+        'paddingLeft', 'borderWidth', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight',
+        'letterSpacing', 'whiteSpace', 'wordWrap', 'overflowWrap', 'tabSize'];
+      props.forEach(p => { div.style[p] = style[p]; });
+      div.style.position = 'absolute';
+      div.style.visibility = 'hidden';
+      div.style.whiteSpace = 'pre-wrap';
+      div.style.wordWrap = 'break-word';
+      div.style.top = ta.offsetTop + 'px';
+      div.style.left = ta.offsetLeft + 'px';
+      div.textContent = ta.value.slice(0, position);
+      const span = document.createElement('span');
+      span.textContent = ta.value.slice(position) || '.';
+      div.appendChild(span);
+      ta.parentNode.appendChild(div);
+      const top = span.offsetTop;
+      const left = span.offsetLeft;
+      const height = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.45;
+      ta.parentNode.removeChild(div);
+      return { top, left, height };
+    }
+
     function scriptAcOpen(ta, kind, filter, replaceStart) {
       const items = scriptAcItems(kind, filter);
+      console.log('[ac] open:', { kind, filter, replaceStart, itemsCount: items.length, items });
       scriptAcState.index = 0;
+      scriptAcState.kind = kind;
       scriptAcState.replaceStart = replaceStart;
       scriptAcState.replaceEnd = ta.selectionStart;
       scriptAcRender(items);
+      if (scriptAcState.open) positionScriptAcPopup(ta);
     }
 
     function scriptAcPick(idx) {
@@ -979,18 +1140,29 @@ end`;
       if (!item) return;
       const before = ta.value.slice(0, scriptAcState.replaceStart);
       const after = ta.value.slice(scriptAcState.replaceEnd);
-      const quoted = before.endsWith("'") || before.endsWith('"');
-      const quote = before.endsWith('"') ? '"' : "'";
-      const insertText = quoted ? (item.insert + quote + ')') : ("'" + item.insert + "')");
+      let insertText;
+      let caretOffset;
+      if (scriptAcState.kind === 'api') {
+        insertText = item.insert;
+        const quoteIdx = insertText.indexOf("''");
+        caretOffset = quoteIdx >= 0 ? quoteIdx + 1 : insertText.length;
+      } else {
+        const quoted = before.endsWith("'") || before.endsWith('"');
+        const quote = before.endsWith('"') ? '"' : "'";
+        insertText = quoted ? (item.insert + quote + ')') : ("'" + item.insert + "')");
+        caretOffset = insertText.length;
+      }
       ta.value = before + insertText + after;
-      const pos = before.length + insertText.length;
+      const pos = before.length + caretOffset;
       ta.selectionStart = ta.selectionEnd = pos;
       scriptAcClose();
+      syncBodyHighlight();
       ta.focus();
     }
 
     function initScriptAutocomplete() {
       const ta = document.getElementById('fBody');
+      console.log('[ac] init:', { ta, hasOninput: !!ta.oninput });
       ta.onkeydown = (e) => {
         if (scriptAcState.open) {
           if (e.key === 'ArrowDown') {
@@ -1015,22 +1187,35 @@ end`;
             return;
           }
         }
-        if (e.ctrlKey && e.code === 'Space') {
+        if (e.altKey && e.code === 'Space') {
           e.preventDefault();
           const tr = detectScriptAcTrigger(ta);
           if (tr) scriptAcOpen(ta, tr.kind, tr.filter, tr.replaceStart);
-          else scriptAcOpen(ta, 'list', '', ta.selectionStart);
+          else scriptAcOpen(ta, 'api', '', ta.selectionStart);
         }
       };
       ta.oninput = () => {
         clearScriptValidateMsg();
-        if (isPromptRuntime(currentEditorRuntime())) {
+        syncBodyHighlight();
+        const rt = currentEditorRuntime();
+        console.log('[ac] oninput:', { rt, isPrompt: isPromptRuntime(rt) });
+        if (isPromptRuntime(rt)) {
           updateRuleSummaryCard();
           return;
         }
         const tr = detectScriptAcTrigger(ta);
-        if (tr) scriptAcOpen(ta, tr.kind, tr.filter, tr.replaceStart);
-        else scriptAcClose();
+        console.log('[ac] trigger:', tr);
+        if (tr && tr.kind !== 'api') scriptAcOpen(ta, tr.kind, tr.filter, tr.replaceStart);
+        else if (tr && tr.kind === 'api' && tr.filter.length >= 2) scriptAcOpen(ta, 'api', tr.filter, tr.replaceStart);
+        else if (scriptAcState.open && scriptAcState.kind === 'api') {
+          const t2 = detectScriptAcTrigger(ta);
+          if (t2 && t2.kind === 'api') scriptAcOpen(ta, 'api', t2.filter, t2.replaceStart);
+          else scriptAcClose();
+        } else scriptAcClose();
+      };
+      ta.onscroll = () => {
+        const pre = document.getElementById('fBodyHighlight');
+        if (pre) { pre.scrollTop = ta.scrollTop; pre.scrollLeft = ta.scrollLeft; }
       };
       ta.onblur = () => setTimeout(scriptAcClose, 150);
     }
@@ -1046,7 +1231,7 @@ end`;
       document.getElementById('chkEnableSimulate').checked = false;
       document.getElementById('scriptWizardRow').style.display = scriptRt && !isSimpleEditorMode() ? '' : 'none';
       document.getElementById('scriptSnippetRow').style.display = scriptRt && !isSimpleEditorMode() ? '' : 'none';
-      document.getElementById('scriptValidateRow').style.display = scriptRt ? '' : 'none';
+      document.getElementById('scriptValidateRow').style.display = (scriptRt || edgeRt || dlpRt) ? '' : 'none';
       document.getElementById('groovyHint').style.display = runtime === 'groovy' ? '' : 'none';
       document.getElementById('luaHint').style.display = runtime === 'lua' ? '' : 'none';
       document.getElementById('promptHint').style.display = promptRt ? '' : 'none';
@@ -1093,6 +1278,7 @@ end`;
         document.getElementById('simulatePanel').style.display = 'none';
       }
       syncAsyncLayerUi(runtime);
+      syncBodyHighlight();
     }
 
     function syncBindScopeOptions(runtime) {
@@ -1211,6 +1397,7 @@ end`;
       const body = r.body;
       const script = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
       document.getElementById('fBody').value = script;
+      syncBodyHighlight();
       syncScriptAssistUi(r.runtime);
       if (isEdgeDslRuntime(r.runtime)) {
         const bodyObj = typeof body === 'object' && body !== null ? body : (() => {

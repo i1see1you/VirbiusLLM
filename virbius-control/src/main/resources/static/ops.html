@@ -115,14 +115,38 @@
     .bar-cell { display: flex; align-items: flex-end; gap: 1px; height: 2rem; min-width: 3rem; }
     .bar-seg { width: 4px; border-radius: 1px; }
     .script-editor-wrap { position: relative; margin-bottom: 0.5rem; }
+    .script-editor-wrap textarea,
+    .script-editor-wrap pre {
+      margin: 0; padding: 0.35rem 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px;
+      font-family: ui-monospace, monospace; font-size: 0.82rem; line-height: 1.45;
+      width: 100%; min-height: 120px; box-sizing: border-box;
+      white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;
+      tab-size: 2;
+    }
+    .script-editor-wrap pre {
+      position: absolute; top: 0; left: 0; pointer-events: none;
+      border-color: transparent; background: #282c34; color: #abb2bf;
+      overflow: hidden; z-index: 1;
+    }
+    .script-editor-wrap textarea {
+      position: relative; z-index: 2; resize: vertical; outline: none;
+    }
+    .script-editor-wrap textarea::selection { background: rgba(82,139,255,0.3); }
+    .script-editor-wrap textarea:focus { border-color: #2563eb; }
     .script-ac {
       position: absolute; z-index: 20; left: 0.35rem; max-height: 10rem; overflow-y: auto;
       list-style: none; margin: 0; padding: 0.25rem 0; min-width: 12rem;
       background: #fff; border: 1px solid #cbd5e1; border-radius: 4px; box-shadow: 0 4px 12px rgba(15,23,42,0.12);
       font-family: ui-monospace, monospace; font-size: 0.8rem;
     }
-    .script-ac li { padding: 0.3rem 0.55rem; cursor: pointer; }
+    .script-ac li { padding: 0.3rem 0.55rem; cursor: pointer; display: flex; align-items: center; gap: 0.4rem; }
     .script-ac li:hover, .script-ac li.sel { background: #eff6ff; color: #1d4ed8; }
+    .script-ac .ac-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 1rem; height: 1rem; flex-shrink: 0; font-size: 0.7rem;
+      color: #64748b; background: #f1f5f9; border-radius: 3px;
+    }
+    .script-ac li.sel .ac-badge { color: #1d4ed8; background: #dbeafe; }
     .script-wizard { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;
       padding: 0.55rem 0.65rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; }
     .script-snippet-row { margin-bottom: 0.35rem; }
@@ -185,6 +209,11 @@
     .toast.toast-info { background: #0f172a; color: #e2e8f0; border-left: 4px solid #475569; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <link rel="stylesheet" href="vendor/highlightjs/styles/atom-one-dark.min.css">
+  <script src="vendor/highlightjs/highlight.min.js"></script>
+  <script src="vendor/highlightjs/languages/groovy.min.js"></script>
+  <script src="vendor/highlightjs/languages/lua.min.js"></script>
+  <script src="vendor/highlightjs/languages/json.min.js"></script>
 </head>
 <body>
   <div class="app-layout">
@@ -653,7 +682,8 @@
         </label>
       </div>
       <div class="script-editor-wrap">
-        <textarea id="fBody"></textarea>
+        <pre id="fBodyHighlight" class="hljs" aria-hidden="true"></pre>
+        <textarea id="fBody" spellcheck="false"></textarea>
         <ul id="scriptAcPopup" class="script-ac" style="display:none"></ul>
       </div>
       <div class="row" id="scriptValidateRow" style="display:none">
