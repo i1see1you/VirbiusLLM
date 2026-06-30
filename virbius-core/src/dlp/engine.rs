@@ -170,7 +170,7 @@ fn compile_rules(rules: &[DlpRule]) -> Vec<CompiledRule> {
             mask_template,
         });
     }
-    out.sort_by(|a, b| b.priority.cmp(&a.priority));
+    out.sort_by_key(|b| std::cmp::Reverse(b.priority));
     out
 }
 
