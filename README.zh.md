@@ -1,5 +1,6 @@
 # VirbiusLLM
 
+[![CI](https://github.com/i1see1you/VirbiusLLM/actions/workflows/ci.yml/badge.svg)](https://github.com/i1see1you/VirbiusLLM/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-17%2B-orange)](https://adoptium.net/)
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange)](https://www.rust-lang.org/)

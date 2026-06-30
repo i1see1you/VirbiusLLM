@@ -1,5 +1,4 @@
     async function reloadAll() {
-      syncTopbarBundle();
       await loadTenantSelect();
       await loadLists();
       await loadCumulatives();

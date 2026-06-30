@@ -1,5 +1,6 @@
 # VirbiusLLM
 
+[![CI](https://github.com/i1see1you/VirbiusLLM/actions/workflows/ci.yml/badge.svg)](https://github.com/i1see1you/VirbiusLLM/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-17%2B-orange)](https://adoptium.net/)
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange)](https://www.rust-lang.org/)
@@ -9,29 +10,30 @@ VirbiusLLM is a deep security protection platform specifically designed for Larg
 
 The architecture is designed with reference to the security frameworks of Alibaba and Meituan，follows an **edge–gateway–cloud** model with a **unified control plane** and **layered enforcement**:
 
-```
-User request
-   │
-   ▼
-┌────────────────────┐
-│ ① Edge L0 SDK     │  virbius-core (Rust / C ABI)
-│   scan + DLP      │  local sync, sub-millisecond
-└────────┬───────────┘
-         │ HTTP + Virbius headers
-         ▼
-┌────────────────────┐
-│ ② Gateway         │  APISIX/Kong + virbius-guard
-│   Lua rules       │  on-path, tens to hundreds of ms
-└────────┬───────────┘
-         │ gateway-agent sidecar
-         ▼
-┌────────────────────┐
-│ ③ Cloud Engine    │  virbius-engine
-│   Prompt L1 +     │  on-demand Evaluate
-│   Groovy L3       │  policy merge (ActionMerge)
-└────────┬───────────┘
-         ▼
-       LLM API
+```mermaid
+flowchart TD
+    U["User / App"]
+    E["① Edge L0 — virbius-core<br/>scan + DLP · sub-ms"]
+    G["② Gateway — APISIX/Kong + virbius-guard<br/>Lua rules · on-path · ~10ms"]
+    A["gateway-agent<br/>Rust sidecar"]
+    C["③ Cloud — virbius-engine<br/>Prompt L1 + Groovy L3 · ActionMerge"]
+    LLM["LLM API"]
+
+    U -->|HTTP + Virbius headers| E
+    E -->|HTTP| G
+    G -.->|forward| A
+    A --> C
+    C -->|effective_action| G
+    G -->|allow| LLM
+    G -.->|block| LLM
+
+    CP["Control Plane — virbius-control<br/>admin UI · rule registry · rollout"]
+    COMP["virbius-compiler<br/>registry rules → layer artifacts"]
+
+    CP -.->|publish| E
+    CP -.->|publish| G
+    CP -.->|publish| C
+    COMP -.->|compile| CP
 ```
 
 | Layer | Responsibility | Component |

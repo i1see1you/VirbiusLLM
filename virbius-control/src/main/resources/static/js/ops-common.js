@@ -73,12 +73,6 @@
     }
     function bundleId() { return document.getElementById('bundleId').value.trim() || 'poc-default'; }
     function bundleVer() { return document.getElementById('bundleVer').value.trim() || '0.1.0'; }
-    function syncTopbarBundle() {
-      const bid = document.getElementById('topBundleId');
-      const bver = document.getElementById('topBundleVer');
-      if (bid) bid.textContent = bundleId();
-      if (bver) bver.textContent = bundleVer();
-    }
     function admin(path, opts = {}) {
       const url = '/api/v1/admin/tenants/' + encodeURIComponent(tenant()) + path;
       return adminFetch(url, opts);

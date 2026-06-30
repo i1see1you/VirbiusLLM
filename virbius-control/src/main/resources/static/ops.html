@@ -252,10 +252,7 @@
           <select id="tenantSelect" style="min-width:7rem"></select>
           <input id="tenantId" value="default" autocomplete="off" style="display:none;width:7rem" />
         </label>
-        <label class="tenant-field"><span data-i18n="topbar.api-key">API Key</span>
-          <input id="apiKey" type="password" placeholder="vrb_tk_..." autocomplete="off" style="width:14rem" />
-        </label>
-        <span class="hint" style="margin:0">Bundle <code id="topBundleId">poc-default</code>@<code id="topBundleVer">0.1.0</code></span>
+        <input type="hidden" id="apiKey" />
         <button type="button" id="btnLangSwitch" class="secondary" style="margin-left:0.5rem;font-size:0.75rem;padding:0.25rem 0.5rem" onclick="setLocale(window._locale === 'zh' ? 'en' : 'zh')">EN</button>
       </header>
       <input type="hidden" id="bundleId" value="poc-default" />
