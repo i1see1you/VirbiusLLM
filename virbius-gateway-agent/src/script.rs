@@ -1,6 +1,8 @@
-use crate::list_redis::{match_redis_list_by_name, RedisListIndexBlock};
-use crate::policy_engine::{match_list_by_name, read_cumulative_count, CumulativeDefBlock, ListDefBlock};
 use crate::access_lists::ExtendedVars;
+use crate::list_redis::{match_redis_list_by_name, RedisListIndexBlock};
+use crate::policy_engine::{
+    match_list_by_name, read_cumulative_count, CumulativeDefBlock, ListDefBlock,
+};
 use mlua::{Lua, MultiValue, Value};
 use std::collections::HashMap;
 
@@ -38,15 +40,19 @@ pub fn run_lua_decide(body: &str, env: &ScriptEnv<'_>) -> Result<bool, String> {
 
     let vars_tbl = lua.create_table().map_err(|e| e.to_string())?;
     for (k, v) in env.vars {
-        vars_tbl.set(k.as_str(), v.as_str()).map_err(|e| e.to_string())?;
+        vars_tbl
+            .set(k.as_str(), v.as_str())
+            .map_err(|e| e.to_string())?;
     }
     ctx.set("vars", vars_tbl).map_err(|e| e.to_string())?;
 
     let vars_for_var = env.vars.clone();
     ctx.set(
         "var",
-        lua.create_function(move |_, name: String| Ok(vars_for_var.get(&name).cloned().unwrap_or_default()))
-            .map_err(|e| e.to_string())?,
+        lua.create_function(move |_, name: String| {
+            Ok(vars_for_var.get(&name).cloned().unwrap_or_default())
+        })
+        .map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
 
@@ -86,31 +92,33 @@ pub fn run_lua_decide(body: &str, env: &ScriptEnv<'_>) -> Result<bool, String> {
                     Some(Value::Number(n)) => Some(n.to_string()),
                     _ => None,
                 };
-                Ok(if match_list_by_name(
-                    &lists,
-                    &name,
-                    explicit.as_deref(),
-                    &content_lm,
-                    user_id_lm.as_deref(),
-                    device_id_lm.as_deref(),
-                    client_ip_lm.as_deref(),
-                    session_id_lm.as_deref(),
-                    &vars_lm,
-                ) {
-                    true
-                } else {
-                    match_redis_list_by_name(
-                        &tenant_lm,
-                        &redis_index,
+                Ok(
+                    if match_list_by_name(
+                        &lists,
                         &name,
                         explicit.as_deref(),
                         &content_lm,
                         user_id_lm.as_deref(),
                         device_id_lm.as_deref(),
                         client_ip_lm.as_deref(),
+                        session_id_lm.as_deref(),
                         &vars_lm,
-                    )
-                })
+                    ) {
+                        true
+                    } else {
+                        match_redis_list_by_name(
+                            &tenant_lm,
+                            &redis_index,
+                            &name,
+                            explicit.as_deref(),
+                            &content_lm,
+                            user_id_lm.as_deref(),
+                            device_id_lm.as_deref(),
+                            client_ip_lm.as_deref(),
+                            &vars_lm,
+                        )
+                    },
+                )
             })
             .map_err(|e| e.to_string())?,
         )

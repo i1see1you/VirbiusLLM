@@ -66,7 +66,11 @@ pub fn merge(hits: &[RuleHit], session_id: Option<&str>) -> EnforceResult {
             primary: None,
         };
     }
-    let max_priority = rules.iter().map(|r| intent_priority(&r.intent_action)).max().unwrap_or(0);
+    let max_priority = rules
+        .iter()
+        .map(|r| intent_priority(&r.intent_action))
+        .max()
+        .unwrap_or(0);
     if max_priority <= 0 {
         return EnforceResult {
             effective_action: "allow".into(),

@@ -1,9 +1,15 @@
+#![allow(
+    dead_code,
+    clippy::not_unsafe_ptr_arg_deref,
+    clippy::too_many_arguments
+)]
+
 mod api;
 mod audit;
 mod bootstrap;
 mod dlp;
-mod engine;
 mod enforce;
+mod engine;
 mod manifest;
 mod matcher;
 mod runtime;

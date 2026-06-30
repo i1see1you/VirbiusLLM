@@ -103,7 +103,11 @@ pub fn merge(hits: &[RuleHit], session_id: Option<&str>) -> GatewayCheckResult {
             prior_signals: Vec::new(),
         };
     }
-    let max_priority = hits.iter().map(|h| intent_priority(&h.intent_action)).max().unwrap_or(0);
+    let max_priority = hits
+        .iter()
+        .map(|h| intent_priority(&h.intent_action))
+        .max()
+        .unwrap_or(0);
     if max_priority <= 0 {
         return GatewayCheckResult {
             effective_action: "allow".into(),

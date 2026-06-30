@@ -1,5 +1,8 @@
 use serde::Deserialize;
-use std::{fs, sync::{OnceLock, RwLock}};
+use std::{
+    fs,
+    sync::{OnceLock, RwLock},
+};
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct DlpRuleBody {

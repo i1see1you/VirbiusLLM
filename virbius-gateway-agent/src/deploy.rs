@@ -20,8 +20,14 @@ impl NodePoolResolver {
             format!("{}-{}", hostname, pid)
         });
         let bucket = crc32_bucket(&instance_id);
-        info!("NodePoolResolver instance={} bucket={}", instance_id, bucket);
-        Self { instance_id, bucket }
+        info!(
+            "NodePoolResolver instance={} bucket={}",
+            instance_id, bucket
+        );
+        Self {
+            instance_id,
+            bucket,
+        }
     }
 
     pub fn resolve_pool(&self, canary_percent: u32) -> &'static str {
@@ -105,18 +111,19 @@ async fn consume(client: &RedisClient, pointers: &Arc<RwLock<HashMap<String, Dep
         .query(&mut conn);
 
     loop {
-        let results: Result<Vec<(String, Vec<(String, HashMap<String, String>)>)>, _> = redis::cmd("XREADGROUP")
-            .arg("GROUP")
-            .arg(group)
-            .arg(&consumer)
-            .arg("COUNT")
-            .arg(1)
-            .arg("BLOCK")
-            .arg(5000)
-            .arg("STREAMS")
-            .arg(stream_key)
-            .arg(">")
-            .query(&mut conn);
+        let results: Result<Vec<(String, Vec<(String, HashMap<String, String>)>)>, _> =
+            redis::cmd("XREADGROUP")
+                .arg("GROUP")
+                .arg(group)
+                .arg(&consumer)
+                .arg("COUNT")
+                .arg(1)
+                .arg("BLOCK")
+                .arg(5000)
+                .arg("STREAMS")
+                .arg(stream_key)
+                .arg(">")
+                .query(&mut conn);
 
         match results {
             Ok(entries) => {
@@ -125,7 +132,8 @@ async fn consume(client: &RedisClient, pointers: &Arc<RwLock<HashMap<String, Dep
                         if let Some(tenant_id) = fields.get("tenant_id") {
                             refresh_pointer(&mut conn, tenant_id, pointers).await;
                         }
-                        let _: Result<(), _> = conn.xack::<_, _, _, ()>(stream_key, group, &[id.as_str()]);
+                        let _: Result<(), _> =
+                            conn.xack::<_, _, _, ()>(stream_key, group, &[id.as_str()]);
                     }
                 }
             }
@@ -137,22 +145,44 @@ async fn consume(client: &RedisClient, pointers: &Arc<RwLock<HashMap<String, Dep
     }
 }
 
-async fn refresh_pointer(conn: &mut redis::Connection, tenant_id: &str, pointers: &Arc<RwLock<HashMap<String, DeployPointer>>>) {
+async fn refresh_pointer(
+    conn: &mut redis::Connection,
+    tenant_id: &str,
+    pointers: &Arc<RwLock<HashMap<String, DeployPointer>>>,
+) {
     let pointer_key = format!("virbius:deploy:active:{}", tenant_id);
     let hash: Result<HashMap<String, String>, _> = conn.hgetall(&pointer_key);
     match hash {
         Ok(h) => {
-            let pct: u32 = h.get("canary_percent").and_then(|v| v.parse().ok()).unwrap_or(0);
+            let pct: u32 = h
+                .get("canary_percent")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0);
             let ptr = DeployPointer {
                 canary_percent: pct,
-                canary_engine_revision: h.get("canary_engine_revision").and_then(|v| v.parse().ok()).unwrap_or(0),
-                stable_engine_revision: h.get("stable_engine_revision").and_then(|v| v.parse().ok()).unwrap_or(0),
-                canary_gateway_revision: h.get("canary_gateway_revision").and_then(|v| v.parse().ok()).unwrap_or(0),
-                stable_gateway_revision: h.get("stable_gateway_revision").and_then(|v| v.parse().ok()).unwrap_or(0),
+                canary_engine_revision: h
+                    .get("canary_engine_revision")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0),
+                stable_engine_revision: h
+                    .get("stable_engine_revision")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0),
+                canary_gateway_revision: h
+                    .get("canary_gateway_revision")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0),
+                stable_gateway_revision: h
+                    .get("stable_gateway_revision")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0),
                 target_version: h.get("target_version").cloned().unwrap_or_default(),
             };
             pointers.write().await.insert(tenant_id.to_string(), ptr);
-            info!("deploy pointer refreshed tenant={} canary_percent={}", tenant_id, pct);
+            info!(
+                "deploy pointer refreshed tenant={} canary_percent={}",
+                tenant_id, pct
+            );
         }
         Err(e) => {
             warn!("failed to read deploy pointer for {}: {}", tenant_id, e);
@@ -161,7 +191,11 @@ async fn refresh_pointer(conn: &mut redis::Connection, tenant_id: &str, pointers
 }
 
 /// Periodic heartbeat uploader.
-pub async fn heartbeat_loop(redis_url: &str, resolver: Arc<NodePoolResolver>, watcher: Arc<DeployRolloutWatcher>) {
+pub async fn heartbeat_loop(
+    redis_url: &str,
+    resolver: Arc<NodePoolResolver>,
+    watcher: Arc<DeployRolloutWatcher>,
+) {
     let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
     loop {
         interval.tick().await;
@@ -180,11 +214,16 @@ pub async fn heartbeat_loop(redis_url: &str, resolver: Arc<NodePoolResolver>, wa
                     .unwrap_or_default()
                     .as_secs();
 
-                let tenants: Vec<String> = {
-                    watcher.pointers.read().await.keys().cloned().collect()
-                };
+                let tenants: Vec<String> =
+                    { watcher.pointers.read().await.keys().cloned().collect() };
                 for tenant in &tenants {
-                    let pct = watcher.pointers.read().await.get(tenant).map(|p| p.canary_percent).unwrap_or(0);
+                    let pct = watcher
+                        .pointers
+                        .read()
+                        .await
+                        .get(tenant)
+                        .map(|p| p.canary_percent)
+                        .unwrap_or(0);
                     let pool = resolver.resolve_pool(pct);
                     let hostname = hostname();
                     let key = format!("virbius:nodes:gateway:{}:{}", tenant, resolver.instance_id);

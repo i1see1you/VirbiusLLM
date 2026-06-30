@@ -1,14 +1,15 @@
 use crate::bind_scope::BindContext;
 use crate::cumulative::{self, RequestCtx};
 use crate::enforce::{self, GatewayCheckResult};
-use crate::policy_engine::{hit_from_script_rule, ScriptRuleBlock, CumulativeDefBlock, ListDefBlock};
+use crate::policy_engine::{
+    hit_from_script_rule, CumulativeDefBlock, ListDefBlock, ScriptRuleBlock,
+};
 use crate::script::{run_lua_decide, ScriptEnv};
 use redis::Commands;
 use serde::Deserialize;
 use std::{
     collections::HashMap,
-    env,
-    fs,
+    env, fs,
     path::PathBuf,
     sync::RwLock,
     time::{Duration, Instant},
@@ -100,12 +101,15 @@ impl AccessListChecker {
     pub fn from_env() -> Self {
         let data_dir = env::var("VIRBIUS_DATA_DIR").unwrap_or_else(|_| "./data".into());
         let tenant = env::var("VIRBIUS_TENANT_ID").unwrap_or_else(|_| "default".into());
-        let file_path = env::var("VIRBIUS_GATEWAY_LISTS_PATH").map(PathBuf::from).unwrap_or_else(|_| {
-            PathBuf::from(&data_dir)
-                .join("gateway")
-                .join(format!("{tenant}-access-lists.json"))
-        });
-        let redis_url = env::var("VIRBIUS_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".into());
+        let file_path = env::var("VIRBIUS_GATEWAY_LISTS_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                PathBuf::from(&data_dir)
+                    .join("gateway")
+                    .join(format!("{tenant}-access-lists.json"))
+            });
+        let redis_url =
+            env::var("VIRBIUS_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".into());
         let pointer_prefix = env::var("VIRBIUS_GATEWAY_POINTER_PREFIX")
             .unwrap_or_else(|_| "virbius:config:gateway".into());
         let blob_prefix = env::var("VIRBIUS_GATEWAY_BLOB_PREFIX")
@@ -254,7 +258,7 @@ impl AccessListChecker {
             &self.blob_prefix,
         ) {
             let mut guard = self.cache.write().map_err(|e| e.to_string())?;
-            let changed = guard.as_ref().map_or(true, |c| c.revision != rev);
+            let changed = guard.as_ref().is_none_or(|c| c.revision != rev);
             if changed {
                 *guard = Some(CachedLists {
                     revision: rev,
@@ -292,9 +296,10 @@ impl AccessListChecker {
         pointer_prefix: &str,
         blob_prefix: &str,
     ) -> Result<(i64, ListsFile), String> {
-        let client =
-            redis::Client::open(redis_url).map_err(|e| format!("redis client: {e}"))?;
-        let mut conn = client.get_connection().map_err(|e| format!("redis connect: {e}"))?;
+        let client = redis::Client::open(redis_url).map_err(|e| format!("redis client: {e}"))?;
+        let mut conn = client
+            .get_connection()
+            .map_err(|e| format!("redis connect: {e}"))?;
 
         let pointer_key = format!("{pointer_prefix}:{tenant}");
         let hash: HashMap<String, String> = conn
@@ -308,7 +313,9 @@ impl AccessListChecker {
             .map_err(|e| format!("parse revision: {e}"))?;
 
         let al_key = format!("{blob_prefix}:{tenant}:r{rev}:access-lists");
-        let raw: Vec<u8> = conn.get(&al_key).map_err(|e| format!("redis get blob: {e}"))?;
+        let raw: Vec<u8> = conn
+            .get(&al_key)
+            .map_err(|e| format!("redis get blob: {e}"))?;
         let data: ListsFile =
             serde_json::from_slice(&raw).map_err(|e| format!("parse json: {e}"))?;
 
@@ -317,8 +324,7 @@ impl AccessListChecker {
 
     fn fetch_from_file(path: &PathBuf) -> Result<(i64, ListsFile), String> {
         let raw = fs::read_to_string(path).map_err(|e| format!("read file: {e}"))?;
-        let data: ListsFile =
-            serde_json::from_str(&raw).map_err(|e| format!("parse json: {e}"))?;
+        let data: ListsFile = serde_json::from_str(&raw).map_err(|e| format!("parse json: {e}"))?;
         Ok((0, data))
     }
 }
@@ -364,10 +370,7 @@ fn resolve_vars(
             "header" => {
                 let n = def.name.as_deref().unwrap_or("");
                 let key = n.to_ascii_lowercase();
-                headers
-                    .get(&key)
-                    .or_else(|| headers.get(n))
-                    .cloned()
+                headers.get(&key).or_else(|| headers.get(n)).cloned()
             }
             "subject" => match def.field.as_deref() {
                 Some("user_id") => user_id.map(|s| s.to_string()),
@@ -453,7 +456,17 @@ mod tests {
         provided.insert("app_id".into(), "evil".into());
         let query = HashMap::new();
         let headers = HashMap::new();
-        let vars = effective_vars_map(Some(&provided), &bindings, &ExtendedVars::default(), None, None, None, &query, &headers, None);
+        let vars = effective_vars_map(
+            Some(&provided),
+            &bindings,
+            &ExtendedVars::default(),
+            None,
+            None,
+            None,
+            &query,
+            &headers,
+            None,
+        );
         assert_eq!(vars.get("app_id").map(String::as_str), Some("evil"));
     }
 
@@ -474,7 +487,17 @@ mod tests {
         let mut query = HashMap::new();
         query.insert("debug".into(), "1".into());
         let headers = HashMap::new();
-        let vars = effective_vars_map(Some(&provided), &bindings, &ExtendedVars::default(), None, None, None, &query, &headers, None);
+        let vars = effective_vars_map(
+            Some(&provided),
+            &bindings,
+            &ExtendedVars::default(),
+            None,
+            None,
+            None,
+            &query,
+            &headers,
+            None,
+        );
         assert_eq!(vars.get("debug_flag").map(String::as_str), Some("1"));
     }
 
@@ -503,7 +526,9 @@ mod tests {
         let mut headers = HashMap::new();
         headers.insert("x-app-id".into(), "evil".into());
         let query = HashMap::new();
-        let vars = effective_vars_map(None, &bindings, &extended, None, None, None, &query, &headers, None);
+        let vars = effective_vars_map(
+            None, &bindings, &extended, None, None, None, &query, &headers, None,
+        );
         assert_eq!(vars.get("app_id").map(String::as_str), Some("evil"));
         assert_eq!(vars.get("is_evil").map(String::as_str), Some("true"));
     }
@@ -537,9 +562,32 @@ mod tests {
         let mut headers = HashMap::new();
         headers.insert("x-app-id".into(), "beta".into());
         let query = HashMap::new();
-        let vars_match = effective_vars_map(None, &bindings, &extended, None, None, None, &query, &headers, Some("chat"));
-        assert_eq!(vars_match.get("route_only").map(String::as_str), Some("yes"));
-        let vars_no_match = effective_vars_map(None, &bindings, &extended, None, None, None, &query, &headers, Some("other"));
+        let vars_match = effective_vars_map(
+            None,
+            &bindings,
+            &extended,
+            None,
+            None,
+            None,
+            &query,
+            &headers,
+            Some("chat"),
+        );
+        assert_eq!(
+            vars_match.get("route_only").map(String::as_str),
+            Some("yes")
+        );
+        let vars_no_match = effective_vars_map(
+            None,
+            &bindings,
+            &extended,
+            None,
+            None,
+            None,
+            &query,
+            &headers,
+            Some("other"),
+        );
         assert!(vars_no_match.get("route_only").is_none());
     }
 }

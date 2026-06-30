@@ -1,11 +1,17 @@
+#![allow(
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    clippy::manual_strip
+)]
+
 mod access_lists;
-mod deploy;
-mod list_redis;
 mod audit;
 mod bind_scope;
 mod cumulative;
-mod engine;
+mod deploy;
 mod enforce;
+mod engine;
+mod list_redis;
 mod logging;
 mod policy_engine;
 mod script;
@@ -18,15 +24,10 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use engine::{EngineClient, EvaluateRequest, EvaluateResponse};
 use enforce::GatewayCheckResult;
+use engine::{EngineClient, EvaluateRequest, EvaluateResponse};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    env,
-    net::SocketAddr,
-    sync::Arc,
-};
+use std::{collections::HashMap, env, net::SocketAddr, sync::Arc};
 
 #[derive(Clone)]
 struct AppState {
@@ -129,7 +130,10 @@ async fn evaluate(
             return error_response(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "WRONG_POOL",
-                &format!("wrong pool: expected={} instance={}", header_pool, instance_pool),
+                &format!(
+                    "wrong pool: expected={} instance={}",
+                    header_pool, instance_pool
+                ),
             );
         }
     }
@@ -276,7 +280,11 @@ fn build_engine_audit(
     )
 }
 
-fn gateway_response(trace_id: &str, gw: &GatewayCheckResult, degraded: bool) -> AgentEvaluateResponse {
+fn gateway_response(
+    trace_id: &str,
+    gw: &GatewayCheckResult,
+    degraded: bool,
+) -> AgentEvaluateResponse {
     let primary = gw.primary.as_ref();
     AgentEvaluateResponse {
         effective_action: gw.effective_action.clone(),
@@ -301,7 +309,10 @@ fn to_agent_response(resp: EvaluateResponse, degraded: bool) -> AgentEvaluateRes
     }
 }
 
-fn bind_context(req: &AgentEvaluateRequest, vars: &HashMap<String, String>) -> bind_scope::BindContext {
+fn bind_context(
+    req: &AgentEvaluateRequest,
+    vars: &HashMap<String, String>,
+) -> bind_scope::BindContext {
     bind_scope::BindContext {
         scene: req.scene.clone(),
         app_id: vars.get("app_id").cloned(),

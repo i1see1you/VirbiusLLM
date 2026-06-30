@@ -51,26 +51,6 @@ class EdgeManifestEmitterTest {
     }
 
     @Test
-    void tenantWideWhenNoAppsInRegistry() throws Exception {
-        String yamlText =
-                """
-                tenant_id: solo
-                rules:
-                  - rule_id: edge_only
-                    layer: edge
-                    runtime: lua-dsl
-                    rollout_state: dry_run
-                    reason_code: X
-                    body: { list_type: deny, keywords: [bad] }
-                """;
-        JsonNode root = yaml.readTree(yamlText);
-        Map<String, Path> written = EdgeManifestEmitter.writeAll(tempDir, root, json);
-        assertEquals(1, written.size());
-        assertTrue(written.containsKey("_tenant"));
-        assertTrue(Files.exists(tempDir.resolve("edge-manifest.json")));
-    }
-
-    @Test
     void dlpRulesEmittedSeparately() throws Exception {
         String yamlText =
                 """

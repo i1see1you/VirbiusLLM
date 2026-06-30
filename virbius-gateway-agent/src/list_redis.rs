@@ -55,7 +55,12 @@ fn is_active(score: f64, now_sec: i64) -> bool {
     score > now_sec as f64
 }
 
-pub fn redis_list_match(tenant_id: &str, list_name: &str, redis_key: &str, lookup_value: &str) -> bool {
+pub fn redis_list_match(
+    tenant_id: &str,
+    list_name: &str,
+    redis_key: &str,
+    lookup_value: &str,
+) -> bool {
     if lookup_value.is_empty() || redis_key.is_empty() {
         return false;
     }
@@ -64,10 +69,10 @@ pub fn redis_list_match(tenant_id: &str, list_name: &str, redis_key: &str, looku
     let now_sec = chrono::Utc::now().timestamp();
     if let Ok(guard) = match_cache().lock() {
         if let Some(e) = guard.get(&cache_key) {
-            if now.duration_since(e.cached_at) <= cache_ttl() {
-                if !(e.hit && e.score > 0.0 && e.score <= now_sec as f64) {
-                    return e.hit;
-                }
+            if now.duration_since(e.cached_at) <= cache_ttl()
+                && !(e.hit && e.score > 0.0 && e.score <= now_sec as f64)
+            {
+                return e.hit;
             }
         }
     }

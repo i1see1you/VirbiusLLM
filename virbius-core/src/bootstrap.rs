@@ -4,8 +4,7 @@ use crate::runtime;
 use crate::sync::EdgeInitConfig;
 
 pub(crate) fn bootstrap(cfg: &EdgeInitConfig) -> Result<(), VirbiusError> {
-    cfg.validate()
-        .map_err(VirbiusError::InvalidInitConfig)?;
+    cfg.validate().map_err(VirbiusError::InvalidInitConfig)?;
     cfg.install();
     if let Err(e) = crate::sync::sync_if_configured() {
         eprintln!("virbius-core: edge sync: {e}");

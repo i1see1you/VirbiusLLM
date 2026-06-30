@@ -1,5 +1,5 @@
-use crate::trace::TraceIdSource;
 use crate::manifest::EdgeRule;
+use crate::trace::TraceIdSource;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EffectiveAction {

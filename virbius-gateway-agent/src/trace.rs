@@ -2,8 +2,10 @@ use regex::Regex;
 use std::sync::LazyLock;
 
 static UUID_V4: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
-        .expect("uuid v4 regex")
+    Regex::new(
+        r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+    )
+    .expect("uuid v4 regex")
 });
 
 pub fn valid(id: &str) -> bool {

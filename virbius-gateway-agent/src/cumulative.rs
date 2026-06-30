@@ -115,9 +115,7 @@ fn should_ingest_def(def: &CumulativeDefBlock, bind: &BindContext) -> bool {
     if def.binding_rules.is_empty() {
         return true;
     }
-    def.binding_rules
-        .iter()
-        .any(|r| matches_bind_rule(r, bind))
+    def.binding_rules.iter().any(|r| matches_bind_rule(r, bind))
 }
 
 fn target_as_value_source(target: &IngestTargetDef) -> Option<ValueSourceDef> {
@@ -219,10 +217,8 @@ fn encode_redis_key_segment(value: &str) -> String {
 }
 
 fn ingest_key(key: &str, slot: Slot, ttl_sec: i64) {
-    if use_redis() {
-        if ingest_key_redis(key, slot, ttl_sec) {
-            return;
-        }
+    if use_redis() && ingest_key_redis(key, slot, ttl_sec) {
+        return;
     }
     ingest_key_memory(key, slot);
 }
@@ -243,10 +239,7 @@ fn ingest_key_redis(key: &str, slot: Slot, ttl_sec: i64) -> bool {
     if incr.is_err() {
         return false;
     }
-    let _: Result<i64, _> = redis::cmd("EXPIRE")
-        .arg(key)
-        .arg(ttl_sec)
-        .query(&mut conn);
+    let _: Result<i64, _> = redis::cmd("EXPIRE").arg(key).arg(ttl_sec).query(&mut conn);
     true
 }
 
@@ -385,7 +378,8 @@ mod tests {
         let defs: Vec<CumulativeDefBlock> =
             serde_json::from_value(v.get("cumulatives").cloned().unwrap()).unwrap();
         let lists: Vec<crate::policy_engine::ListDefBlock> =
-            serde_json::from_value(v.get("memory_lists").cloned().unwrap_or_default()).unwrap_or_default();
+            serde_json::from_value(v.get("memory_lists").cloned().unwrap_or_default())
+                .unwrap_or_default();
         let script_rules: Vec<ScriptRuleBlock> =
             serde_json::from_value(v.get("script_rules").cloned().unwrap()).unwrap();
         let bind = BindContext {
@@ -423,7 +417,10 @@ mod tests {
             redis_list_index: &[],
             cumulatives: &defs,
         };
-        let chat_rule = script_rules.iter().find(|r| r.rule_id == "rl_chat").unwrap();
+        let chat_rule = script_rules
+            .iter()
+            .find(|r| r.rule_id == "rl_chat")
+            .unwrap();
         assert!(!run_lua_decide(&chat_rule.body, &env).unwrap());
 
         for _ in 0..4 {
@@ -457,11 +454,19 @@ mod tests {
         ingest_all("default", &defs, &bind, &req);
         let slot = current_slot(1);
         assert_eq!(
-            read_key_memory(&redis_key("default", "chat_user_req_1h", "u-other"), slot, slot),
+            read_key_memory(
+                &redis_key("default", "chat_user_req_1h", "u-other"),
+                slot,
+                slot
+            ),
             0
         );
         assert_eq!(
-            read_key_memory(&redis_key("default", "user_req_1h_global", "u-other"), slot, slot),
+            read_key_memory(
+                &redis_key("default", "user_req_1h_global", "u-other"),
+                slot,
+                slot
+            ),
             1
         );
     }

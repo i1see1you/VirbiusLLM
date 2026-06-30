@@ -27,10 +27,12 @@ pub fn store(trace_id: &str, token: String, entry: TokenEntry, ttl: Duration) {
     }
     let mut guard = vault().lock().expect("vault lock");
     purge_expired(&mut guard);
-    let session = guard.entry(trace_id.to_string()).or_insert_with(|| VaultSession {
-        tokens: HashMap::new(),
-        expires_at: Instant::now() + ttl,
-    });
+    let session = guard
+        .entry(trace_id.to_string())
+        .or_insert_with(|| VaultSession {
+            tokens: HashMap::new(),
+            expires_at: Instant::now() + ttl,
+        });
     session.expires_at = Instant::now() + ttl;
     session.tokens.insert(token, entry);
 }
@@ -41,7 +43,9 @@ pub fn get(trace_id: &str, token: &str) -> Option<TokenEntry> {
     }
     let mut guard = vault().lock().expect("vault lock");
     purge_expired(&mut guard);
-    guard.get(trace_id).and_then(|s| s.tokens.get(token).cloned())
+    guard
+        .get(trace_id)
+        .and_then(|s| s.tokens.get(token).cloned())
 }
 
 pub fn session_tokens(trace_id: &str) -> HashMap<String, TokenEntry> {

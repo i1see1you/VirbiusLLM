@@ -5,7 +5,7 @@ use std::{
     env,
     fs::{self, OpenOptions},
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         mpsc::{sync_channel, RecvTimeoutError, SyncSender},
         Mutex, OnceLock, RwLock,
@@ -239,7 +239,7 @@ pub fn emit(mut event: AuditEvent) {
 
 /// Returns a date-stamped path next to `base`, e.g.
 /// `gateway-audit-allow.jsonl` -> `gateway-audit-allow.2026-06-25.jsonl`.
-fn dated_path(base: &PathBuf) -> PathBuf {
+fn dated_path(base: &Path) -> PathBuf {
     let date = Utc::now().format("%Y-%m-%d").to_string();
     let file_name = base
         .file_name()
@@ -257,7 +257,7 @@ fn dated_path(base: &PathBuf) -> PathBuf {
 
 /// Deletes dated log files older than `retention_days`. Runs at most once per
 /// process-hour to avoid scanning the directory on every event.
-fn maybe_cleanup_old_logs(base: &PathBuf, retention_days: i64) {
+fn maybe_cleanup_old_logs(base: &Path, retention_days: i64) {
     if retention_days <= 0 {
         return;
     }

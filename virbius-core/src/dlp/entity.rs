@@ -53,14 +53,18 @@ fn email_tail_char(c: char) -> bool {
 }
 
 /// ASCII/CJK-friendly boundaries for built-in entity types (replaces `\b` in prior patterns).
-pub fn match_has_valid_boundaries(entity_type: &str, content: &str, start: usize, end: usize) -> bool {
+pub fn match_has_valid_boundaries(
+    entity_type: &str,
+    content: &str,
+    start: usize,
+    end: usize,
+) -> bool {
     match entity_type {
         "phone_cn" | "bank_card_cn" => not_adjacent_ascii_digit(content, start, end),
         "idcard_cn" => {
             not_adjacent_ascii_digit(content, start, end)
-                && !char_after(content, end).is_some_and(|c| {
-                    c.is_ascii_digit() || matches!(c, 'X' | 'x')
-                })
+                && !char_after(content, end)
+                    .is_some_and(|c| c.is_ascii_digit() || matches!(c, 'X' | 'x'))
         }
         "email" => {
             !char_before(content, start).is_some_and(email_local_char)
@@ -94,7 +98,7 @@ pub fn luhn_valid(digits: &str) -> bool {
         sum += n;
         alt = !alt;
     }
-    sum % 10 == 0
+    sum.is_multiple_of(10)
 }
 
 pub fn default_mask_prefix(entity_type: &str) -> &'static str {
@@ -162,6 +166,9 @@ mod tests {
 
     #[test]
     fn phone_cn_does_not_match_substring_inside_long_digits() {
-        assert_eq!(first_valid_match("phone_cn", "20240101139123456789012"), None);
+        assert_eq!(
+            first_valid_match("phone_cn", "20240101139123456789012"),
+            None
+        );
     }
 }

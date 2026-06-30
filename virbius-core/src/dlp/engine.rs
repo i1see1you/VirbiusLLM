@@ -64,7 +64,9 @@ pub fn desensitize_in(
         })
         .collect();
 
-    let any_effective = spans.iter().any(|s| dlp_effective(&s.rule.rule, session_id));
+    let any_effective = spans
+        .iter()
+        .any(|s| dlp_effective(&s.rule.rule, session_id));
     if !any_effective {
         let hits = hits_meta
             .into_iter()
@@ -118,7 +120,11 @@ pub fn desensitize_in(
     }
 }
 
-pub fn desensitize_out(content: &str, trace_id: &str, session_id: Option<&str>) -> DesensitizeOutResult {
+pub fn desensitize_out(
+    content: &str,
+    trace_id: &str,
+    session_id: Option<&str>,
+) -> DesensitizeOutResult {
     let tokens = vault::session_tokens(trace_id);
     if tokens.is_empty() {
         return DesensitizeOutResult {
@@ -155,7 +161,8 @@ fn compile_rules(rules: &[DlpRule]) -> Vec<CompiledRule> {
             continue;
         };
         let priority = body.priority.unwrap_or(0);
-        let mask_template = entity::mask_template_for(&body.entity_type, body.mask_template.as_deref());
+        let mask_template =
+            entity::mask_template_for(&body.entity_type, body.mask_template.as_deref());
         out.push(CompiledRule {
             rule: rule.clone(),
             regex,
@@ -331,11 +338,7 @@ mod tests {
         assert!(in_result.text.contains("{{VIRBIUS_PHONE_CN_0}}"));
         assert!(!in_result.text.contains("13800138000"));
 
-        let out_result = desensitize_out(
-            &format!("ok {}", in_result.text),
-            trace,
-            None,
-        );
+        let out_result = desensitize_out(&format!("ok {}", in_result.text), trace, None);
         assert!(out_result.text.contains("13800138000"));
         assert!(out_result.unresolved_tokens.is_empty());
     }

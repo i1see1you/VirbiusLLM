@@ -16,12 +16,13 @@ use std::path::PathBuf;
 
 use serde_json::json;
 use uuid::Uuid;
-use virbius_core::{EffectiveAction, EdgeInitConfig, ScanContext, VirbiusEdge};
+use virbius_core::{EdgeInitConfig, EffectiveAction, ScanContext, VirbiusEdge};
 
 const DEFAULT_GATEWAY: &str = "http://127.0.0.1:9080/v1/chat/completions";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let gateway_url = std::env::var("VIRBIUS_GATEWAY_URL").unwrap_or_else(|_| DEFAULT_GATEWAY.into());
+    let gateway_url =
+        std::env::var("VIRBIUS_GATEWAY_URL").unwrap_or_else(|_| DEFAULT_GATEWAY.into());
     let user_message = std::env::var("VIRBIUS_DEMO_PROMPT")
         .unwrap_or_else(|_| "Hello, explain Rust's ownership in one sentence.".into());
 
@@ -44,7 +45,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     match chat_via_gateway(&gateway_url, &ctx, &trace_id, edge_pass, &user_message)? {
-        GatewayOutcome::Success { status, body_preview } => {
+        GatewayOutcome::Success {
+            status,
+            body_preview,
+        } => {
             println!("\n[gateway] OK HTTP {status}");
             println!("  body preview: {body_preview}");
         }
@@ -74,8 +78,8 @@ fn edge_scan_and_trace(
     ctx: &ScanContext,
     prompt: &str,
 ) -> Result<(String, bool), Box<dyn std::error::Error>> {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("examples/fixtures/demo-edge-manifest.json");
+    let manifest =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/fixtures/demo-edge-manifest.json");
     let edge = if manifest.exists() {
         let cache_dir = manifest.parent().unwrap().to_path_buf();
         VirbiusEdge::init(EdgeInitConfig {

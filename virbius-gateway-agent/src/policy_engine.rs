@@ -112,7 +112,9 @@ pub fn resolve_value(
 ) -> Option<String> {
     if let Some(src) = vs {
         if !src.kind.is_empty() && src.kind != "default" {
-            let v = resolve_source(src, content, user_id, device_id, client_ip, session_id, vars);
+            let v = resolve_source(
+                src, content, user_id, device_id, client_ip, session_id, vars,
+            );
             return normalize(v);
         }
     }
@@ -132,7 +134,13 @@ fn resolve_source(
 ) -> Option<String> {
     match src.kind.as_str() {
         "literal" => src.value.clone(),
-        "request_field" => resolve_request_field(src.r#ref.as_deref(), user_id, device_id, client_ip, session_id),
+        "request_field" => resolve_request_field(
+            src.r#ref.as_deref(),
+            user_id,
+            device_id,
+            client_ip,
+            session_id,
+        ),
         "var" => src.r#ref.as_ref().and_then(|k| vars.get(k)).cloned(),
         "content" => Some(content.to_string()),
         _ => None,
@@ -180,7 +188,8 @@ fn resolve_request_field(
 }
 
 fn normalize(raw: Option<String>) -> Option<String> {
-    raw.map(|s| s.trim().to_string()).filter(|s| !s.is_empty() && s.len() <= 256)
+    raw.map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && s.len() <= 256)
 }
 
 fn entry_active(entry: &ListEntryDef) -> bool {
@@ -221,7 +230,7 @@ pub fn match_list_def(block: &ListDefBlock, value: &str, content: &str) -> bool 
             }
         });
     }
-    values.iter().any(|e| *e == value)
+    values.contains(&value)
 }
 
 pub fn match_list_by_name(
