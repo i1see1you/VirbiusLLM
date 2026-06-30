@@ -182,20 +182,16 @@ pub fn compute_extended_vars(
         }
         if let Some(ref scope) = def.scope {
             match scope.bind_scope.as_str() {
-                "service" => {
-                    if !scope.app_ids.is_empty() {
-                        let Some(aid) = app_id else { continue };
-                        if !scope.app_ids.iter().any(|id| id == aid) {
-                            continue;
-                        }
+                "service" if !scope.app_ids.is_empty() => {
+                    let Some(aid) = app_id else { continue };
+                    if !scope.app_ids.iter().any(|id| id == aid) {
+                        continue;
                     }
                 }
-                "route" => {
-                    if !scope.scenes.is_empty() {
-                        let Some(s) = scene else { continue };
-                        if !scope.scenes.iter().any(|sc| sc == s) {
-                            continue;
-                        }
+                "route" if !scope.scenes.is_empty() => {
+                    let Some(s) = scene else { continue };
+                    if !scope.scenes.iter().any(|sc| sc == s) {
+                        continue;
                     }
                 }
                 _ => {}
