@@ -44,6 +44,10 @@ pub struct CumulativeDefBlock {
     pub ingest_targets: Vec<IngestTargetDef>,
     #[serde(default)]
     pub binding_rules: Vec<crate::bind_scope::BindRuleBlock>,
+    #[serde(default)]
+    pub ingest_predicate_runtime: Option<String>,
+    #[serde(default)]
+    pub ingest_predicate: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

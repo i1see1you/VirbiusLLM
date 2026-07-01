@@ -124,9 +124,9 @@ class ArtifactServiceTest {
     @Test
     void gatewaySnapshotIncludesCumulativesAndScriptRules() {
         CumulativeDef globalDef = new CumulativeDef(
-                TENANT, "user_req_1h_global", "global", "user_id", "rolling", 60, null, null, 0, "active");
+                TENANT, "user_req_1h_global", "global", "user_id", "rolling", 60, null, null, 0, "active", "lua", "return true");
         CumulativeDef routeDef = new CumulativeDef(
-                TENANT, "chat_user_req_1h", "route", "user_id", "rolling", 60, null, null, 1, "active");
+                TENANT, "chat_user_req_1h", "route", "user_id", "rolling", 60, null, null, 1, "active", null, null);
 
         when(cumulativeRepo.list(TENANT, "active")).thenReturn(List.of(globalDef, routeDef));
         when(listMetaRepo.listMeta(TENANT)).thenReturn(List.of());
@@ -177,7 +177,7 @@ class ArtifactServiceTest {
     @Test
     void bindingRulesUnionFromGatewayAndCloudRules() {
         CumulativeDef def = new CumulativeDef(
-                TENANT, "chat_user_req_1h", "route", "user_id", "rolling", 60, null, null, 1, "active");
+                TENANT, "chat_user_req_1h", "route", "user_id", "rolling", 60, null, null, 1, "active", null, null);
         when(cumulativeRepo.list(TENANT, "active")).thenReturn(List.of(def));
         when(listMetaRepo.listMeta(TENANT)).thenReturn(List.of());
 
@@ -211,7 +211,7 @@ class ArtifactServiceTest {
     @Test
     void ingestTargetsIncludeDefaultAndCloudBinding() {
         CumulativeDef def = new CumulativeDef(
-                TENANT, "user_req_1h", null, "user_id", "rolling", 60, null, null, 0, "active");
+                TENANT, "user_req_1h", null, "user_id", "rolling", 60, null, null, 0, "active", null, null);
         when(cumulativeRepo.list(TENANT, "active")).thenReturn(List.of(def));
         when(listMetaRepo.listMeta(TENANT)).thenReturn(List.of());
         when(registryRepo.listCurrentRules(eq(TENANT), eq("gateway"))).thenReturn(List.of());

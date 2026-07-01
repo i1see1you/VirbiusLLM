@@ -367,6 +367,12 @@ public class ArtifactService {
             block.put("window_hours", def.windowHours());
             block.put("timezone", def.timezone());
             block.put("priority", def.priority());
+            if (def.ingestPredicate() != null && !def.ingestPredicate().isBlank()) {
+                block.put("ingest_predicate_runtime", def.ingestPredicateRuntime() != null && !def.ingestPredicateRuntime().isBlank()
+                        ? def.ingestPredicateRuntime()
+                        : "lua");
+                block.put("ingest_predicate", def.ingestPredicate());
+            }
             block.put("ingest_targets", BindScopeExport.ingestTargetsFromRules(sources));
             if (!bindingRules.isEmpty()) {
                 block.put("binding_rules", bindingRules);

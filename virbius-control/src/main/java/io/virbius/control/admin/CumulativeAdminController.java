@@ -51,7 +51,9 @@ public class CumulativeAdminController {
                 body.windowHours(),
                 body.timezone(),
                 body.priority(),
-                body.status() != null ? body.status() : "active");
+                body.status() != null ? body.status() : "active",
+                body.ingestPredicateRuntime(),
+                body.ingestPredicate());
         CumulativeDef saved = cumulativeService.upsert(def);
         Map<String, Object> sync = accessListService.refreshArtifacts(tenantId);
         return ApiResult.ok(Map.of("definition", saved, "artifact_sync", sync));

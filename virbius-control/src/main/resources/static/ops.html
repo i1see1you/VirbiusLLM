@@ -377,6 +377,12 @@
             <label id="cumWinLenWrap"><span data-i18n="cum.label-duration">时长</span> <input id="cumWinLen" type="number" min="1" value="60" style="width:5rem" /><span id="cumWinLenHint" class="hint" style="margin:0">分钟</span></label>
             <label id="cumTzWrap" style="display:none"><span data-i18n="cum.label-timezone">时区</span> <input id="cumTz" placeholder="Asia/Shanghai" style="width:10rem" /></label>
           </div>
+          <div class="row" style="align-items:flex-start;margin-top:0.5rem">
+            <label style="width:100%"><span data-i18n="cum.label-ingest-predicate">写入条件（Lua，可选）</span>
+              <textarea id="cumIngestPredicate" rows="4" placeholder="return tonumber(var('order_amount') or '0') &gt; 20" style="width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace"></textarea>
+            </label>
+          </div>
+          <p class="hint" style="margin:0" data-i18n-html="cum.ingest-predicate-hint">为空表示所有请求写入；可使用 <code>ctx</code> 与 <code>var('name')</code>，不开放 <code>getCumulative</code>。</p>
         </div>
       </div>
       <div class="row" style="margin-top:0.5rem">

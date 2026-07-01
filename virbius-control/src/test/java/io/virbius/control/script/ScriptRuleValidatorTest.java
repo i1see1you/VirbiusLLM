@@ -69,7 +69,7 @@ class ScriptRuleValidatorTest {
     void luaValidWithExistingCumulative() {
         when(cumulativeRepo.get(TENANT, "user_req_1h"))
                 .thenReturn(Optional.of(new CumulativeDef(
-                        TENANT, "user_req_1h", null, "user_id", "rolling", 60, null, null, 0, "active")));
+                        TENANT, "user_req_1h", null, "user_id", "rolling", 60, null, null, 0, "active", null, null)));
         String body = "function decide(ctx)\n  return getCumulative('user_req_1h') >= 120\nend";
         Map<String, Object> r = validator.validate(TENANT, "lua", body);
         assertTrue((Boolean) r.get("valid"));

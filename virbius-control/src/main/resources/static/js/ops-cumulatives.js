@@ -117,6 +117,7 @@
         document.getElementById('cumWinLen').value = winMin != null && winMin !== '' ? winMin : 60;
       }
       document.getElementById('cumTz').value = field(c, 'timezone') || 'Asia/Shanghai';
+      document.getElementById('cumIngestPredicate').value = field(c, 'ingest_predicate', 'ingestPredicate') || '';
       syncCumWindowFields();
       if (isNew) parseCumDimensionIntoUi('user_id');
     }
@@ -130,6 +131,14 @@
         priority: Number(document.getElementById('cumPriority').value) || 0,
         status: document.getElementById('cumStatus').value
       };
+      const ingestPredicate = document.getElementById('cumIngestPredicate').value.trim();
+      if (ingestPredicate) {
+        body.ingest_predicate_runtime = 'lua';
+        body.ingest_predicate = ingestPredicate;
+      } else {
+        body.ingest_predicate_runtime = null;
+        body.ingest_predicate = null;
+      }
       if (kind === 'rolling') {
         const len = Number(document.getElementById('cumWinLen').value);
         if (document.getElementById('cumWinUnitHr').checked) {

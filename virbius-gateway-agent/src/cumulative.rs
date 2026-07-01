@@ -1,5 +1,6 @@
 use crate::bind_scope::{matches_bind_rule, BindContext};
 use crate::policy_engine::{resolve_value, CumulativeDefBlock, IngestTargetDef, ValueSourceDef};
+use crate::script::{run_lua_ingest_predicate, ScriptEnv};
 use chrono::{DateTime, NaiveTime, TimeZone, Utc};
 use chrono_tz::Tz;
 use redis::Client;
@@ -81,6 +82,9 @@ fn ingest_all(
         if !should_ingest_def(def, bind) {
             continue;
         }
+        if !matches_ingest_predicate(tenant_id, def, defs, req) {
+            continue;
+        }
         let Some(w_min) = window_minutes_def(def) else {
             continue;
         };
@@ -107,6 +111,51 @@ fn ingest_all(
             if seen_keys.insert(key.clone()) {
                 ingest_key(&key, slot, ttl);
             }
+        }
+    }
+}
+
+fn matches_ingest_predicate(
+    tenant_id: &str,
+    def: &CumulativeDefBlock,
+    defs: &[CumulativeDefBlock],
+    req: &RequestCtx<'_>,
+) -> bool {
+    let Some(body) = def
+        .ingest_predicate
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+    else {
+        return true;
+    };
+    let runtime = def.ingest_predicate_runtime.as_deref().unwrap_or("lua");
+    if !runtime.eq_ignore_ascii_case("lua") {
+        eprintln!(
+            "unsupported cumulative ingest predicate runtime {} for {}",
+            runtime, def.cumulative_name
+        );
+        return false;
+    }
+    let env = ScriptEnv {
+        content: req.content,
+        user_id: req.user_id,
+        device_id: req.device_id,
+        client_ip: req.client_ip,
+        session_id: req.session_id,
+        vars: req.vars,
+        tenant_id,
+        lists: &[],
+        redis_list_index: &[],
+        cumulatives: defs,
+    };
+    match run_lua_ingest_predicate(body, &env) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!(
+                "cumulative ingest predicate {} failed: {}",
+                def.cumulative_name, e
+            );
+            false
         }
     }
 }
@@ -520,6 +569,70 @@ mod tests {
         ingest_all("default", std::slice::from_ref(&def), &bind, &req_skip);
         assert_eq!(
             read_key_memory(&redis_key("default", "app_req_1h", "acme"), slot, slot),
+            1
+        );
+    }
+
+    #[test]
+    fn ingest_lua_predicate_filters_counter_write() {
+        let def = CumulativeDefBlock {
+            cumulative_name: "paid_order_gt20_1h".into(),
+            dimension: "user_id".into(),
+            window_kind: "rolling".into(),
+            window_minutes: Some(60),
+            ingest_targets: vec![IngestTargetDef {
+                kind: "default".into(),
+                ..Default::default()
+            }],
+            binding_rules: vec![crate::bind_scope::BindRuleBlock {
+                bind_scope: "global".into(),
+                ..Default::default()
+            }],
+            ingest_predicate_runtime: Some("lua".into()),
+            ingest_predicate: Some("return tonumber(var('order_amount') or '0') > 20".into()),
+            ..Default::default()
+        };
+        let bind = BindContext::default();
+        let mut low_vars = HashMap::new();
+        low_vars.insert("order_amount".into(), "20".into());
+        let low_req = RequestCtx {
+            content: "hi",
+            user_id: Some("u-paid"),
+            device_id: None,
+            client_ip: None,
+            session_id: None,
+            vars: &low_vars,
+        };
+        let mut high_vars = HashMap::new();
+        high_vars.insert("order_amount".into(), "21".into());
+        let high_req = RequestCtx {
+            content: "hi",
+            user_id: Some("u-paid"),
+            device_id: None,
+            client_ip: None,
+            session_id: None,
+            vars: &high_vars,
+        };
+        if use_redis() {
+            return;
+        }
+        ingest_all("default", std::slice::from_ref(&def), &bind, &low_req);
+        let slot = current_slot(1);
+        assert_eq!(
+            read_key_memory(
+                &redis_key("default", "paid_order_gt20_1h", "u-paid"),
+                slot,
+                slot
+            ),
+            0
+        );
+        ingest_all("default", std::slice::from_ref(&def), &bind, &high_req);
+        assert_eq!(
+            read_key_memory(
+                &redis_key("default", "paid_order_gt20_1h", "u-paid"),
+                slot,
+                slot
+            ),
             1
         );
     }

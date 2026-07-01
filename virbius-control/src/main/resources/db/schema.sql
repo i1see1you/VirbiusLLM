@@ -161,6 +161,8 @@ CREATE TABLE IF NOT EXISTS tb_cumulative (
     timezone               VARCHAR(64),
     priority               INTEGER NOT NULL DEFAULT 0,
     status                 VARCHAR(16) NOT NULL DEFAULT 'active',
+    ingest_predicate_runtime VARCHAR(16),
+    ingest_predicate       TEXT,
     created_at             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tenant_id, cumulative_name),

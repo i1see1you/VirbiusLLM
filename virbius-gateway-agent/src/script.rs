@@ -19,10 +19,7 @@ pub struct ScriptEnv<'a> {
     pub cumulatives: &'a [CumulativeDefBlock],
 }
 
-pub fn run_lua_decide(body: &str, env: &ScriptEnv<'_>) -> Result<bool, String> {
-    let lua = Lua::new();
-    let globals = lua.globals();
-
+fn build_ctx(lua: &Lua, env: &ScriptEnv<'_>) -> Result<mlua::Table, String> {
     let ctx = lua.create_table().map_err(|e| e.to_string())?;
     ctx.set("content", env.content).map_err(|e| e.to_string())?;
     if let Some(v) = env.user_id {
@@ -55,6 +52,47 @@ pub fn run_lua_decide(body: &str, env: &ScriptEnv<'_>) -> Result<bool, String> {
         .map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
+    Ok(ctx)
+}
+
+fn set_global_var(lua: &Lua, env: &ScriptEnv<'_>) -> Result<(), String> {
+    let vars_for_var = env.vars.clone();
+    lua.globals()
+        .set(
+            "var",
+            lua.create_function(move |_, name: String| {
+                Ok(vars_for_var.get(&name).cloned().unwrap_or_default())
+            })
+            .map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())
+}
+
+pub fn run_lua_ingest_predicate(body: &str, env: &ScriptEnv<'_>) -> Result<bool, String> {
+    let lua = Lua::new();
+    let globals = lua.globals();
+    let ctx = build_ctx(&lua, env)?;
+    set_global_var(&lua, env)?;
+    globals.set("ctx", ctx).map_err(|e| e.to_string())?;
+
+    let script = if body.contains("function ingest") || body.contains("ingest(") {
+        format!("{body}\nreturn ingest(ctx)")
+    } else if body.trim_start().starts_with("return") {
+        body.to_string()
+    } else {
+        format!("function ingest(ctx)\n{body}\nend\nreturn ingest(ctx)")
+    };
+
+    let result: Value = lua.load(&script).eval().map_err(|e| e.to_string())?;
+    Ok(value_to_bool(result))
+}
+
+pub fn run_lua_decide(body: &str, env: &ScriptEnv<'_>) -> Result<bool, String> {
+    let lua = Lua::new();
+    let globals = lua.globals();
+
+    let ctx = build_ctx(&lua, env)?;
+    set_global_var(&lua, env)?;
 
     let lists = env.lists.to_vec();
     let redis_index = env.redis_list_index.to_vec();

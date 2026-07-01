@@ -14,4 +14,6 @@ public record CumulativeDef(
         Integer windowHours,
         String timezone,
         int priority,
-        String status) {}
+        String status,
+        String ingestPredicateRuntime,
+        String ingestPredicate) {}

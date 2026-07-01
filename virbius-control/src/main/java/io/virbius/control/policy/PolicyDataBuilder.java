@@ -79,6 +79,12 @@ public class PolicyDataBuilder {
             block.put("window_kind", def.windowKind());
             block.put("window_minutes", wMin);
             block.put("timezone", def.timezone() != null ? def.timezone() : "UTC");
+            if (def.ingestPredicate() != null && !def.ingestPredicate().isBlank()) {
+                block.put("ingest_predicate_runtime", def.ingestPredicateRuntime() != null && !def.ingestPredicateRuntime().isBlank()
+                        ? def.ingestPredicateRuntime()
+                        : "lua");
+                block.put("ingest_predicate", def.ingestPredicate());
+            }
             blocks.add(block);
         }
         return blocks;
