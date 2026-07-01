@@ -58,7 +58,7 @@ public class JdbcRolloutMetricsRepository implements RolloutMetricsRepository {
                 """
                 SELECT COALESCE(SUM(daily_review), 0) / 7.0
                 FROM (
-                  SELECT strftime('%%Y-%%m-%%d', minute_bucket) AS day,
+                  SELECT strftime('%Y-%m-%d', minute_bucket) AS day,
                          SUM(cnt_review) AS daily_review
                   FROM tb_rule_metrics_1m
                   WHERE tenant_id = ? AND rule_id = ?
@@ -78,7 +78,7 @@ public class JdbcRolloutMetricsRepository implements RolloutMetricsRepository {
     public int countBaselineDaysWithData(String tenantId, String ruleId) {
         Integer n = jdbc.queryForObject(
                 """
-                SELECT COUNT(DISTINCT strftime('%%Y-%%m-%%d', minute_bucket))
+                SELECT COUNT(DISTINCT strftime('%Y-%m-%d', minute_bucket))
                 FROM tb_rule_metrics_1m
                 WHERE tenant_id = ? AND rule_id = ?
                   AND rollout_state = 'dry_run'

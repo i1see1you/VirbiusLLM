@@ -227,7 +227,7 @@
       }
       const labels = merged.map(p => {
         const d = parseUtc(p.bucket);
-        return d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        return d.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
       });
       const blockRate = merged.map(p => {
         const t = p.total_requests || 0;

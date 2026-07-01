@@ -41,7 +41,7 @@ public class RolloutDashboardService {
 
         List<Map<String, Object>> series1m = jdbc.query(
                 """
-                SELECT strftime('%%Y-%%m-%%d %%H:%%M:00', intercepted_at) AS bucket,
+                SELECT strftime('%Y-%m-%d %H:%M:00', intercepted_at) AS bucket,
                        SUM(CASE WHEN effective_action = 'review'  THEN 1 ELSE 0 END) AS review,
                        SUM(CASE WHEN effective_action = 'block'   THEN 1 ELSE 0 END) AS block,
                        SUM(CASE WHEN effective_action = 'captcha' THEN 1 ELSE 0 END) AS captcha,
@@ -281,7 +281,7 @@ public class RolloutDashboardService {
 
         List<Map<String, Object>> series1m = jdbc.query(
                 """
-                SELECT strftime('%%Y-%%m-%%d %%H:%%M:00', intercepted_at) AS bucket,
+                SELECT strftime('%Y-%m-%d %H:%M:00', intercepted_at) AS bucket,
                        SUM(CASE WHEN effective_action = 'review'  THEN 1 ELSE 0 END) AS review,
                        SUM(CASE WHEN effective_action = 'block'   THEN 1 ELSE 0 END) AS block,
                        SUM(CASE WHEN effective_action = 'captcha' THEN 1 ELSE 0 END) AS captcha,

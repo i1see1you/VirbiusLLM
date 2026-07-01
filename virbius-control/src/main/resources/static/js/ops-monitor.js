@@ -40,14 +40,18 @@
 
   function parseUtc(s) {
     if (!s) return null;
-    const d = new Date(s);
-    return isNaN(d.getTime()) ? null : d;
+    let iso = s.includes('T') ? s : s.replace(' ', 'T');
+    if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(iso)) {
+      iso += 'Z';
+    }
+    const t = Date.parse(iso);
+    return Number.isNaN(t) ? null : new Date(t);
   }
 
   function fmtTime(s) {
     const d = parseUtc(s);
     if (!d) return '—';
-    return d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   }
 
   function esc(s) {
@@ -133,7 +137,7 @@
     }
     const labels = filtered.map(p => {
       const d = parseUtc(p.bucket);
-      return d ? d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+      return d ? d.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
     });
     const datasets = [
       { label: 'allow', data: filtered.map(p => p.allow || 0), backgroundColor: 'rgba(34,197,94,0.7)', borderColor: '#22c55e', borderWidth: 1 },
@@ -174,7 +178,7 @@
     }
     const labels = filtered.map(p => {
       const d = parseUtc(p.bucket);
-      return d ? d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+      return d ? d.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
     });
     const blockRate = filtered.map(p => {
       const total = (p.total_requests || 0);
@@ -233,7 +237,7 @@
 
     const labels = ruleSeries.map(p => {
       const d = parseUtc(p.bucket);
-      return d ? d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+      return d ? d.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
     });
     const blockRates = ruleSeries.map(p => {
       const total = (p.total_requests || 0);
