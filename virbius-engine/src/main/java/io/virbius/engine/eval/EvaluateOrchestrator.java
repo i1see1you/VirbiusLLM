@@ -64,6 +64,7 @@ public class EvaluateOrchestrator {
                 primaryRevision,
                 reasonCode,
                 req.traceId(),
-                degraded);
+                degraded,
+                decision.enforceMode());
     }
 }

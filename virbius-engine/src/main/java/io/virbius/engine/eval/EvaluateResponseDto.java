@@ -7,4 +7,5 @@ public record EvaluateResponseDto(
         int ruleRevision,
         String reasonCode,
         String traceId,
-        boolean degraded) {}
+        boolean degraded,
+        String enforceMode) {}

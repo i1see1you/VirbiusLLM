@@ -503,3 +503,143 @@ SELECT 'poc-platform-admin-cred', '*', 'platform_admin',
        'vrb_tk_dev_p', 'PoC platform (tenant management)', 'active', 'seed', CURRENT_TIMESTAMP
 FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_tenant_api_credential WHERE credential_id = 'poc-platform-admin-cred');
+
+-- ============================================================
+-- Qwen3Guard 安全分类规则 (2026-07-04)
+-- 与 application.yml 中 category-rule-mapping 对应
+-- ============================================================
+
+INSERT INTO tb_rule_history (
+    tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
+    reason_code, risk_score, intent_action, scope_json, body_json,
+    rollout_state, canary_percent, effective_from, modified_at
+)
+SELECT 'default', 'prompt-violent', 1, 'poc-default', 'cloud', 'prompt',
+    'VIOLENT', 100, 'deny', '{"bind_scope":"global"}',
+    '"暴力、伤害、恐怖主义等极端行为相关内容。"',
+    'full', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'prompt-violent' AND rule_revision = 1);
+
+INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
+SELECT 'default', 'prompt-violent', 1, 'poc-default', 'cloud', 'prompt', 'VIOLENT', 'full', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'prompt-violent');
+
+INSERT INTO tb_rule_history (
+    tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
+    reason_code, risk_score, intent_action, scope_json, body_json,
+    rollout_state, canary_percent, effective_from, modified_at
+)
+SELECT 'default', 'prompt-illegal', 1, 'poc-default', 'cloud', 'prompt',
+    'ILLEGAL', 100, 'deny', '{"bind_scope":"global"}',
+    '"毒品制作、诈骗、非法入侵等非暴力违法活动相关内容。"',
+    'full', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'prompt-illegal' AND rule_revision = 1);
+
+INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
+SELECT 'default', 'prompt-illegal', 1, 'poc-default', 'cloud', 'prompt', 'ILLEGAL', 'full', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'prompt-illegal');
+
+INSERT INTO tb_rule_history (
+    tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
+    reason_code, risk_score, intent_action, scope_json, body_json,
+    rollout_state, canary_percent, effective_from, modified_at
+)
+SELECT 'default', 'prompt-sexual', 1, 'poc-default', 'cloud', 'prompt',
+    'SEXUAL', 100, 'deny', '{"bind_scope":"global"}',
+    '"色情、淫秽、性行为等不当性相关内容。"',
+    'full', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'prompt-sexual' AND rule_revision = 1);
+
+INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
+SELECT 'default', 'prompt-sexual', 1, 'poc-default', 'cloud', 'prompt', 'SEXUAL', 'full', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'prompt-sexual');
+
+INSERT INTO tb_rule_history (
+    tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
+    reason_code, risk_score, intent_action, scope_json, body_json,
+    rollout_state, canary_percent, effective_from, modified_at
+)
+SELECT 'default', 'prompt-pii', 1, 'poc-default', 'cloud', 'prompt',
+    'PII', 100, 'deny', '{"bind_scope":"global"}',
+    '"身份证号、手机号、银行卡号等个人敏感信息泄露相关内容。"',
+    'full', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'prompt-pii' AND rule_revision = 1);
+
+INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
+SELECT 'default', 'prompt-pii', 1, 'poc-default', 'cloud', 'prompt', 'PII', 'full', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'prompt-pii');
+
+INSERT INTO tb_rule_history (
+    tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
+    reason_code, risk_score, intent_action, scope_json, body_json,
+    rollout_state, canary_percent, effective_from, modified_at
+)
+SELECT 'default', 'prompt-self-harm', 1, 'poc-default', 'cloud', 'prompt',
+    'SELF_HARM', 100, 'deny', '{"bind_scope":"global"}',
+    '"自杀、自残、自伤等危害自身安全相关内容。"',
+    'full', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'prompt-self-harm' AND rule_revision = 1);
+
+INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
+SELECT 'default', 'prompt-self-harm', 1, 'poc-default', 'cloud', 'prompt', 'SELF_HARM', 'full', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'prompt-self-harm');
+
+INSERT INTO tb_rule_history (
+    tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
+    reason_code, risk_score, intent_action, scope_json, body_json,
+    rollout_state, canary_percent, effective_from, modified_at
+)
+SELECT 'default', 'prompt-unethical', 1, 'poc-default', 'cloud', 'prompt',
+    'UNETHICAL', 80, 'deny', '{"bind_scope":"global"}',
+    '"作弊、抄袭、歧视、不道德行为等相关内容。"',
+    'full', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'prompt-unethical' AND rule_revision = 1);
+
+INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
+SELECT 'default', 'prompt-unethical', 1, 'poc-default', 'cloud', 'prompt', 'UNETHICAL', 'full', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'prompt-unethical');
+
+INSERT INTO tb_rule_history (
+    tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
+    reason_code, risk_score, intent_action, scope_json, body_json,
+    rollout_state, canary_percent, effective_from, modified_at
+)
+SELECT 'default', 'prompt-political', 1, 'poc-default', 'cloud', 'prompt',
+    'POLITICAL', 80, 'deny', '{"bind_scope":"global"}',
+    '"领土主权、民族宗教、历史事件等政治敏感相关内容。"',
+    'full', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'prompt-political' AND rule_revision = 1);
+
+INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
+SELECT 'default', 'prompt-political', 1, 'poc-default', 'cloud', 'prompt', 'POLITICAL', 'full', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'prompt-political');
+
+INSERT INTO tb_rule_history (
+    tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
+    reason_code, risk_score, intent_action, scope_json, body_json,
+    rollout_state, canary_percent, effective_from, modified_at
+)
+SELECT 'default', 'prompt-copyright', 1, 'poc-default', 'cloud', 'prompt',
+    'COPYRIGHT', 80, 'deny', '{"bind_scope":"global"}',
+    '"版权内容、盗版资源、侵权生成等相关内容。"',
+    'full', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'prompt-copyright' AND rule_revision = 1);
+
+INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
+SELECT 'default', 'prompt-copyright', 1, 'poc-default', 'cloud', 'prompt', 'COPYRIGHT', 'full', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'prompt-copyright');
+
+INSERT INTO tb_rule_history (
+    tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
+    reason_code, risk_score, intent_action, scope_json, body_json,
+    rollout_state, canary_percent, effective_from, modified_at
+)
+SELECT 'default', 'prompt-jailbreak', 1, 'poc-default', 'cloud', 'prompt',
+    'JAILBREAK', 100, 'deny', '{"bind_scope":"global"}',
+    '"DAN、角色扮演绕过、ignore previous 等提示词注入与越狱攻击。"',
+    'full', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'prompt-jailbreak' AND rule_revision = 1);
+
+INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
+SELECT 'default', 'prompt-jailbreak', 1, 'poc-default', 'cloud', 'prompt', 'JAILBREAK', 'full', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'prompt-jailbreak');

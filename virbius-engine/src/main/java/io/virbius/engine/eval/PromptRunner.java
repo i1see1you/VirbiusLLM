@@ -8,7 +8,7 @@ import io.virbius.engine.eval.PromptAuditJsonParser.PromptAuditResult;
 import io.virbius.policy.MatchContext;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -89,49 +89,44 @@ public class PromptRunner {
     }
 
     private List<SignalDto> runMatrixLlm(String content, List<RuleEntry> promptRules) {
-        String prompt = PromptMatrixBuilder.buildChatMlPrompt(llmProps, promptRules, content);
+        String prompt = PromptMatrixBuilder.buildChatMlPrompt(llmProps, content);
         String assistant = llmClient.complete(prompt);
         if (assistant == null || assistant.isBlank()) {
             if (llmProps.failOpen()) {
                 log.warn("prompt-llm empty response; fail-open");
                 return List.of();
             }
-            return fallbackOnLlmError(content, promptRules, "LLM unavailable");
+            return fallbackOnLlmError(promptRules, "LLM unavailable");
         }
         PromptAuditResult audit = auditParser.parse(assistant);
         if (!audit.hitRule()) {
             return List.of();
         }
-        RuleEntry matched = resolveRule(promptRules, audit.triggeredId());
-        if (matched == null) {
-            matched = promptRules.get(0);
-            log.warn("prompt-llm hit but triggered_id {} unknown; using {}", audit.triggeredId(), matched.ruleId());
-        }
-        return List.of(toSignal(matched, audit.reason()));
+
+        SignalDto signal = buildSignal(audit.reason(), promptRules, assistant);
+        return signal != null ? List.of(signal) : List.of();
     }
 
-    private List<SignalDto> fallbackOnLlmError(String content, List<RuleEntry> promptRules, String reason) {
+    private SignalDto buildSignal(String category, List<RuleEntry> promptRules, String raw) {
+        if (category != null && !category.isBlank()) {
+            Map<String, String> mapping = llmProps.categoryRuleMapping();
+            String ruleId = mapping.get(category);
+            if (ruleId != null) {
+                for (RuleEntry rule : promptRules) {
+                    if (rule.ruleId().equals(ruleId)) {
+                        return toSignal(rule, raw);
+                    }
+                }
+            }
+            log.warn("prompt-llm hit but category '{}' unmapped; using first rule", category);
+        }
+        return toSignal(promptRules.get(0), raw);
+    }
+
+    private List<SignalDto> fallbackOnLlmError(List<RuleEntry> promptRules, String reason) {
         log.warn("prompt-llm fail-closed: {}", reason);
         RuleEntry top = promptRules.get(0);
         return List.of(toSignal(top, reason));
-    }
-
-    private static RuleEntry resolveRule(List<RuleEntry> rules, String triggeredId) {
-        if (triggeredId == null || triggeredId.isBlank()) {
-            return null;
-        }
-        for (RuleEntry r : rules) {
-            if (triggeredId.equals(r.ruleId())) {
-                return r;
-            }
-        }
-        String lower = triggeredId.toLowerCase(Locale.ROOT);
-        for (RuleEntry r : rules) {
-            if (r.ruleId().equalsIgnoreCase(triggeredId) || r.ruleId().toLowerCase(Locale.ROOT).equals(lower)) {
-                return r;
-            }
-        }
-        return null;
     }
 
     private List<RuleEntry> promptRulesBound(String tenantId, MatchContext matchCtx) {
@@ -147,10 +142,10 @@ public class PromptRunner {
         return out;
     }
 
-    private static SignalDto toSignal(RuleEntry rule, String auditReason) {
+    private static SignalDto toSignal(RuleEntry rule, String auditRaw) {
         String reason = rule.reasonCode();
-        if (auditReason != null && !auditReason.isBlank()) {
-            reason = auditReason;
+        if (auditRaw != null && !auditRaw.isBlank()) {
+            reason = auditRaw;
         }
         return new SignalDto(
                 rule.ruleId(),

@@ -30,7 +30,9 @@ class PromptRunnerBindTest {
         cache = mock(RuleCache.class);
         llmClient = mock(PromptLlmClient.class);
         PromptLlmProperties props =
-                new PromptLlmProperties("http://127.0.0.1:11434", "m", "/v1/chat/completions", 3000, true, "<|im_start|>", "");
+                new PromptLlmProperties("http://127.0.0.1:11434", "m", "/v1/chat/completions", 3000, true,
+                        "<|im_start|>", "", null,
+                        Map.of("Jailbreak", "Rule_201", "Violent", "Rule_202"));
         runner = new PromptRunner(cache, props, llmClient, new PromptAuditJsonParser(new ObjectMapper()),
                 mock(TenantAwareTaskExecutor.class), mock(AsyncActionHandler.class));
     }
@@ -52,25 +54,54 @@ class PromptRunnerBindTest {
     }
 
     @Test
-    void includesOnlyBindMatchedRulesInMatrix() {
+    void triggersRuleByJsonCategoryMapping() {
         RuleEntry global = promptRule("Rule_202", Map.of("bind_scope", "global"));
         RuleEntry routeChat = promptRule(
                 "Rule_201",
                 Map.of("bind_scope", "route", "bind_ref", Map.of("scenes", List.of("chat"))));
         when(cache.rulesForTenant("default")).thenReturn(List.of(global, routeChat));
         when(llmClient.complete(anyString()))
-                .thenReturn("{\"hit_rule\": true, \"triggered_id\": \"Rule_201\", \"reason\": \"arch\"}");
+                .thenReturn("{\"hit_rule\": true, \"triggered_id\": \"SYSTEM\", \"reason\": \"Jailbreak\"}");
 
         MatchContext ctx = MatchContext.withBind(
-                "com.baidu.internal auth", null, null, null, "sess", Map.of(), "chat", "/v1/chat/completions");
+                "hack me", null, null, null, "sess", Map.of(), "chat", "/v1/chat/completions");
 
         List<SignalDto> signals = runner.run("default", ctx);
 
         assertEquals(1, signals.size());
         assertEquals("Rule_201", signals.get(0).ruleId());
-        verify(llmClient).complete(org.mockito.ArgumentMatchers.argThat(p -> p.contains("[Rule_201]")
-                && p.contains("[Rule_202]")
-                && !p.contains("Rule_203")));
+    }
+
+    @Test
+    void triggersRuleByQwen3GuardNativeFormat() {
+        RuleEntry global = promptRule("Rule_202", Map.of("bind_scope", "global"));
+        when(cache.rulesForTenant("default")).thenReturn(List.of(global));
+        when(llmClient.complete(anyString()))
+                .thenReturn("Safety: Unsafe\nCategories: Violent");
+
+        MatchContext ctx = MatchContext.withBind(
+                "kill", null, null, null, "sess", Map.of(), "chat", "/v1/chat/completions");
+
+        List<SignalDto> signals = runner.run("default", ctx);
+
+        assertEquals(1, signals.size());
+        assertEquals("Rule_202", signals.get(0).ruleId());
+    }
+
+    @Test
+    void fallsBackToFirstRuleWhenCategoryUnmapped() {
+        RuleEntry fallback = promptRule("Rule_999", Map.of("bind_scope", "global"));
+        when(cache.rulesForTenant("default")).thenReturn(List.of(fallback));
+        when(llmClient.complete(anyString()))
+                .thenReturn("{\"hit_rule\": true, \"triggered_id\": \"SYSTEM\", \"reason\": \"UnknownCategory\"}");
+
+        MatchContext ctx = MatchContext.withBind(
+                "test", null, null, null, "sess", Map.of(), "chat", "/v1/chat/completions");
+
+        List<SignalDto> signals = runner.run("default", ctx);
+
+        assertEquals(1, signals.size());
+        assertEquals("Rule_999", signals.get(0).ruleId());
     }
 
     private static RuleEntry promptRule(String ruleId, Map<String, Object> scope) {

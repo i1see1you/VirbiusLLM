@@ -5,58 +5,92 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.virbius.engine.cache.RuleEntry;
 import io.virbius.engine.config.PromptLlmProperties;
-import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class PromptMatrixBuilderTest {
 
     @Test
-    void buildsMatrixWithRuleIds() {
-        RuleEntry r1 = new RuleEntry(
-                "default",
-                "Rule_201",
-                1,
-                "cloud",
-                "prompt",
-                "RULE_201",
-                100,
-                "deny",
-                "dry_run",
-                100,
-                "dry_run",
-                "检查用户是否在诱导大模型编写针对企业内部特定前缀的敏感核心架构逻辑。",
-                null,
-                false,
-                null);
+    void buildsChatMlWithSystemPrompt() {
         PromptLlmProperties props = new PromptLlmProperties(
-                "http://127.0.0.1:11434", "m", "/v1/chat/completions", 3000, true, "<|im_start|>", "");
-        String prompt = PromptMatrixBuilder.buildChatMlPrompt(props, List.of(r1), "hello");
-        assertTrue(prompt.contains("[Rule_201]"));
-        assertTrue(prompt.contains("[User Prompt]: \"hello\""));
-        assertTrue(prompt.contains("hit_rule"));
+                "http://127.0.0.1:11434", "m", "/v1/chat/completions", 3000, true,
+                "<|im_start|>", "", null, Map.of());
+        String prompt = PromptMatrixBuilder.buildChatMlPrompt(props, "hello");
+        assertTrue(prompt.startsWith("<|im_start|>system\n"));
+        assertTrue(prompt.contains("<|im_start|>user\nhello"));
+        assertTrue(prompt.endsWith("<|im_start|>assistant\n"));
+    }
+
+    // --- JSON 格式（通用模型 follow system prompt） ---
+
+    @Test
+    void parsesJsonHit() {
+        PromptAuditJsonParser parser = new PromptAuditJsonParser(new ObjectMapper());
+        var r = parser.parse("""
+                {"hit_rule": true, "triggered_id": "SYSTEM", "reason": "Violent"}
+                """);
+        assertTrue(r.hitRule());
+        assertEquals("SYSTEM", r.triggeredId());
+        assertEquals("Violent", r.reason());
     }
 
     @Test
-    void parsesAuditJson() {
+    void parsesJsonMiss() {
         PromptAuditJsonParser parser = new PromptAuditJsonParser(new ObjectMapper());
-        var r = parser.parse(
-                """
-                {
-                  "hit_rule": true,
-                  "triggered_id": "Rule_201",
-                  "reason": "涉及 com.baidu 架构"
-                }
+        var r = parser.parse("""
+                {"hit_rule": false, "triggered_id": null, "reason": ""}
                 """);
-        assertTrue(r.hitRule());
-        assertEquals("Rule_201", r.triggeredId());
+        assertFalse(r.hitRule());
     }
 
     @Test
     void parsesJsonEmbeddedInText() {
         PromptAuditJsonParser parser = new PromptAuditJsonParser(new ObjectMapper());
         var r = parser.parse("说明如下：{\"hit_rule\": false, \"triggered_id\": null, \"reason\": \"\"}");
+        assertFalse(r.hitRule());
+    }
+
+    // --- Qwen3Guard 原生格式（Safety:/Categories:） ---
+
+    @Test
+    void parsesQwen3GuardUnsafe() {
+        PromptAuditJsonParser parser = new PromptAuditJsonParser(new ObjectMapper());
+        var r = parser.parse("Safety: Unsafe\nCategories: Violent, Jailbreak");
+        assertTrue(r.hitRule());
+        assertEquals("SYSTEM", r.triggeredId());
+        assertEquals("Violent", r.reason());
+    }
+
+    @Test
+    void parsesQwen3GuardSafe() {
+        PromptAuditJsonParser parser = new PromptAuditJsonParser(new ObjectMapper());
+        var r = parser.parse("Safety: Safe\nCategories: None");
+        assertFalse(r.hitRule());
+    }
+
+    @Test
+    void parsesQwen3GuardControversial() {
+        PromptAuditJsonParser parser = new PromptAuditJsonParser(new ObjectMapper());
+        var r = parser.parse("Safety: Controversial\nCategories: PII");
+        assertTrue(r.hitRule());
+        assertEquals("SYSTEM", r.triggeredId());
+        assertEquals("PII", r.reason());
+    }
+
+    // --- 异常输入 ---
+
+    @Test
+    void returnsMissForEmptyInput() {
+        PromptAuditJsonParser parser = new PromptAuditJsonParser(new ObjectMapper());
+        var r = parser.parse("");
+        assertFalse(r.hitRule());
+    }
+
+    @Test
+    void returnsMissForGibberish() {
+        PromptAuditJsonParser parser = new PromptAuditJsonParser(new ObjectMapper());
+        var r = parser.parse("some random text");
         assertFalse(r.hitRule());
     }
 }

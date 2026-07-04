@@ -92,6 +92,8 @@ struct AgentEvaluateResponse {
     reason_code: Option<String>,
     trace_id: String,
     degraded: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    enforce_mode: Option<String>,
 }
 
 async fn health() -> Json<HealthBody> {
@@ -248,6 +250,7 @@ async fn forward_engine(
                 reason_code: None,
                 trace_id,
                 degraded: true,
+                enforce_mode: None,
             })
             .into_response()
         }
@@ -271,7 +274,7 @@ fn build_engine_audit(
         agent.reason_code.as_deref(),
         &agent.effective_action,
         agent.max_risk_score,
-        None,
+        agent.enforce_mode.as_deref(),
         None,
         session_id.as_deref(),
         agent.degraded,
@@ -294,6 +297,7 @@ fn gateway_response(
         reason_code: primary.map(|p| p.reason_code.clone()),
         trace_id: trace_id.to_string(),
         degraded,
+        enforce_mode: primary.map(|p| p.enforce_mode.clone()),
     }
 }
 
@@ -306,6 +310,7 @@ fn to_agent_response(resp: EvaluateResponse, degraded: bool) -> AgentEvaluateRes
         reason_code: Some(resp.reason_code),
         trace_id: resp.trace_id,
         degraded,
+        enforce_mode: resp.enforce_mode,
     }
 }
 

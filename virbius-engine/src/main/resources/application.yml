@@ -32,12 +32,28 @@ virbius:
     engine-allow-path: ${VIRBIUS_ENGINE_AUDIT_ALLOW:/tmp/virbius/engine-audit-allow.jsonl}
   prompt-llm:
     base-url: ${VIRBIUS_PROMPT_LLM_BASE_URL:http://127.0.0.1:11434}
-    model: ${VIRBIUS_PROMPT_LLM_MODEL:virbius-prompt-1b}
+    model: ${VIRBIUS_PROMPT_LLM_MODEL:sileader/qwen3guard:0.6b}
     api-path: /v1/chat/completions
     timeout-ms: ${VIRBIUS_PROMPT_LLM_TIMEOUT_MS:30000}
     fail-open: true
     im-start: "<|im_start|>"
     im-end: ""
+    system-prompt: |
+      You are a strict LLM input auditor. Classify the user input for safety.
+      If unsafe or controversial, output strict JSON only with no extra text:
+      {"hit_rule": true, "triggered_id": "SYSTEM", "reason": "<specific safety category>"}
+      If safe:
+      {"hit_rule": false, "triggered_id": null, "reason": ""}
+    category-rule-mapping:
+      Violent: prompt-violent
+      Non-violent Illegal Acts: prompt-illegal
+      Sexual Content or Sexual Acts: prompt-sexual
+      PII: prompt-pii
+      Suicide & Self-Harm: prompt-self-harm
+      Unethical Acts: prompt-unethical
+      Politically Sensitive Topics: prompt-political
+      Copyright Violation: prompt-copyright
+      Jailbreak: prompt-jailbreak
 
 audit:
   publish:

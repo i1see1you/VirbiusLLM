@@ -1,13 +1,11 @@
 package io.virbius.engine.eval;
 
-import io.virbius.engine.cache.RuleEntry;
 import io.virbius.engine.config.PromptLlmProperties;
 import io.virbius.engine.eval.PromptAuditJsonParser.PromptAuditResult;
-import java.util.List;
-import java.util.Locale;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 
-/** Simulates a single draft prompt rule via one 1B matrix call. */
+/** Simulates a single draft prompt rule via LLM safety classification. */
 @Service
 public class PromptSimulateService {
 
@@ -32,8 +30,7 @@ public class PromptSimulateService {
             return new PromptSimulateResponseDto(false, false, null, null, null, "content required");
         }
 
-        RuleEntry draft = draftRule(ruleId, request.body(), request.reasonCode());
-        String prompt = PromptMatrixBuilder.buildChatMlPrompt(llmProps, List.of(draft), content);
+        String prompt = PromptMatrixBuilder.buildChatMlPrompt(llmProps, content);
         PromptLlmClient.CompleteResult llm = llmClient.completeDetail(prompt);
         if (llm.error() != null && !llm.error().isBlank()) {
             return new PromptSimulateResponseDto(
@@ -46,38 +43,15 @@ public class PromptSimulateService {
         }
 
         PromptAuditResult audit = auditParser.parse(assistant);
-        boolean hit = audit.hitRule() && ruleIdsMatch(ruleId, audit.triggeredId());
+        boolean mapped = false;
+        Map<String, String> mapping = llmProps.categoryRuleMapping();
+        String category = audit.reason();
+        if (category != null) {
+            String mappedId = mapping.get(category);
+            mapped = ruleId.equals(mappedId);
+        }
+        boolean hit = audit.hitRule() && mapped;
         return new PromptSimulateResponseDto(
                 hit, audit.hitRule(), audit.triggeredId(), audit.reason(), assistant, null);
-    }
-
-    private static RuleEntry draftRule(String ruleId, String body, String reasonCode) {
-        return new RuleEntry(
-                "simulate",
-                ruleId,
-                1,
-                "cloud",
-                "prompt",
-                reasonCode != null ? reasonCode : "SIMULATE",
-                100,
-                "deny",
-                "dry_run",
-                0,
-                "dry_run",
-                body != null ? body : "",
-                null,
-                false,
-                null);
-    }
-
-    private static boolean ruleIdsMatch(String expected, String triggeredId) {
-        if (triggeredId == null || triggeredId.isBlank()) {
-            return false;
-        }
-        if (expected.equals(triggeredId)) {
-            return true;
-        }
-        return expected.equalsIgnoreCase(triggeredId)
-                || expected.toLowerCase(Locale.ROOT).equals(triggeredId.toLowerCase(Locale.ROOT));
     }
 }

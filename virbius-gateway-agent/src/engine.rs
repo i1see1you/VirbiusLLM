@@ -62,6 +62,8 @@ pub struct EvaluateResponse {
     pub reason_code: String,
     pub trace_id: String,
     pub degraded: bool,
+    #[serde(default)]
+    pub enforce_mode: Option<String>,
 }
 
 impl EngineClient {
