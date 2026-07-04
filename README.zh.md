@@ -69,6 +69,19 @@ flowchart TD
 
 
 ```bash
+# 0. 克隆仓库
+git clone https://github.com/i1see1you/VirbiusLLM.git && cd VirbiusLLM
+```
+
+**推荐：使用 `run-local.sh`**（自动构建并启动 engine + control + gateway-agent，依赖 `mvn` 和 `cargo` 在 `PATH` 中）：
+
+```bash
+bash scripts/run-local.sh
+```
+
+**手动启动**（分步）：
+
+```bash
 # 1. 构建
 mvn clean install -DskipTests          # virbius-control + virbius-engine
 cargo build --release                   # gateway-agent + virbius-core
@@ -79,11 +92,11 @@ mvn spring-boot:run \
   -Dspring-boot.run.profiles=local
 
 # 3. smoke test：创建租户 → 创建 Skill → 发布 → 验证放量
-curl -s -X POST http://localhost:8080/api/tenants \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"smoke-tenant","code":"smoke"}'
+curl -s http://localhost:8080/api/v1/health
 # 详见 docs/user-guide.md
 ```
+
+如果 `mvn` 不在 `PATH` 中，可通过 `MVN` 环境变量指定 Maven 路径。
 
 **最低要求**：JDK 17、Maven 3.9+、Rust（详见 [repo-layout.md §环境要求](docs/repo-layout.md)）。
 

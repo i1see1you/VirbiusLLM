@@ -68,6 +68,11 @@ Rules are versioned in **`rule_history` / `rule_revision`**. Publishing flows th
 ## Quick start
 
 
+```bash
+# 0. Clone
+git clone https://github.com/i1see1you/VirbiusLLM.git && cd VirbiusLLM
+```
+
 **Recommended: use `run-local.sh`** (builds and starts control + engine + gateway-agent; leverages `mvn` and `cargo` on `PATH`):
 
 ```bash
