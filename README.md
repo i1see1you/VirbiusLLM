@@ -51,119 +51,22 @@ Rules are versioned in **`rule_history` / `rule_revision`**. Publishing flows th
 
 **MVP scope (frozen):** edge L0 + **APISIX gateway (required)** + engine (L1 Prompt + Groovy); rollout modes `dry_run` / `canary` / `full`.
 
-## Documentation
+## Features & advantages
 
-| Topic | Link |
-|-------|------|
-| System design | [docs/DESIGN.md](docs/DESIGN.md) |
-| User guide (EN) | [docs/user-guide.en.md](docs/user-guide.en.md) |
-| User guide (中文) | [docs/user-guide.md](docs/user-guide.md) |
-| Seed data & admin API | [docs/seed-api.md](docs/seed-api.md) |
-| Repo layout | [docs/repo-layout.md](docs/repo-layout.md) |
-| Glossary | [docs/GLOSSARY.md](docs/GLOSSARY.md) |
-| Release process | [docs/RELEASING.md](docs/RELEASING.md) |
 
-## Deployment architecture
-
-```mermaid
-flowchart TB
-    subgraph Client["Client"]
-        APP["App / Web / Mini-program"]
-        EDGE["① virbius-core<br/>Rust SDK · L0 local interception + DLP"]
-    end
-
-    subgraph Gateway["Gateway"]
-        APISIX["APISIX :9080<br/>virbius-guard plugin<br/>Lua access control + scene resolution"]
-    end
-
-    subgraph Agent["Agent"]
-        AGENT["virbius-gateway-agent :9070<br/>Rust axum<br/>list check · engine proxy"]
-    end
-
-    subgraph Engine["Cloud execution"]
-        ENGINE["virbius-engine :8082<br/>Spring Boot<br/>Prompt L1 · Groovy L3<br/>PolicyMerger signal merge"]
-    end
-
-    subgraph Control["Cloud control plane"]
-        CONTROL["virbius-control :8080<br/>Spring Boot<br/>admin UI · rule registry · publishing"]
-        COMPILER["virbius-compiler (optional)<br/>rule compile → layer artifacts"]
-    end
-
-    subgraph Models["Model serving (optional)"]
-        OLLAMA["Ollama :11434 (optional)<br/>qwen3guard:0.6b<br/>Prompt L1 safety classification"]
-        ML["ML Serving (optional)<br/>BERT/XGBoost<br/>mlPredict calls"]
-    end
-
-    subgraph Infra["Infrastructure"]
-        REDIS[("Redis :6379<br/>audit stream · counters · cache")]
-        DB[("Database<br/>tb_rules_current<br/>tb_rule_history")]
-    end
-
-    APP -->|"HTTP"| EDGE -->|"HTTP"| APISIX
-    APISIX -->|"POST /v1/evaluate"| AGENT -->|"POST /v1/evaluate"| ENGINE
-    ENGINE -.-> OLLAMA
-    ENGINE -.->|"mlPredict"| ML
-    APISIX -->|"allow → upstream"| LLM["LLM API<br/>gemma3 / GPT / ..."]
-    APISIX -.->|"block → 403"| LLM
-    CONTROL -->|"publish"| ENGINE
-    CONTROL -->|"publish"| AGENT
-    CONTROL -->|"publish"| APISIX
-    CONTROL -->|"publish"| EDGE
-    COMPILER -.-> CONTROL
-    CONTROL --- DB
-    AGENT --- REDIS
-    ENGINE --- REDIS
-```
-
-| Component | Port | Stack | Role |
-|-----------|------|-------|------|
-| **virbius-core** | Embedded in client | Rust | L0 local interception: keyword/blacklist/DLP, sub-ms, offline-capable |
-| **APISIX / OpenResty** | 9080 | Lua + Nginx | Real-time firewall: access control, scene resolution, static lists, on-demand engine call |
-| **virbius-gateway-agent** | 9070 | Rust (axum) | Gateway sidecar: Redis list check, cumulative counters, engine proxy, audit |
-| **virbius-engine** | 8082 | Java (Spring Boot) | Cloud execution: Prompt L1 safety classification + Groovy L3 terminal decision + mlPredict |
-| **virbius-control** | 8080 | Java (Spring Boot) | Control plane: admin UI, rule registry, rollout management, publish to all layers |
-| **virbius-compiler** | CLI | Java | Registry rules → layer artifacts (edge manifest / gateway JSON / engine input) |
-| **Ollama** | 11434 | Go | Local LLM inference, running qwen3guard:0.6b safety model |
-| **ML Serving** | Custom | FastAPI / Triton | Optional: BERT, XGBoost, scikit-learn inference, called via Groovy `mlPredict` |
-| **Redis** | 6379 | — | Audit event stream, cumulative counters (rate limiting), cache hot-reload |
-| **Database** | — | SQLite / MySQL | Rule metadata, rollout state, rule_revision versioning |
-
-### Request main path
-
-```
-User input
-  → virbius-core (L0 local interception)
-    → Gateway :9080 (Lua access control + scene resolution)
-      → gateway-agent :9070 (list check + cumulative counters)
-        → virbius-engine :8082
-          ├─ Ollama :11434 (Prompt L1 safety classification)
-          ├─ ML Serving (mlPredict BERT/XGBoost)
-          └─ Groovy L3 (policy terminal decision)
-        ← PolicyMerger signal merge
-      ← effective_action: block / captcha / allow
-    ← block → 403 / allow → upstream LLM
-  ← final response
-```
-
-### Startup commands
-
-| Scenario | Command | Notes |
-|----------|---------|-------|
-| Full local deployment | `bash scripts/run-local.sh` | Auto-build + start engine + control + agent + Redis |
-| Ollama model | `ollama pull sileader/qwen3guard:0.6b && ollama serve` | Start safety classification model |
-| ML model serving | Deploy FastAPI/Triton manually | Call via Groovy `mlPredict` |
-
-## Requirements
-
-- **JDK 17**, **Maven 3.9+**
-- **Rust** (for `virbius-core` and `virbius-gateway-agent`)
-- **Redis** (for audit ingest and cumulative counters; `run-local.sh` auto-starts it)
-- Optional: **Ollama/vLLM** (for Prompt 1B rules on engine)
-- Gateway: **APISIX** (MVP required) or **OpenResty** (stretch)
-
-See [docs/repo-layout.md](docs/repo-layout.md) for environment details.
+| Feature | Description |
+|---------|-------------|
+| **Edge–Gateway–Cloud defense in depth** | Three-layer coordinated architecture: Edge SDK (millisecond local interception) → Gateway plugin (on-path real-time filtering) → Cloud engine (semantic-level precision) |
+| **Unified signal merge** | PolicyMerger consolidates signals from all layers by risk score into a single decision (deny > captcha > review > allow), eliminating conflicts and redundancy |
+| **LLM + traditional ML hybrid** | Prompt L1 uses LLM for semantic classification (qwen3guard), Groovy L3 calls traditional models like BERT/XGBoost (mlPredict), covering content safety to behavioral risk |
+| **Progressive rollout** | Four-stage rollout: draft → dry_run → canary → full. Rules go live with zero risk, supporting percentage-based canary validation |
+| **Offline-capable + online precision** | Edge SDK runs offline (keywords/regex without network), while gateway and cloud provide online semantic detection — low latency meets high precision |
+| **OpenAI-compatible transparent proxy** | No business code changes — point your LLM request URL to the gateway. Fully compatible with `/v1/chat/completions` |
+| **Multi-backend model inference** | Ollama for one-click test deployment, vLLM for high-throughput production. Switch models by changing a single environment variable |
+| **End-to-end audit traceability** | Unified `trace_id` links all audit events across edge, gateway, and cloud. One-click troubleshooting in the admin console |
 
 ## Quick start
+
 
 **Recommended: use `run-local.sh`** (builds and starts control + engine + gateway-agent; leverages `mvn` and `cargo` on `PATH`):
 
@@ -230,6 +133,7 @@ More detail: [virbius-core/README.md](virbius-core/README.md) · [docs/user-guid
 
 ## Gateway
 
+
 VirbiusLLM supports two gateway backends:
 
 | Backend | Status | Integration |
@@ -257,101 +161,19 @@ Compile-time flatten via `virbius-compiler`. The compiler merges bundle, scene r
 - Spec: [docs/openspec/openresty-gateway.md](docs/openspec/openresty-gateway.md)
 - Integration: [virbius-gateway/README.md](virbius-gateway/README.md)
 
-## Layer responsibilities
+## Requirements
 
-### ① Edge: lightweight interaction protection & behavior sensing
 
-The edge is the first touch point between users and LLMs. It performs local filtering and behavior baseline collection without degrading user experience.
+- **JDK 17**, **Maven 3.9+**
+- **Rust** (for `virbius-core` and `virbius-gateway-agent`)
+- **Redis** (for audit ingest and cumulative counters; `run-local.sh` auto-starts it)
+- Optional: **Ollama/vLLM** (for Prompt 1B rules on engine)
+- Gateway: **APISIX** (MVP required) or **OpenResty** (stretch)
 
-- **Risk control & behavior analysis**: collect typing cadence, device fingerprint, request sequences via lightweight probes. Flag script bots, credential stuffing, or abnormal traversal.
-- **Challenge-response**: protocol validation and optional CAPTCHA against batch injection and DDoS.
-- **Pre-compliance filtering**: local sensitive-word lists and regex for obvious policy violations, reducing noise sent upstream.
-
-### ② Gateway: real-time semantic interception & protocol validation
-
-The gateway is the real-time firewall on the request path, focusing on prompt injection, jailbreak, and DLP.
-
-- **Bidirectional detection**: layered detection on both request and streaming response. Input side uses instruction restructuring to strip malicious intent while preserving legitimate business semantics. Output side intercepts bias, violence, hallucination, or non-compliant content.
-- **DLP**: real-time PII/credit-card/code identification via regex and privacy computing. Mask, sanitize, or block per policy.
-- **API governance**: access control, parameter tampering detection, rate limiting based on least-privilege principle.
-
-**L1 vs L2**:
-
-| | L1 | L2 |
-|--|----|----|
-| Means | Lightweight model, regex, signature rules | Semantic model, instruction restructuring |
-| Target latency | < 50ms | Heavier, triggered on high-risk only |
-| Scenario | Known jailbreak templates, obvious injection | Variant attacks, ambiguous prompts |
-
-### ③ Cloud main path: global policy computation & disposition
-
-The online decision center aggregates data from edge and gateway, computes risk scores, and issues dispositions.
-
-- **Multi-dimensional correlation**: real-time fusion of edge behavior logs, gateway traffic logs, user profiles, and historical risk records.
-- **Dynamic policy computation**: comprehensive risk scoring per session (including multi-turn jailbreak and topic drift). Supports tenant + scene + role 3D policy, adjustable thresholds.
-- **Security auto-reply**: for high-sensitivity queries, return preset compliant responses without calling the LLM, ensuring safety while reducing latency.
-
-### ④ Cloud async: intelligence evolution & model tuning
-
-The async path operates out-of-band, driving long-cycle threat hunting and model iteration.
-
-- **Feature collection**: full telemetry (including blocked samples and normal traffic) builds a security corpus for offline analysis.
-- **ML & adversarial training**: continuous fine-tuning on attack datasets. Red-teaming simulations proactively surface logic and multi-turn vulnerabilities.
-- **Model tuning & policy optimization**: quantifies false-positive and false-negative rates. Periodically pushes updated model parameters, threat signatures, and refined policies to gateway and edge, forming a detect–analyze–optimize–deploy closed loop.
-
-## Rule runtimes
-
-Each layer supports specific rule runtimes, compiled by `virbius-compiler` into layer-specific artifacts.
-
-| Layer | Runtime | Body form | Applicable scenario |
-|-------|---------|-----------|---------------------|
-| **Edge** | `lua-dsl` | JSON (`list_type` + `keywords`) | **L0 local interception**: keyword / regex / user-device blacklist. Sub-millisecond, offline-capable. Blocked requests never reach the gateway. |
-| | `dlp-dsl` | JSON (`entity_type` + `pattern` + `mask_template`) | **PII desensitization**: detects ID cards, phone numbers, emails, bank cards, etc., replaces with placeholders before sending to LLM, restores on response. Fixed `intent_action=allow`; does not participate in ActionMerge. |
-| **Gateway** | `lua` | Executable Lua script (`function decide(ctx) ... end`) | **On-path real-time firewall**: access-list matching (`listMatch`), rate limiting (`getCumulative`), static content detection. P99 < 10ms. Blocked requests never call the LLM. |
-| **Cloud** | `prompt` | Natural language description | **L1/L2 semantic detection**: 1B safety-model matrix identifies jailbreak, prompt injection, and sensitive semantics. |
-| | `groovy` | Executable Groovy script (`def decide(ctx) { ... }`) | **L3 policy final decision**: merges signals from all layers, outputs `effective_action` (`deny` > `captcha` > `review` > `allow`). The sole terminal-decision layer. |
-
-**Defense-in-depth progression**: L0 fail → no upstream; gateway static fail → no LLM call; cloud final decision → gateway executes disposition. Latency increases by layer: edge < 5ms → gateway < 10ms → cloud L3 < 30ms (excluding model inference).
-
-### Edge–Gateway–Cloud rule selection
-
-The three layers differ in **execution location, latency, and purpose**. Guiding principle: push rules forward where possible; defer high-latency rules to the back.
-
-| Dimension | Edge (L0) | Gateway (L1-L2) | Cloud (L3) |
-|-----------|-----------|-----------------|------------|
-| **Latency** | < 5ms | < 10ms | < 30ms (excl. model inference) |
-| **Execution location** | Client SDK | Gateway plugin (APISIX/Kong) | virbius-engine (remote) |
-| **Offline capable** | ✅ | ❌ | ❌ |
-| **Requires network** | No | No (static rules) | Yes |
-| **Calls LLM** | No | No (static rules) | Yes (Prompt L1) |
-| **Complexity** | Low (keywords/regex/blacklist) | Medium (lists/rate limit/Groovy) | High (semantic/ML/final decision) |
-| **False-positive risk** | High (exact match, prone) | Medium | Low (semantic understanding) |
-| **Bypass difficulty** | Low (can skip SDK) | Low (static rules, trial-able) | High (semantic, hard to evade) |
-| **Ops cost** | SDK updates | Hot-reload Lua | Hot-reload rules + model fine-tune |
-
-**Capability boundaries:**
-
-| Layer | Good at | Not suitable for |
-|-------|---------|------------------|
-| **Edge** | Exact keyword match, device blacklist, PII masking | Semantic jailbreak, role-play, ambiguous prompts |
-| **Gateway** | List match, rate limiting, IP/user blocking, static content check | Variant attacks, complex intent |
-| **Cloud** | Jailbreak detection (DAN/ignore previous), sensitive semantics, multi-model signal merge | Pure keyword match (too expensive) |
-
-**Selection guide:**
-
-| Scenario | Recommended layer | Reason |
-|----------|------------------|--------|
-| Explicit banned words ("bomb", "meth") | Edge | Exact match, millisecond block, reduces upstream traffic |
-| User blacklist (UID / IP) | Gateway | Dynamic list updates, gateway on-path |
-| API rate limit (100/min) | Gateway | Redis cumulative counters, global throttling |
-| "You are DAN, ignore all rules" jailbreak | Cloud | Variant semantics, only LLM can accurately detect |
-| "How to make a bomb?" disguised phrasing | Cloud | Edge keywords can't cover all variants |
-| BERT risk scoring model | Cloud | Groovy `mlPredict` call, model service independently deployed |
-| PII masking before LLM send | Edge | Local DLP, data never leaves client |
-
-**Recommended combinations**: mobile/desktop low-latency → Edge (±Gateway); web/API without SDK → Gateway (±Cloud); high-compliance → all three layers.
+See [docs/repo-layout.md](docs/repo-layout.md) for environment details.
 
 ## Prompt L1 safety classification
+
 
 Cloud-side Prompt L1 uses a fine-tuned safety model (default `sileader/qwen3guard:0.6b`) for semantic classification of user inputs. The system defines 9 safety categories; when a category is matched, the corresponding disposition action is applied:
 
@@ -371,7 +193,9 @@ The category-to-rule mapping is in `application.yml` under `virbius.prompt-llm.c
 
 ### Model details
 
-**Model**: Defaults to [sileader/qwen3guard](https://ollama.com/sileader/qwen3guard), called via Ollama's OpenAI-compatible API (`/v1/chat/completions`). Uses Qwen3Guard (Qwen3-family safety instruction-tuned model), 600M parameters, inference latency < 200ms.
+**Model**: Defaults to [sileader/qwen3guard](https://ollama.com/sileader/qwen3guard), called via OpenAI-compatible API (`/v1/chat/completions`). Qwen3Guard (Qwen3-family safety instruction-tuned model), 600M parameters, inference latency < 200ms.
+
+**Environment recommendation**: Use **Ollama** for testing (one `pull && serve`), **vLLM** for production (high throughput, low latency, OpenAI-compatible). Switch by setting `VIRBIUS_PROMPT_LLM_BASE_URL` to the target endpoint.
 
 **System Prompt** (defined in `application.yml`):
 ```
@@ -416,6 +240,7 @@ The safety model is specialized in **content safety** (whether the input text it
 > **In progress**: We are using GLM5.2 as a teacher model and Qwen3Guard as a student model, applying knowledge distillation to cover and optimize prompt semantic scenarios currently unsupported by Qwen3Guard (e.g. Agent behavior safety, multilingual mixed input), gradually expanding Prompt L1's detection scope.
 
 ## Groovy L3 rules
+
 
 Groovy rules form the terminal decision layer (L3) on the cloud side. They support custom policy logic that merges signals from all layers, calls external model services, queries access lists and cumulative counters, and outputs the final `effective_action`. Each Groovy rule implements a `decide(ctx)` function; returning `true` means block, `false` means allow.
 
@@ -482,39 +307,104 @@ def decide(ctx) {
 
 Model services should be deployed independently (FastAPI / Triton / ONNX Runtime). See `MlModelUtil.java` in the `virbius-groovy-l3` module for implementation details.
 
-## Roadmap
+## Rule runtimes
 
-### P0 — Core
 
-| Item | Description |
-|------|-------------|
-| **MVP edge–gateway–cloud** | Edge L0 + APISIX + engine + control publishing; dry_run / canary / full. See [DESIGN §11.6](docs/DESIGN.md). |
-| **Detection grading L0–L3** | L0 edge; L1/L2 cloud (RPC from gateway); L3 cloud policy. Gateway only executes static skills. |
-| **Unified decision model** | All layers produce (risk_score + action); `ActionMerge` in `virbius-engine` consolidates instead of each layer acting independently. |
-| **Skill lifecycle** | draft → publish → dry_run → canary → full. See [DESIGN.md](docs/DESIGN.md) and [seed-api.md](docs/seed-api.md). |
-| **Fail policy table** | Per-tenant: financial systems fail-close, internal tools fail-open + async alert. |
+Each layer supports specific rule runtimes, compiled by `virbius-compiler` into layer-specific artifacts.
 
-### P1 — Differentiation
+| Layer | Runtime | Body form | Applicable scenario |
+|-------|---------|-----------|---------------------|
+| **Edge** | `lua-dsl` | JSON (`list_type` + `keywords`) | **L0 local interception**: keyword / regex / user-device blacklist. Sub-millisecond, offline-capable. Blocked requests never reach the gateway. |
+| | `dlp-dsl` | JSON (`entity_type` + `pattern` + `mask_template`) | **PII desensitization**: detects ID cards, phone numbers, emails, bank cards, etc., replaces with placeholders before sending to LLM, restores on response. Fixed `intent_action=allow`; does not participate in ActionMerge. |
+| **Gateway** | `lua` | Executable Lua script (`function decide(ctx) ... end`) | **On-path real-time firewall**: access-list matching (`listMatch`), rate limiting (`getCumulative`), static content detection. P99 < 10ms. Blocked requests never call the LLM. |
+| **Cloud** | `prompt` | Natural language description | **L1/L2 semantic detection**: 1B safety-model matrix identifies jailbreak, prompt injection, and sensitive semantics. |
+| | `groovy` | Executable Groovy script (`def decide(ctx) { ... }`) | **L3 policy final decision**: merges signals from all layers, outputs `effective_action` (`deny` > `captcha` > `review` > `allow`). The sole terminal-decision layer. |
 
-| Item | Description |
-|------|-------------|
-| **Session-level risk scoring** | Maintain session risk score across turns (multi-turn jailbreak, topic drift). |
-| **Attack taxonomy** | Classify skills per MITRE-like categories (direct injection, indirect injection, jailbreak template, data exfiltration). |
-| **Human-in-the-loop queue** | Gray zone (0.4–0.7 score) routed to manual review or secondary model. |
-| **Business context binding** | Same prompt → different policy based on tenant + scene + role (general chat vs medical vs code assistant). |
-| **Agent guardrails for skill generation** | Agent may only produce candidate rules + test cases; auto-regression required before merge. No direct push to production. |
+**Defense-in-depth progression**: L0 fail → no upstream; gateway static fail → no LLM call; cloud final decision → gateway executes disposition. Latency increases by layer: edge < 5ms → gateway < 10ms → cloud L3 < 30ms (excluding model inference).
 
-### P2 — Long term
+### Edge–Gateway–Cloud rule selection
 
-| Item | Description |
-|------|-------------|
-| **Lightweight security model** | Distilled classifier/NER model on gateway, reducing dependency on secondary LLM calls. |
-| **Streaming output audit spec** | Chunk size, buffer window, hold-then-release for high-compliance scenarios. |
-| **Adversarial sample ops** | Public benchmark (e.g. JailbreakBench) + in-house samples; weekly auto-regression. |
-| **Explainability** | Show rule ID, similar samples, risk dimensions on block reasons for user/operator appeal. |
-| **Supply chain** | Plugin signature, permission whitelist, invocation budget for third-party MCP/plugins. |
+The three layers differ in **execution location, latency, and purpose**. Guiding principle: push rules forward where possible; defer high-latency rules to the back.
+
+| Dimension | Edge (L0) | Gateway (L1-L2) | Cloud (L3) |
+|-----------|-----------|-----------------|------------|
+| **Latency** | < 5ms | < 10ms | < 30ms (excl. model inference) |
+| **Execution location** | Client SDK | Gateway plugin (APISIX/Kong) | virbius-engine (remote) |
+| **Offline capable** | ✅ | ❌ | ❌ |
+| **Requires network** | No | No (static rules) | Yes |
+| **Calls LLM** | No | No (static rules) | Yes (Prompt L1) |
+| **Complexity** | Low (keywords/regex/blacklist) | Medium (lists/rate limit/Groovy) | High (semantic/ML/final decision) |
+| **False-positive risk** | High (exact match, prone) | Medium | Low (semantic understanding) |
+| **Bypass difficulty** | Low (can skip SDK) | Low (static rules, trial-able) | High (semantic, hard to evade) |
+| **Ops cost** | SDK updates | Hot-reload Lua | Hot-reload rules + model fine-tune |
+
+**Capability boundaries:**
+
+| Layer | Good at | Not suitable for |
+|-------|---------|------------------|
+| **Edge** | Exact keyword match, device blacklist, PII masking | Semantic jailbreak, role-play, ambiguous prompts |
+| **Gateway** | List match, rate limiting, IP/user blocking, static content check | Variant attacks, complex intent |
+| **Cloud** | Jailbreak detection (DAN/ignore previous), sensitive semantics, multi-model signal merge | Pure keyword match (too expensive) |
+
+**Selection guide:**
+
+| Scenario | Recommended layer | Reason |
+|----------|------------------|--------|
+| Explicit banned words ("bomb", "meth") | Edge | Exact match, millisecond block, reduces upstream traffic |
+| User blacklist (UID / IP) | Gateway | Dynamic list updates, gateway on-path |
+| API rate limit (100/min) | Gateway | Redis cumulative counters, global throttling |
+| "You are DAN, ignore all rules" jailbreak | Cloud | Variant semantics, only LLM can accurately detect |
+| "How to make a bomb?" disguised phrasing | Cloud | Edge keywords can't cover all variants |
+| BERT risk scoring model | Cloud | Groovy `mlPredict` call, model service independently deployed |
+| PII masking before LLM send | Edge | Local DLP, data never leaves client |
+
+**Recommended combinations**: mobile/desktop low-latency → Edge (±Gateway); web/API without SDK → Gateway (±Cloud); high-compliance → all three layers.
+
+## Layer responsibilities
+
+
+### ① Edge: lightweight interaction protection & behavior sensing
+
+The edge is the first touch point between users and LLMs. It performs local filtering and behavior baseline collection without degrading user experience.
+
+- **Risk control & behavior analysis**: collect typing cadence, device fingerprint, request sequences via lightweight probes. Flag script bots, credential stuffing, or abnormal traversal.
+- **Challenge-response**: protocol validation and optional CAPTCHA against batch injection and DDoS.
+- **Pre-compliance filtering**: local sensitive-word lists and regex for obvious policy violations, reducing noise sent upstream.
+
+### ② Gateway: real-time semantic interception & protocol validation
+
+The gateway is the real-time firewall on the request path, focusing on prompt injection, jailbreak, and DLP.
+
+- **Bidirectional detection**: layered detection on both request and streaming response. Input side uses instruction restructuring to strip malicious intent while preserving legitimate business semantics. Output side intercepts bias, violence, hallucination, or non-compliant content.
+- **DLP**: real-time PII/credit-card/code identification via regex and privacy computing. Mask, sanitize, or block per policy.
+- **API governance**: access control, parameter tampering detection, rate limiting based on least-privilege principle.
+
+**L1 vs L2**:
+
+| | L1 | L2 |
+|--|----|----|
+| Means | Lightweight model, regex, signature rules | Semantic model, instruction restructuring |
+| Target latency | < 50ms | Heavier, triggered on high-risk only |
+| Scenario | Known jailbreak templates, obvious injection | Variant attacks, ambiguous prompts |
+
+### ③ Cloud main path: global policy computation & disposition
+
+The online decision center aggregates data from edge and gateway, computes risk scores, and issues dispositions.
+
+- **Multi-dimensional correlation**: real-time fusion of edge behavior logs, gateway traffic logs, user profiles, and historical risk records.
+- **Dynamic policy computation**: comprehensive risk scoring per session (including multi-turn jailbreak and topic drift). Supports tenant + scene + role 3D policy, adjustable thresholds.
+- **Security auto-reply**: for high-sensitivity queries, return preset compliant responses without calling the LLM, ensuring safety while reducing latency.
+
+### ④ Cloud async: intelligence evolution & model tuning
+
+The async path operates out-of-band, driving long-cycle threat hunting and model iteration.
+
+- **Feature collection**: full telemetry (including blocked samples and normal traffic) builds a security corpus for offline analysis.
+- **ML & adversarial training**: continuous fine-tuning on attack datasets. Red-teaming simulations proactively surface logic and multi-turn vulnerabilities.
+- **Model tuning & policy optimization**: quantifies false-positive and false-negative rates. Periodically pushes updated model parameters, threat signatures, and refined policies to gateway and edge, forming a detect–analyze–optimize–deploy closed loop.
 
 ## System layer breakdown
+
 
 Building on the "edge–gateway–cloud" architecture, the system can be further divided into five layers, each with distinct responsibilities, coordinated through L0–L3 detection grading and **`virbius-engine`**.
 
@@ -619,6 +509,147 @@ Building on the "edge–gateway–cloud" architecture, the system can be further
 | Async pipeline | Side-path evolution: evaluation, canary, agent-generated rules |
 | ML inference | Provides detection capability across layers: online inference, offline improvement |
 
+## Deployment architecture
+
+
+```mermaid
+flowchart TB
+    subgraph Client["Client"]
+        APP["App / Web / Mini-program"]
+        EDGE["① virbius-core<br/>Rust SDK · L0 local interception + DLP"]
+    end
+
+    subgraph Gateway["Gateway"]
+        APISIX["APISIX :9080<br/>virbius-guard plugin<br/>Lua access control + scene resolution"]
+    end
+
+    subgraph Agent["Agent"]
+        AGENT["virbius-gateway-agent :9070<br/>Rust axum<br/>list check · engine proxy"]
+    end
+
+    subgraph Engine["Cloud execution"]
+        ENGINE["virbius-engine :8082<br/>Spring Boot<br/>Prompt L1 · Groovy L3<br/>PolicyMerger signal merge"]
+    end
+
+    subgraph Control["Cloud control plane"]
+        CONTROL["virbius-control :8080<br/>Spring Boot<br/>admin UI · rule registry · publishing"]
+        COMPILER["virbius-compiler (optional)<br/>rule compile → layer artifacts"]
+    end
+
+    subgraph Models["Model serving (optional)"]
+        OLLAMA["Ollama :11434 (optional)<br/>qwen3guard:0.6b<br/>Prompt L1 safety classification"]
+        ML["ML Serving (optional)<br/>BERT/XGBoost<br/>mlPredict calls"]
+    end
+
+    subgraph Infra["Infrastructure"]
+        REDIS[("Redis :6379<br/>audit stream · counters · cache")]
+        DB[("Database<br/>tb_rules_current<br/>tb_rule_history")]
+    end
+
+    APP -->|"HTTP"| EDGE -->|"HTTP"| APISIX
+    APISIX -->|"POST /v1/evaluate"| AGENT -->|"POST /v1/evaluate"| ENGINE
+    ENGINE -.-> OLLAMA
+    ENGINE -.->|"mlPredict"| ML
+    APISIX -->|"allow → upstream"| LLM["LLM API<br/>gemma3 / GPT / ..."]
+    APISIX -.->|"block → 403"| LLM
+    CONTROL -->|"publish"| ENGINE
+    CONTROL -->|"publish"| AGENT
+    CONTROL -->|"publish"| APISIX
+    CONTROL -->|"publish"| EDGE
+    COMPILER -.-> CONTROL
+    CONTROL --- DB
+    AGENT --- REDIS
+    ENGINE --- REDIS
+```
+
+| Component | Port | Stack | Role |
+|-----------|------|-------|------|
+| **virbius-core** | Embedded in client | Rust | L0 local interception: keyword/blacklist/DLP, sub-ms, offline-capable |
+| **APISIX / OpenResty** | 9080 | Lua + Nginx | Real-time firewall: access control, scene resolution, static lists, on-demand engine call |
+| **virbius-gateway-agent** | 9070 | Rust (axum) | Gateway sidecar: Redis list check, cumulative counters, engine proxy, audit |
+| **virbius-engine** | 8082 | Java (Spring Boot) | Cloud execution: Prompt L1 safety classification + Groovy L3 terminal decision + mlPredict |
+| **virbius-control** | 8080 | Java (Spring Boot) | Control plane: admin UI, rule registry, rollout management, publish to all layers |
+| **virbius-compiler** | CLI | Java | Registry rules → layer artifacts (edge manifest / gateway JSON / engine input) |
+| **Ollama** | 11434 | Go | Recommended for test: one-command safety model deployment, ideal for local dev and evaluation |
+| **ML Serving** | Custom | FastAPI / Triton | Optional: BERT, XGBoost, scikit-learn inference, called via Groovy `mlPredict` |
+| **Redis** | 6379 | — | Audit event stream, cumulative counters (rate limiting), cache hot-reload |
+| **Database** | — | SQLite / MySQL | Rule metadata, rollout state, rule_revision versioning |
+
+### Request main path
+
+```
+User input
+  → virbius-core (L0 local interception)
+    → Gateway :9080 (Lua access control + scene resolution)
+      → gateway-agent :9070 (list check + cumulative counters)
+        → virbius-engine :8082
+          ├─ Ollama :11434 (Prompt L1 safety classification)
+          ├─ ML Serving (mlPredict BERT/XGBoost)
+          └─ Groovy L3 (policy terminal decision)
+        ← PolicyMerger signal merge
+      ← effective_action: block / captcha / allow
+    ← block → 403 / allow → upstream LLM
+  ← final response
+```
+
+### Startup commands
+
+| Scenario | Command | Notes |
+|----------|---------|-------|
+| Full local deployment | `bash scripts/run-local.sh` | Auto-build + start engine + control + agent + Redis |
+| Ollama model (test) | `ollama pull sileader/qwen3guard:0.6b && ollama serve` | One-command local model for testing |
+| vLLM model (production) | `vllm serve sileader/qwen3guard:0.6b --port 8000` and set `VIRBIUS_PROMPT_LLM_BASE_URL=http://127.0.0.1:8000` | Recommended for production: high throughput, low latency, OpenAI-compatible |
+| ML model serving | Deploy FastAPI/Triton manually | Call via Groovy `mlPredict` |
+
+## Roadmap
+
+
+### P0 — Core
+
+| Item | Description |
+|------|-------------|
+| **MVP edge–gateway–cloud** | Edge L0 + APISIX + engine + control publishing; dry_run / canary / full. See [DESIGN §11.6](docs/DESIGN.md). |
+| **Detection grading L0–L3** | L0 edge; L1/L2 cloud (RPC from gateway); L3 cloud policy. Gateway only executes static skills. |
+| **Unified decision model** | All layers produce (risk_score + action); `ActionMerge` in `virbius-engine` consolidates instead of each layer acting independently. |
+| **Skill lifecycle** | draft → publish → dry_run → canary → full. See [DESIGN.md](docs/DESIGN.md) and [seed-api.md](docs/seed-api.md). |
+| **Fail policy table** | Per-tenant: financial systems fail-close, internal tools fail-open + async alert. |
+
+### P1 — Differentiation
+
+| Item | Description |
+|------|-------------|
+| **Session-level risk scoring** | Maintain session risk score across turns (multi-turn jailbreak, topic drift). |
+| **Attack taxonomy** | Classify skills per MITRE-like categories (direct injection, indirect injection, jailbreak template, data exfiltration). |
+| **Human-in-the-loop queue** | Gray zone (0.4–0.7 score) routed to manual review or secondary model. |
+| **Business context binding** | Same prompt → different policy based on tenant + scene + role (general chat vs medical vs code assistant). |
+| **Agent guardrails for skill generation** | Agent may only produce candidate rules + test cases; auto-regression required before merge. No direct push to production. |
+
+### P2 — Long term
+
+| Item | Description |
+|------|-------------|
+| **Lightweight security model** | Distilled classifier/NER model on gateway, reducing dependency on secondary LLM calls. |
+| **Streaming output audit spec** | Chunk size, buffer window, hold-then-release for high-compliance scenarios. |
+| **Adversarial sample ops** | Public benchmark (e.g. JailbreakBench) + in-house samples; weekly auto-regression. |
+| **Explainability** | Show rule ID, similar samples, risk dimensions on block reasons for user/operator appeal. |
+| **Supply chain** | Plugin signature, permission whitelist, invocation budget for third-party MCP/plugins. |
+
+## Documentation
+
+
+| Topic | Link |
+|-------|------|
+| System design | [docs/DESIGN.md](docs/DESIGN.md) |
+| User guide (EN) | [docs/user-guide.en.md](docs/user-guide.en.md) |
+| User guide (中文) | [docs/user-guide.md](docs/user-guide.md) |
+| Seed data & admin API | [docs/seed-api.md](docs/seed-api.md) |
+| Repo layout | [docs/repo-layout.md](docs/repo-layout.md) |
+| Glossary | [docs/GLOSSARY.md](docs/GLOSSARY.md) |
+| Release process | [docs/RELEASING.md](docs/RELEASING.md) |
+
 ## License
+
+
+For suggestions or questions, contact: i1see1you@163.com
 
 [MIT License](LICENSE) — Copyright (c) 2026 i1see1you.
