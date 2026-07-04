@@ -86,12 +86,12 @@ flowchart TB
 
     subgraph Control["Cloud control plane"]
         CONTROL["virbius-control :8080<br/>Spring Boot<br/>admin UI · rule registry · publishing"]
-        COMPILER["virbius-compiler<br/>rule compile → layer artifacts"]
+        COMPILER["virbius-compiler (optional)<br/>rule compile → layer artifacts"]
     end
 
-    subgraph Models["Model serving"]
-        OLLAMA["Ollama :11434<br/>qwen3guard:0.6b<br/>Prompt L1 safety classification"]
-        ML["ML Serving<br/>BERT/XGBoost<br/>mlPredict calls"]
+    subgraph Models["Model serving (optional)"]
+        OLLAMA["Ollama :11434 (optional)<br/>qwen3guard:0.6b<br/>Prompt L1 safety classification"]
+        ML["ML Serving (optional)<br/>BERT/XGBoost<br/>mlPredict calls"]
     end
 
     subgraph Infra["Infrastructure"]
@@ -101,7 +101,7 @@ flowchart TB
 
     APP -->|"HTTP"| EDGE -->|"HTTP"| APISIX
     APISIX -->|"POST /v1/evaluate"| AGENT -->|"POST /v1/evaluate"| ENGINE
-    ENGINE --> OLLAMA
+    ENGINE -.-> OLLAMA
     ENGINE -.->|"mlPredict"| ML
     APISIX -->|"allow → upstream"| LLM["LLM API<br/>gemma3 / GPT / ..."]
     APISIX -.->|"block → 403"| LLM
@@ -109,7 +109,7 @@ flowchart TB
     CONTROL -->|"publish"| AGENT
     CONTROL -->|"publish"| APISIX
     CONTROL -->|"publish"| EDGE
-    COMPILER --> CONTROL
+    COMPILER -.-> CONTROL
     CONTROL --- DB
     AGENT --- REDIS
     ENGINE --- REDIS

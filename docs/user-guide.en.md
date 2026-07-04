@@ -318,6 +318,7 @@ Sidecar may also pull via Control: `GET /api/v1/gateway/tenants/{tenantId}/polic
 |--------|---------|
 | 200 | Allowed (dry_run review may still return 200) |
 | 403 | Final block |
+| 428 | Captcha required |
 | 400 | e.g. invalid `X-Virbius-Trace-Id` |
 
 ---

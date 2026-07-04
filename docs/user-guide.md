@@ -400,6 +400,7 @@ OpenResty 本地对齐：`./scripts/compile-openresty-poc.sh`（`--deploy-layout
 |------|------|
 | 200 | 放行（dry_run 下 review 仍可能 200） |
 | 403 | 终局 block |
+| 428 | 触发验证码（captcha） |
 | 400 | 如 trace_id 格式非法 |
 
 ---

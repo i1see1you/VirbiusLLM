@@ -86,12 +86,12 @@ flowchart TB
 
     subgraph Control["云侧控制面"]
         CONTROL["virbius-control :8080<br/>Spring Boot<br/>运营台 UI · 规则注册 · 发布"]
-        COMPILER["virbius-compiler<br/>规则编译 → 各层产物"]
+        COMPILER["virbius-compiler（可选）<br/>规则编译 → 各层产物"]
     end
 
-    subgraph Models["模型服务"]
-        OLLAMA["Ollama :11434<br/>qwen3guard:0.6b<br/>Prompt L1 安全分类"]
-        ML["ML Serving<br/>BERT/XGBoost<br/>mlPredict 调用"]
+    subgraph Models["模型服务（可选）"]
+        OLLAMA["Ollama :11434（可选）<br/>qwen3guard:0.6b<br/>Prompt L1 安全分类"]
+        ML["ML Serving（可选）<br/>BERT/XGBoost<br/>mlPredict 调用"]
     end
 
     subgraph Infra["基础设施"]
@@ -101,7 +101,7 @@ flowchart TB
 
     APP -->|"HTTP"| EDGE -->|"HTTP"| APISIX
     APISIX -->|"POST /v1/evaluate"| AGENT -->|"POST /v1/evaluate"| ENGINE
-    ENGINE --> OLLAMA
+    ENGINE -.-> OLLAMA
     ENGINE -.->|"mlPredict"| ML
     APISIX -->|"allow → upstream"| LLM["LLM API<br/>gemma3 / GPT / ..."]
     APISIX -.->|"block → 403"| LLM
@@ -109,7 +109,7 @@ flowchart TB
     CONTROL -->|"publish"| AGENT
     CONTROL -->|"publish"| APISIX
     CONTROL -->|"publish"| EDGE
-    COMPILER --> CONTROL
+    COMPILER -.-> CONTROL
     CONTROL --- DB
     AGENT --- REDIS
     ENGINE --- REDIS
@@ -122,8 +122,8 @@ flowchart TB
 | **virbius-gateway-agent** | 9070 | Rust (axum) | 网关 sidecar：Redis 名单检查、累计计数器、转发 engine、写审计 |
 | **virbius-engine** | 8082 | Java (Spring Boot) | 云侧执行面：Prompt L1 安全分类 + Groovy L3 终判 + mlPredict 传统模型 |
 | **virbius-control** | 8080 | Java (Spring Boot) | 控制面：运营台 UI、规则注册、放量管理、产物发布到各层 |
-| **virbius-compiler** | 命令行 | Java | 注册规则 → 编译为各层产物（edge manifest / gateway JSON / engine 输入） |
-| **Ollama** | 11434 | Go | 本地 LLM 推理服务，运行 qwen3guard:0.6b 安全分类模型 |
+| **virbius-compiler** | 命令行 | Java | 离线工具（可选）：注册规则 → 编译为各层产物（edge manifest / gateway JSON / engine 输入） |
+| **Ollama** | 11434 | Go | 可选：本地 LLM 推理服务，运行 qwen3guard:0.6b 安全分类模型 |
 | **ML Serving** | 自定义 | FastAPI / Triton | 可选：BERT、XGBoost、scikit-learn 等传统模型推理，通过 `mlPredict` 调用 |
 | **Redis** | 6379 | — | 审计事件流、累计计数器（限流/频控）、缓存热加载 |
 | **Database** | — | SQLite / MySQL | 规则元数据、放量状态、rule_revision 版本管理 |
