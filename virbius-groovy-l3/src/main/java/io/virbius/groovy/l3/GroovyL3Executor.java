@@ -90,6 +90,8 @@ public final class GroovyL3Executor {
         return body.strip() + "\ndecide(ctx)\n";
     }
 
+    private static final MlModelUtil mlModel = new MlModelUtil();
+
     private static boolean runDecide(Class<? extends Script> scriptClass, PolicyContext ctx)
             throws ReflectiveOperationException {
         Script instance = scriptClass.getDeclaredConstructor().newInstance();
@@ -97,6 +99,7 @@ public final class GroovyL3Executor {
         binding.setVariable("ctx", ctx);
         binding.setVariable("listMatch", new ListMatchClosure(ctx));
         binding.setVariable("getCumulative", new GetCumulativeClosure(ctx));
+        binding.setVariable("mlPredict", new MlPredictClosure());
         instance.setBinding(binding);
         Object raw = instance.run();
         return toBoolean(raw);
@@ -145,6 +148,13 @@ public final class GroovyL3Executor {
 
         public long doCall(String cumulativeName) {
             return ctx.getCumulative(cumulativeName);
+        }
+    }
+
+    private static final class MlPredictClosure {
+        @SuppressWarnings("unchecked")
+        public Map<String, Object> doCall(String url, Map<String, Object> features) {
+            return mlModel.predict(url, features);
         }
     }
 
