@@ -5,11 +5,24 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 class GroovyL3ExecutorTest {
 
-    private final GroovyL3Executor executor = new GroovyL3Executor(500);
+    private static final GroovyL3Executor executor = new GroovyL3Executor(5000);
+
+    @BeforeAll
+    static void warmUp() {
+        // Warm up Groovy compilation + class loading before any test to avoid CI cold-start timeout
+        PolicyContext ctx = new PolicyContext("t", "s", "chat", "r", Map.of(), List.of());
+        try {
+            executor.precompile(GroovyL3Defaults.DEFAULT_DECIDE_SCRIPT);
+            executor.executeDecide(GroovyL3Defaults.DEFAULT_DECIDE_SCRIPT, ctx);
+        } catch (Exception ignored) {
+            // warm-up failure is non-fatal; actual tests will catch real issues
+        }
+    }
 
     @Test
     void dryRunReturnsReview() throws Exception {
