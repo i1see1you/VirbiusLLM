@@ -5,14 +5,15 @@
         <td>${esc(h.rule_id || '')}@${h.rule_revision ?? ''}</td>
         <td>${esc(h.reason_code || '')}</td>
         <td>${h.max_risk_score ?? ''}</td>
-        <td>${esc(rolloutStateLabel(h.rollout_state, h.canary_percent))}</td>`;
+        <td>${esc(rolloutStateLabel(h.rollout_state, h.canary_percent))}</td>
+        <td>${esc(h.user_id || '')}</td>`;
     }
 
     async function loadAuditRecent(limit) {
       const dbTbody = document.querySelector('#acDbTable tbody');
       const summary = document.getElementById('acSummary');
       summary.textContent = __('common.loading');
-      dbTbody.innerHTML = '<tr><td colspan="8" class="hint">' + __('common.loading') + '</td></tr>';
+      dbTbody.innerHTML = '<tr><td colspan="9" class="hint">' + __('common.loading') + '</td></tr>';
       try {
         const data = await admin('/audit/recent?limit=' + (limit || 100));
         document.getElementById('acDbCount').textContent = data.db_count ?? 0;
@@ -24,11 +25,11 @@
           dbTbody.appendChild(tr);
         });
         if (!(data.db_events || []).length) {
-          dbTbody.innerHTML = '<tr><td colspan="8" class="hint">' + __('ac.no-db-records') + '</td></tr>';
+          dbTbody.innerHTML = '<tr><td colspan="9" class="hint">' + __('ac.no-db-records') + '</td></tr>';
         }
       } catch (e) {
         summary.textContent = e.message;
-        dbTbody.innerHTML = `<tr><td colspan="8" class="hint">${esc(e.message)}</td></tr>`;
+        dbTbody.innerHTML = `<tr><td colspan="9" class="hint">${esc(e.message)}</td></tr>`;
       }
     }
 
@@ -42,7 +43,7 @@
       const summary = document.getElementById('acSummary');
       const dbTbody = document.querySelector('#acDbTable tbody');
       summary.textContent = __('ac.searching');
-      dbTbody.innerHTML = '<tr><td colspan="8" class="hint">' + __('common.loading') + '</td></tr>';
+      dbTbody.innerHTML = '<tr><td colspan="9" class="hint">' + __('common.loading') + '</td></tr>';
       try {
         const detail = await admin('/audit/trace/' + encodeURIComponent(tid));
         document.getElementById('acDbCount').textContent = detail.db_count ?? 0;
@@ -54,12 +55,12 @@
           dbTbody.appendChild(tr);
         });
         if (!(detail.db_events || []).length) {
-          dbTbody.innerHTML = '<tr><td colspan="8" class="hint">' + __('ac.no-db-records') + '</td></tr>';
+          dbTbody.innerHTML = '<tr><td colspan="9" class="hint">' + __('ac.no-db-records') + '</td></tr>';
         }
         log({ trace_id: tid, db_count: detail.db_count });
       } catch (e) {
         summary.textContent = e.message;
-        dbTbody.innerHTML = `<tr><td colspan="8" class="hint">${esc(e.message)}</td></tr>`;
+        dbTbody.innerHTML = `<tr><td colspan="9" class="hint">${esc(e.message)}</td></tr>`;
       }
     }
 

@@ -145,6 +145,9 @@ final class VirbiusConfigMerger {
         if (gateway.has("sse_mode")) {
             globalLayer.putIfAbsent("sse_mode", gateway.path("sse_mode").asText());
         }
+        if (gateway.has("auth_mode")) {
+            globalLayer.putIfAbsent("auth_mode", gateway.path("auth_mode").asText());
+        }
     }
 
     private static void applyServiceDefaults(
@@ -178,6 +181,7 @@ final class VirbiusConfigMerger {
         effective.putIfAbsent("evaluate", "true");
         effective.putIfAbsent("fail_mode", "open");
         effective.putIfAbsent("sse_mode", "pass-through");
+        effective.putIfAbsent("auth_mode", "optional");
         effective.putIfAbsent("tenant_id", tenantId);
         effective.putIfAbsent("bundle_version", bundleVersion);
         effective.putIfAbsent("lists_file", gatewayDir + "/" + tenantId + "-access-lists.json");

@@ -45,6 +45,7 @@ local schema = {
         fail_mode = { type = "string", enum = { "open", "close" }, default = "open" },
         tenant_id = { type = "string", default = "default" },
         scene = { type = "string" },
+        auth_mode = { type = "string", enum = { "optional", "required" }, default = "optional" },
         lists_file = {
             type = "string",
             default = "./data/gateway/default-access-lists.json",
@@ -107,11 +108,26 @@ function _M.access(conf, ctx)
         core.log.warn(plugin_name, " generated trace_id=", trace_id)
     end
 
-    local user_id = get_header(ctx, "X-Virbius-User-Id")
     local device_id = get_header(ctx, "X-Virbius-Device-Id")
     local session_id = get_header(ctx, "X-Virbius-Session-Id")
     local client_ip = ngx.var.remote_addr
     local content = read_prompt_content()
+
+    local user_id
+    if conf.auth_mode == "required" then
+        local consumer = ctx.authenticated_consumer
+        if not consumer or not consumer.id then
+            return core.response.exit(401, {
+                code = "UNAUTHENTICATED",
+                message = "authentication required",
+                trace_id = trace_id,
+            })
+        end
+        user_id = consumer.id
+        ngx.req.clear_header("X-Virbius-User-Id")
+    else
+        user_id = get_header(ctx, "X-Virbius-User-Id")
+    end
 
     ngx.req.clear_header("X-Virbius-Scene")
     local route_uri = ngx.var.uri

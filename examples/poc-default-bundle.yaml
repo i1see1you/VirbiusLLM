@@ -33,6 +33,7 @@ scene_registry:
 gateway:
   evaluate: true
   fail_mode: open
+  auth_mode: optional
   cloud_scan:
     agent_url: http://127.0.0.1:9070
     timeout_ms: 3000

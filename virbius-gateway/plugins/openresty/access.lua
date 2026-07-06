@@ -63,10 +63,23 @@ else
     ngx.log(ngx.WARN, "virbius openresty generated trace_id=", trace_id)
 end
 
-local user_id = get_header("X-Virbius-User-Id")
 local device_id = get_header("X-Virbius-Device-Id")
 local session_id = get_header("X-Virbius-Session-Id")
 local client_ip = ngx.var.remote_addr
+
+local user_id
+if conf.auth_mode == "required" then
+    user_id = get_header("X-Authenticated-User-Id")
+    if not user_id or user_id == "" then
+        return json_exit(401, {
+            code = "UNAUTHENTICATED",
+            message = "authentication required",
+            trace_id = trace_id,
+        })
+    end
+else
+    user_id = get_header("X-Virbius-User-Id")
+end
 local content = prompt.read_prompt_content()
 
 ngx.req.clear_header("X-Virbius-Scene")

@@ -148,6 +148,19 @@ VirbiusLLM supports two gateway backends:
 
 Both share the same Lua core (`virbius-gateway/lib/`) and runtime data (access lists, scene registry) written by `virbius-control`.
 
+### Auth mode
+
+`auth_mode` controls how `user_id` is resolved at the gateway. Set via `gateway.auth_mode` in the bundle:
+
+| Mode | Use case | user_id source |
+|------|----------|----------------|
+| `optional` (default) | dev | Client `X-Virbius-User-Id` header (as-is) |
+| `required` | staging / production | APISIX: `ctx.authenticated_consumer.id` (from `jwt-auth` / `oauth` plugin); OpenResty: `X-Authenticated-User-Id` header (set by reverse proxy) |
+
+When `auth_mode=required`, the gateway clears the client-provided `X-Virbius-User-Id` header and returns `401` if no authenticated identity is found.
+
+**Best practice**: Set `auth_mode: optional` in dev bundles and `auth_mode: required` in staging/production bundles.
+
 ### APISIX
 
 PoC route/service samples: [examples/gateway/poc-default/0.1.0/](examples/gateway/poc-default/0.1.0/).

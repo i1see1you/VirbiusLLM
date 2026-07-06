@@ -105,25 +105,43 @@ curl -s http://localhost:8080/api/v1/health
 Rust 实现的端侧规则引擎，提供 C ABI，可嵌入移动端/Web/小程序：
 
 ```rust
-use virbius_core::engine::Engine;
+use virbius_core::{VirbiusEdge, EdgeInitConfig, ScanContext, EffectiveAction};
 
-let mut engine = Engine::new("path/to/manifest.yaml");
-engine.load_blocklist("blocklist.txt");
-engine.load_sensitive_words("sensitive.txt");
+let edge = VirbiusEdge::init(EdgeInitConfig {
+    offline_manifest_path: Some("path/to/manifest.json".into()),
+    cache_dir: "./cache".into(),
+    tenant_id: "default".into(),
+    app_id: "demo".into(),
+    ..Default::default()
+})?;
 
-let result = engine.evaluate(&request);
+let ctx = ScanContext {
+    user_id: Some("user-1".into()),
+    scene: Some("chat".into()),
+    ..Default::default()
+};
+let result = edge.scan_with(ctx, "用户输入内容")?;
 match result.action {
-    Action::Block => println!("拦截"),
-    Action::Allow => println!("放行"),
-    Action::Mask   => println!("脱敏"),
+    EffectiveAction::Block => println!("拦截"),
+    EffectiveAction::Allow => println!("放行"),
+    EffectiveAction::Review => println!("审核"),
+    EffectiveAction::Captcha => println!("验证码"),
 }
 ```
 
-**本地运行 gate-way-agent**：
-
+**离线 demo**：
 ```bash
-cd gateway-agent
-cargo run -- --config-path ./config.yaml
+cd virbius-core
+cargo run --example rust_client_demo
+```
+
+**通过环境变量连接控制面同步规则**：
+```bash
+export VIRBIUS_CONTROL_BASE_URL=http://127.0.0.1:8080
+export VIRBIUS_TENANT_ID=default
+export VIRBIUS_APP_ID=beta
+export VIRBIUS_EDGE_CACHE_DIR=./cache/beta
+cargo run --example rust_client_demo
 ```
 
 详见 [docs/user-guide.md](docs/user-guide.md)。
@@ -134,35 +152,63 @@ cargo run -- --config-path ./config.yaml
 
 **APISIX**：
 ```yaml
-# 在 routes 中引用
+# 在 routes 或 service 中引用
 plugins:
   - virbius-guard
 virbius-guard:
-  agent_host: 127.0.0.1
-  agent_port: 9081
-  enable: true
+  agent_url: http://127.0.0.1:9070
+  bundle_version: "0.1.0"
+  evaluate: true
+  tenant_id: default
+  auth_mode: optional   # optional（默认）或 required
 ```
 
-**OpenResty**（直接 Lua 加载，不需额外网关层）：
+**OpenResty**（编译时展平，通过 `access.lua` 直接加载）：
 ```nginx
 http {
-    lua_package_path "/path/to/virbius-gateway/lualib/?.lua;;";
-    init_worker_by_lua_block {
-        local guard = require("virbius.guard")
-        guard.init()
-    }
     server {
-        location /v1/chat {
-            access_by_lua_block {
-                local guard = require("virbius.guard")
-                guard.handle()
-            }
+        location /v1/chat/completions {
+            set $virbius_effective "/path/to/effective-v1-chat-completions.json";
+
+            access_by_lua_file /path/to/virbius-gateway/plugins/openresty/access.lua;
+
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_pass http://llm_upstream;
         }
     }
 }
 ```
 
+`effective-*.json` 和 Nginx 配置由 `virbius-compiler` 生成：
+```bash
+./scripts/compile-openresty-poc.sh
+```
+
 API 生命周期由 **virbius-control** Admin API 统一管理；详见 [docs/seed-api.md](docs/seed-api.md)。
+
+### 认证模式（auth_mode）
+
+通过 `gateway.auth_mode` 控制网关如何获取 `user_id`：
+
+| 模式 | 适用环境 | user_id 来源 |
+|------|----------|-------------|
+| `optional`（默认） | dev | 客户端 `X-Virbius-User-Id` Header（当前行为） |
+| `required` | stag / prod | APISIX：`ctx.authenticated_consumer.id`（由 `jwt-auth` 等插件注入）；OpenResty：`X-Authenticated-User-Id` Header（由反向代理设置） |
+
+`auth_mode=required` 时，网关会清除客户端传入的 `X-Virbius-User-Id` Header，并在未检测到已认证身份时返回 `401`。
+
+**最佳实践**：dev 环境用 `auth_mode: optional`，stag/prod 环境用 `auth_mode: required`。
+
+```yaml
+# dev 环境
+gateway:
+  auth_mode: optional
+
+# stag/prod 环境
+gateway:
+  auth_mode: required
+```
 
 ## 环境要求
 
