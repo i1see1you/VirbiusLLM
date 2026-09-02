@@ -84,6 +84,23 @@ public final class PromptAuditJsonParser {
     }
 
     public record PromptAuditResult(boolean hitRule, String triggeredId, String reason) {
+        /** Category label to route on: prefer the model-native triggered_id, fall back to reason. */
+        public String category() {
+            if (triggeredId != null && !isDummyLabel(triggeredId)) {
+                return triggeredId;
+            }
+            if (reason != null && !reason.isBlank() && !isDummyLabel(reason)) {
+                return reason;
+            }
+            return null;
+        }
+
+        private static boolean isDummyLabel(String value) {
+            return "SYSTEM".equalsIgnoreCase(value)
+                    || "none".equalsIgnoreCase(value)
+                    || "null".equalsIgnoreCase(value);
+        }
+
         static PromptAuditResult miss() {
             return new PromptAuditResult(false, null, null);
         }

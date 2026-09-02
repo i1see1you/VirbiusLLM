@@ -2,6 +2,7 @@
 target/
 *.class
 *.jar
+dependency-reduced-pom.xml
 !.mvn/wrapper/maven-wrapper.jar
 
 # Rust (gateway-agent)
@@ -23,6 +24,16 @@ virbius-gateway-agent/target/
 # Env
 .env
 .env.local
+
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
 
 # Internal openspec (local only; not published to GitHub)
 docs/openspec/

@@ -643,3 +643,18 @@ WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND 
 INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
 SELECT 'default', 'prompt-jailbreak', 1, 'poc-default', 'cloud', 'prompt', 'JAILBREAK', 'full', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
 WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'prompt-jailbreak');
+
+INSERT INTO tb_rule_history (
+    tenant_id, rule_id, rule_revision, bundle_id, layer, runtime,
+    reason_code, risk_score, intent_action, scope_json, body_json,
+    rollout_state, canary_percent, effective_from, modified_at
+)
+SELECT 'default', 'prompt-agent', 1, 'poc-default', 'cloud', 'prompt',
+    'AGENT_TOOL_MISUSE', 90, 'deny', '{"bind_scope":"global"}',
+    '"滥用 agent/工具能力(越权调用系统 API、批量自动化、绕过工具权限约束等)相关内容。"',
+    'full', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rule_history WHERE tenant_id = 'default' AND rule_id = 'prompt-agent' AND rule_revision = 1);
+
+INSERT INTO tb_rules_current (tenant_id, rule_id, current_revision, bundle_id, layer, runtime, reason_code, rollout_state, updated_at)
+SELECT 'default', 'prompt-agent', 1, 'poc-default', 'cloud', 'prompt', 'AGENT_TOOL_MISUSE', 'full', CURRENT_TIMESTAMP FROM (SELECT 1) AS _one
+WHERE NOT EXISTS (SELECT 1 FROM tb_rules_current WHERE tenant_id = 'default' AND rule_id = 'prompt-agent');

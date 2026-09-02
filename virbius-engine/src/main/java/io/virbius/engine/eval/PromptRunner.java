@@ -103,14 +103,14 @@ public class PromptRunner {
             return List.of();
         }
 
-        SignalDto signal = buildSignal(audit.reason(), promptRules, assistant);
+        SignalDto signal = buildSignal(audit.category(), promptRules, assistant);
         return signal != null ? List.of(signal) : List.of();
     }
 
     private SignalDto buildSignal(String category, List<RuleEntry> promptRules, String raw) {
         if (category != null && !category.isBlank()) {
             Map<String, String> mapping = llmProps.categoryRuleMapping();
-            String ruleId = mapping.get(category);
+            String ruleId = PromptCategoryUtil.ruleIdFor(mapping, category);
             if (ruleId != null) {
                 for (RuleEntry rule : promptRules) {
                     if (rule.ruleId().equals(ruleId)) {

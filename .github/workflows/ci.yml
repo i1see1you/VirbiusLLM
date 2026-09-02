@@ -47,6 +47,21 @@ jobs:
         working-directory: virbius-gateway-agent
         run: cargo test --release
 
+  cargo-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+      - name: Audit virbius-core
+        working-directory: virbius-core
+        run: cargo audit
+      - name: Audit virbius-gateway-agent
+        working-directory: virbius-gateway-agent
+        run: cargo audit
+
   lint:
     runs-on: ubuntu-latest
     steps:

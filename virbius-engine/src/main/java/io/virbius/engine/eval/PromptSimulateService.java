@@ -45,9 +45,9 @@ public class PromptSimulateService {
         PromptAuditResult audit = auditParser.parse(assistant);
         boolean mapped = false;
         Map<String, String> mapping = llmProps.categoryRuleMapping();
-        String category = audit.reason();
+        String category = audit.category();
         if (category != null) {
-            String mappedId = mapping.get(category);
+            String mappedId = PromptCategoryUtil.ruleIdFor(mapping, category);
             mapped = ruleId.equals(mappedId);
         }
         boolean hit = audit.hitRule() && mapped;

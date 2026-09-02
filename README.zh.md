@@ -58,7 +58,7 @@ flowchart TD
 |------|------|
 | **端-管-云三层纵深防御** | 不是单一拦截器，而是端侧 SDK（毫秒级本地拦截）→ 网关插件（必经流量实时过滤）→ 云端引擎（语义级精准检测）三层协同 |
 | **统一信号合并** | PolicyMerger 将端、管、云各层信号按风险分合并为单一决策（deny > captcha > review > allow），避免多层各自拦截的冲突与重复 |
-| **LLM + 传统模型混合** | Prompt L1 调用 LLM 做语义分类（qwen3guard），Groovy L3 可调用 BERT/XGBoost 等传统模型（mlPredict），覆盖从内容安全到行为风控的全场景 |
+| **LLM + 传统模型混合** | Prompt L1 调用 LLM 做语义分类（virbiusguard），Groovy L3 可调用 BERT/XGBoost 等传统模型（mlPredict），覆盖从内容安全到行为风控的全场景 |
 | **渐进放量体系** | draft → dry_run → canary → full 四级放量，规则上线零风险，支持按比例灰度验证 |
 | **离线可用 + 在线精准** | 端侧 SDK 可离线运行（无网络仍能拦截关键词/正则），网关和云端提供在线语义检测，兼顾低延迟与高精度 |
 | **OpenAI 兼容透明代理** | 业务代码无需改动，LLM 请求 URL 改为网关地址即可接入，完全兼容 `/v1/chat/completions` |
@@ -222,7 +222,7 @@ gateway:
 ## Prompt L1 安全分类
 
 
-云侧 Prompt L1 基于微调安全模型（默认 `sileader/qwen3guard:0.6b`）对用户输入进行语义分类。系统定义了 9 大安全分类，命中后根据规则配置执行对应处置动作：
+云侧 Prompt L1 基于微调安全模型（默认 `virbiusguard:latest`）对用户输入进行语义分类。系统定义了 9 大安全分类，命中后根据规则配置执行对应处置动作：
 
 | 分类 | 规则 ID | 风险分 | 动作 | 说明 | 示例 |
 |------|---------|--------|------|------|------|
@@ -240,7 +240,7 @@ gateway:
 
 ### 模型说明
 
-**模型信息**：默认使用 [sileader/qwen3guard](https://ollama.com/sileader/qwen3guard)，通过 OpenAI 兼容 API（`/v1/chat/completions`）调用。Qwen3Guard（Qwen3 家族安全指令微调模型），600M 参数，推理延迟 < 200ms。
+**模型信息**：默认使用 [VirbiusGuard](https://modelscope.cn/models/i1see1you/VirbiusGuard)，通过 OpenAI 兼容 API（`/v1/chat/completions`）调用。基于 Qwen3Guard-Gen-0.6B 知识蒸馏（LoRA rank 32），V13 版本在 gold_500 评测集上达到 acc 99.0% / recall 99.6% / FP 8.1%，特别补强了 jailbreak（系统提示词抽取/角色扮演）与 Agent 工具滥用（越权调用/IMDS 探测）场景。
 
 **环境推荐**：测试环境使用 **Ollama**（一键 `pull && serve`），生产环境使用 **vLLM**（高并发、低延迟、兼容 OpenAI API）。切换只需修改 `VIRBIUS_PROMPT_LLM_BASE_URL` 指向对应 endpoint 即可。
 
@@ -284,7 +284,7 @@ export VIRBIUS_PROMPT_LLM_MODEL=meta-llama/Llama-Guard-3-8B
 
 **总结**：Prompt L1 负责「这句话本身安不安全」，不负责「这个 Agent 行为安不安全」或「这段代码能不能跑」。后两者需要 Groovy L3 规则、累计计数器和 `mlPredict` 传统模型协同完成。
 
-> **进行中**：我们正在以 GLM5.2 作为教师模型、Qwen3Guard 作为学生模型，通过知识蒸馏覆盖并优化目前 Qwen3Guard 不支持的 Prompt 语义场景（如 Agent 行为安全、多语言混合输入等），逐步扩大 Prompt L1 的检测范围。
+> **已完成**：我们已发布 [VirbiusGuard](https://modelscope.cn/models/i1see1you/VirbiusGuard)，基于 Qwen3Guard-Gen-0.6B 知识蒸馏（LoRA rank 32），V13 版本在 gold_500 评测集上达到 acc 99.0% / recall 99.6% / FP 8.1%，特别补强了 jailbreak（系统提示词抽取/角色扮演）与 Agent 工具滥用（越权调用/IMDS 探测）场景。模型已开源至 [ModelScope](https://modelscope.cn/models/i1see1you/VirbiusGuard) 和 [HuggingFace](https://huggingface.co/i1see1you/VirbiusGuard)。
 
 ## Groovy L3 规则
 
@@ -582,7 +582,7 @@ flowchart TB
     end
 
     subgraph Models["模型服务（可选）"]
-        OLLAMA["Ollama :11434（可选）<br/>qwen3guard:0.6b<br/>Prompt L1 安全分类"]
+        OLLAMA["Ollama :11434（可选）<br/>virbiusguard:latest<br/>Prompt L1 安全分类"]
         ML["ML Serving（可选）<br/>BERT/XGBoost<br/>mlPredict 调用"]
     end
 
@@ -642,8 +642,8 @@ flowchart TB
 | 场景 | 命令 | 说明 |
 |------|------|------|
 | 完整本地部署 | `bash scripts/run-local.sh` | 自动构建 + 启动 engine + control + agent + Redis |
-| Ollama 模型（测试） | `ollama pull sileader/qwen3guard:0.6b && ollama serve` | 测试环境一键启动安全分类模型 |
-| vLLM 模型（生产） | `vllm serve sileader/qwen3guard:0.6b --port 8000` 并设置 `VIRBIUS_PROMPT_LLM_BASE_URL=http://127.0.0.1:8000` | 生产环境推荐：高并发、低延迟，兼容 OpenAI API |
+| Ollama 模型（测试） | `ollama pull virbiusguard:latest && ollama serve` | 测试环境一键启动安全分类模型 |
+| vLLM 模型（生产） | `vllm serve virbiusguard:latest --port 8000` 并设置 `VIRBIUS_PROMPT_LLM_BASE_URL=http://127.0.0.1:8000` | 生产环境推荐：高并发、低延迟，兼容 OpenAI API |
 | ML 模型服务 | 自行部署 FastAPI/Triton | 通过 Groovy `mlPredict` 调用 |
 
 ## 路线图

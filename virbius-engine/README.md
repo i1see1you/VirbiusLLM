@@ -17,7 +17,7 @@
 
 ```bash
 export VIRBIUS_PROMPT_LLM_BASE_URL=http://127.0.0.1:11434
-export VIRBIUS_PROMPT_LLM_MODEL=sileader/qwen3guard:0.6b
+export VIRBIUS_PROMPT_LLM_MODEL=virbiusguard:latest
 mvn -q -pl virbius-engine spring-boot:run
 ```
 

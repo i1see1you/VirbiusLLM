@@ -58,7 +58,7 @@ Rules are versioned in **`rule_history` / `rule_revision`**. Publishing flows th
 |---------|-------------|
 | **Edge–Gateway–Cloud defense in depth** | Three-layer coordinated architecture: Edge SDK (millisecond local interception) → Gateway plugin (on-path real-time filtering) → Cloud engine (semantic-level precision) |
 | **Unified signal merge** | PolicyMerger consolidates signals from all layers by risk score into a single decision (deny > captcha > review > allow), eliminating conflicts and redundancy |
-| **LLM + traditional ML hybrid** | Prompt L1 uses LLM for semantic classification (qwen3guard), Groovy L3 calls traditional models like BERT/XGBoost (mlPredict), covering content safety to behavioral risk |
+| **LLM + traditional ML hybrid** | Prompt L1 uses LLM for semantic classification (virbiusguard), Groovy L3 calls traditional models like BERT/XGBoost (mlPredict), covering content safety to behavioral risk |
 | **Progressive rollout** | Four-stage rollout: draft → dry_run → canary → full. Rules go live with zero risk, supporting percentage-based canary validation |
 | **Offline-capable + online precision** | Edge SDK runs offline (keywords/regex without network), while gateway and cloud provide online semantic detection — low latency meets high precision |
 | **OpenAI-compatible transparent proxy** | No business code changes — point your LLM request URL to the gateway. Fully compatible with `/v1/chat/completions` |
@@ -193,7 +193,7 @@ See [docs/repo-layout.md](docs/repo-layout.md) for environment details.
 ## Prompt L1 safety classification
 
 
-Cloud-side Prompt L1 uses a fine-tuned safety model (default `sileader/qwen3guard:0.6b`) for semantic classification of user inputs. The system defines 9 safety categories; when a category is matched, the corresponding disposition action is applied:
+Cloud-side Prompt L1 uses a fine-tuned safety model (default `virbiusguard:latest`) for semantic classification of user inputs. The system defines 9 safety categories; when a category is matched, the corresponding disposition action is applied:
 
 | Category | Rule ID | Risk | Action | Description | Example |
 |----------|---------|------|--------|-------------|---------|
@@ -211,7 +211,7 @@ The category-to-rule mapping is in `application.yml` under `virbius.prompt-llm.c
 
 ### Model details
 
-**Model**: Defaults to [sileader/qwen3guard](https://ollama.com/sileader/qwen3guard), called via OpenAI-compatible API (`/v1/chat/completions`). Qwen3Guard (Qwen3-family safety instruction-tuned model), 600M parameters, inference latency < 200ms.
+**Model**: Defaults to [**VirbiusGuard**](https://modelscope.cn/models/i1see1you/VirbiusGuard), a LoRA-distilled model based on Qwen3Guard-Gen-0.6B (rank 32), called via OpenAI-compatible API (`/v1/chat/completions`). V13 achieves acc 99.0% / recall 99.6% / FP 8.1% on gold_500 benchmark, with enhanced detection for jailbreak and Agent tool misuse scenarios. Model is open-source on [ModelScope](https://modelscope.cn/models/i1see1you/VirbiusGuard) and [HuggingFace](https://huggingface.co/i1see1you/VirbiusGuard).
 
 **Environment recommendation**: Use **Ollama** for testing (one `pull && serve`), **vLLM** for production (high throughput, low latency, OpenAI-compatible). Switch by setting `VIRBIUS_PROMPT_LLM_BASE_URL` to the target endpoint.
 
@@ -255,7 +255,7 @@ The safety model is specialized in **content safety** (whether the input text it
 
 **Summary**: Prompt L1 answers "is this input itself safe?" — it does NOT answer "is this Agent behavior safe?" or "can this code run?". The latter requires coordination between Groovy L3 rules, cumulative counters, and `mlPredict` traditional models.
 
-> **In progress**: We are using GLM5.2 as a teacher model and Qwen3Guard as a student model, applying knowledge distillation to cover and optimize prompt semantic scenarios currently unsupported by Qwen3Guard (e.g. Agent behavior safety, multilingual mixed input), gradually expanding Prompt L1's detection scope.
+> **Completed**: We have released [VirbiusGuard](https://modelscope.cn/models/i1see1you/VirbiusGuard), a knowledge-distilled model from Qwen3Guard-Gen-0.6B (LoRA rank 32). V13 achieves acc 99.0% / recall 99.6% / FP 8.1% on gold_500 benchmark, with enhanced detection for jailbreak (system prompt extraction / role-play) and Agent tool misuse (privilege escalation / IMDS probing) scenarios. Open-sourced on [ModelScope](https://modelscope.cn/models/i1see1you/VirbiusGuard) and [HuggingFace](https://huggingface.co/i1see1you/VirbiusGuard).
 
 ## Groovy L3 rules
 
@@ -555,7 +555,7 @@ flowchart TB
     end
 
     subgraph Models["Model serving (optional)"]
-        OLLAMA["Ollama :11434 (optional)<br/>qwen3guard:0.6b<br/>Prompt L1 safety classification"]
+        OLLAMA["Ollama :11434 (optional)<br/>virbiusguard:latest<br/>Prompt L1 safety classification"]
         ML["ML Serving (optional)<br/>BERT/XGBoost<br/>mlPredict calls"]
     end
 
@@ -615,8 +615,8 @@ User input
 | Scenario | Command | Notes |
 |----------|---------|-------|
 | Full local deployment | `bash scripts/run-local.sh` | Auto-build + start engine + control + agent + Redis |
-| Ollama model (test) | `ollama pull sileader/qwen3guard:0.6b && ollama serve` | One-command local model for testing |
-| vLLM model (production) | `vllm serve sileader/qwen3guard:0.6b --port 8000` and set `VIRBIUS_PROMPT_LLM_BASE_URL=http://127.0.0.1:8000` | Recommended for production: high throughput, low latency, OpenAI-compatible |
+| Ollama model (test) | `ollama pull virbiusguard:latest && ollama serve` | One-command local model for testing |
+| vLLM model (production) | `vllm serve virbiusguard:latest --port 8000` and set `VIRBIUS_PROMPT_LLM_BASE_URL=http://127.0.0.1:8000` | Recommended for production: high throughput, low latency, OpenAI-compatible |
 | ML model serving | Deploy FastAPI/Triton manually | Call via Groovy `mlPredict` |
 
 ## Roadmap

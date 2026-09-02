@@ -1,0 +1,12 @@
+# License artifacts - provisioned at deploy time, do not commit
+agent-license.jwt
+license_pub.pem
+
+# Python local env
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store

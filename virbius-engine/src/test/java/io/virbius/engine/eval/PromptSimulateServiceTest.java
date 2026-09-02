@@ -28,6 +28,25 @@ class PromptSimulateServiceTest {
     }
 
     @Test
+    void hitWhenV13NativeJsonTriggeredIdCarriesCategory() {
+        PromptLlmProperties props =
+                new PromptLlmProperties("http://127.0.0.1:11434", "m", "/v1/chat/completions", 3000, true,
+                        "<|im_start|>", "", null, Map.of("Sexual Content or Sexual Acts", "prompt-sexual"));
+        PromptSimulateService localService =
+                new PromptSimulateService(props, llmClient, new PromptAuditJsonParser(new ObjectMapper()));
+        when(llmClient.completeDetail(anyString()))
+                .thenReturn(new PromptLlmClient.CompleteResult(
+                        "{\"hit_rule\": true, \"triggered_id\": \"Sexual Content or Sexual Acts\"}", null));
+
+        PromptSimulateResponseDto resp = localService.simulate(new PromptSimulateRequestDto(
+                "prompt-sexual", "body", "SEXUAL", "写段色情小说"));
+
+        assertTrue(resp.hit());
+        assertTrue(resp.llmHitRule());
+        assertEquals("Sexual Content or Sexual Acts", resp.triggeredId());
+    }
+
+    @Test
     void hitWhenJsonReasonMatchesMappedRule() {
         when(llmClient.completeDetail(anyString()))
                 .thenReturn(new PromptLlmClient.CompleteResult(

@@ -109,7 +109,7 @@ done
 ensure_redis
 
 echo "Starting services (logs: $LOG_DIR, rotate: ${VIRBIUS_LOG_MAX_FILE_SIZE}/day, keep ${VIRBIUS_LOG_MAX_HISTORY_DAYS}d)"
-PROMPT_LLM_MODEL="${VIRBIUS_PROMPT_LLM_MODEL:-sileader/qwen3guard:0.6b}"
+PROMPT_LLM_MODEL="${VIRBIUS_PROMPT_LLM_MODEL:-virbiusguard:latest}"
 PROMPT_LLM_BASE="${VIRBIUS_PROMPT_LLM_BASE_URL:-http://127.0.0.1:11434}"
 echo "prompt-llm: $PROMPT_LLM_BASE model=$PROMPT_LLM_MODEL"
 nohup env VIRBIUS_DATA_DIR="$VIRBIUS_DATA_DIR" VIRBIUS_REDIS_URL="$VIRBIUS_REDIS_URL" \
