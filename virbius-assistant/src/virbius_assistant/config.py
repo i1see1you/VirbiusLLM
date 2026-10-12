@@ -31,6 +31,9 @@ class Settings:
 
     api_host: str = os.environ.get("VIRBIUS_API_HOST", "0.0.0.0")
     mcp_host: str = os.environ.get("VIRBIUS_MCP_HOST", "0.0.0.0")
+    # Point the Agent MCP client at virbius-mcp-proxy (or the 管层 reverse proxy).
+    # Empty = connect straight to this process's FastMCP (http://localhost:{mcp_port}/sse).
+    mcp_url: str = os.environ.get("VIRBIUS_MCP_URL", "")
 
     agent_app_id: str = os.environ.get("VIRBIUS_AGENT_APP_ID", "agent1")
     agent_tenant_id: str = os.environ.get("VIRBIUS_AGENT_TENANT_ID", "default")

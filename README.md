@@ -412,7 +412,7 @@ The online decision center aggregates data from edge and gateway, computes risk 
 
 - **Multi-dimensional correlation**: real-time fusion of edge behavior logs, gateway traffic logs, user profiles, and historical risk records.
 - **Dynamic policy computation**: comprehensive risk scoring per session (including multi-turn jailbreak and topic drift). Supports tenant + scene + role 3D policy, adjustable thresholds.
-- **Security auto-reply**: for high-sensitivity queries, return preset compliant responses without calling the LLM, ensuring safety while reducing latency.
+- **Security auto-reply**: for high-sensitivity queries, return preset compliant responses without calling the LLM, ensuring safety while reducing latency. (Input side implemented in M1a: `exact`/`contains`/`regex` match with OpenAI-compatible JSON/SSE synthesis; semantic retrieval and canned-denial phrasing are planned.)
 
 ### ④ Cloud async: intelligence evolution & model tuning
 
@@ -481,7 +481,7 @@ Building on the "edge–gateway–cloud" architecture, the system can be further
 
 - Comprehensive risk scoring (including session-level risk score, multi-turn jailbreak, and topic drift).
 - Dynamic policy and fail-open / fail-close configuration per tenant.
-- Disposition rendering: allow, block, alert, mask, or **security auto-reply** (return a preset compliant response without calling the LLM).
+- Disposition rendering: allow, block, alert, mask, or **security auto-reply** (return a preset compliant response without calling the LLM). Input-side auto-reply is implemented in M1a (`reply` action, `exact`/`contains`/`regex`, OpenAI-compatible JSON/SSE synthesis).
 - Skill version management, canary ratio, rollback points; gray-zone samples pushed to the human-in-the-loop queue.
 - Hosts nearline skills (allowing more complex logic than L1/L2).
 

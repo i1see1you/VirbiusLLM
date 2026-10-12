@@ -321,6 +321,15 @@ Sidecar may also pull via Control: `GET /api/v1/gateway/tenants/{tenantId}/polic
 | 428 | Captcha required |
 | 400 | e.g. invalid `X-Virbius-Trace-Id` |
 
+### 4.8 QA proxy reply (M1a)
+
+When the request matches a QA library entry and the final decision is `allow` with `degraded=false`, the gateway **does not call the upstream LLM** and returns the preset answer instead (OpenAI-compatible JSON; synthesized SSE when `stream=true`), including `virbius.proxy_replied` / `qa_entry_id`.
+
+- Management: control `/api/v1/admin/tenants/{tenantId}/qa` (`match_mode`: `exact|contains|regex`; publishing requires `PLATFORM_ADMIN` and takes effect after instance acks).
+- Input: the gateway sends `last_user_message` (last user message) for matching; `content` remains the concatenation of all user messages (used for risk detection).
+- Suppression: `deny`/`captcha`/`review` or engine degradation (fail-open) disables the reply; the normal chain applies.
+- See [openspec/qa-reply.md](./openspec/qa-reply.md).
+
 ---
 
 ## 5. trace_id and audit

@@ -8,6 +8,8 @@
 | 接口 | 端口 |
 |------|------|
 | HTTP Evaluate | `8082` (`POST /v1/evaluate`) |
+| HTTP Precheck（QA 发布期答案送检，离线） | `8082` (`POST /v1/precheck`) |
+| HTTP Simulate（prompt 规则试跑） | `8082` (`POST /v1/simulate/prompt`) |
 | HTTP admin | `8082` (`/admin/policy-version`) |
 | gRPC Evaluate | `50051`（MVP 走 HTTP；gRPC 规划中） |
 

@@ -14,6 +14,7 @@ mod engine;
 mod list_redis;
 mod logging;
 mod policy_engine;
+mod qa;
 mod script;
 mod trace;
 
@@ -33,6 +34,7 @@ use std::{collections::HashMap, env, net::SocketAddr, sync::Arc};
 struct AppState {
     engine: EngineClient,
     lists: Arc<access_lists::AccessListChecker>,
+    qa: Arc<qa::QaChecker>,
     deploy_resolver: Arc<deploy::NodePoolResolver>,
     deploy_watcher: Arc<deploy::DeployRolloutWatcher>,
 }
@@ -63,6 +65,8 @@ struct AgentEvaluateRequest {
     consumer_id: Option<String>,
     #[serde(default)]
     api_key_group: Option<String>,
+    #[serde(default)]
+    last_user_message: Option<String>,
 }
 
 fn default_role() -> String {
@@ -94,6 +98,10 @@ struct AgentEvaluateResponse {
     degraded: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     enforce_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reply_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    qa_entry_id: Option<String>,
 }
 
 async fn health() -> Json<HealthBody> {
@@ -153,6 +161,33 @@ async fn evaluate(
         Some(&req.scene),
     );
 
+    let qa_candidate = if req.role.is_empty() || req.role == "user" {
+        state.qa.match_candidate(req.last_user_message.as_deref())
+    } else {
+        None
+    };
+    let prior_terminal = req
+        .prior_signals
+        .as_ref()
+        .is_some_and(|v| v.iter().any(signal_is_terminal));
+    let qa_candidate = if prior_terminal {
+        if let Some(c) = qa_candidate.as_ref() {
+            qa::emit_qa_event(
+                &req.trace_id,
+                &req.scene,
+                c,
+                "QA_SUPPRESSED",
+                "deny",
+                req.session_id.as_deref(),
+                req.user_id.as_deref(),
+                req.device_id.as_deref(),
+            );
+        }
+        None
+    } else {
+        qa_candidate
+    };
+
     if let Some(gw) = state.lists.check(
         &bind_context(&req, &vars_ctx),
         &req.content,
@@ -165,6 +200,18 @@ async fn evaluate(
         req.vars.as_ref(),
     ) {
         if enforce::is_terminal(&gw.effective_action) {
+            if let Some(c) = qa_candidate.as_ref() {
+                qa::emit_qa_event(
+                    &req.trace_id,
+                    &req.scene,
+                    c,
+                    "QA_SUPPRESSED",
+                    &gw.effective_action,
+                    req.session_id.as_deref(),
+                    req.user_id.as_deref(),
+                    req.device_id.as_deref(),
+                );
+            }
             audit::emit_from_gateway(
                 &req.trace_id,
                 &req.scene,
@@ -179,12 +226,22 @@ async fn evaluate(
         if gw.effective_action == "review" {
             let mut prior = req.prior_signals.take().unwrap_or_default();
             prior.extend(gw.prior_signals);
-            return forward_engine(state, req, vars_ctx, Some(prior)).await;
+            return forward_engine(state, req, vars_ctx, Some(prior), qa_candidate).await;
         }
     }
 
     let prior_signals = req.prior_signals.take();
-    forward_engine(state, req, vars_ctx, prior_signals).await
+    forward_engine(state, req, vars_ctx, prior_signals, qa_candidate).await
+}
+
+fn signal_is_terminal(s: &engine::Signal) -> bool {
+    let a = s
+        .intent_action
+        .as_deref()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    a == "deny" || a == "captcha" || a == "block"
 }
 
 async fn forward_engine(
@@ -192,6 +249,7 @@ async fn forward_engine(
     req: AgentEvaluateRequest,
     vars_ctx: HashMap<String, String>,
     prior_signals: Option<Vec<engine::Signal>>,
+    qa_candidate: Option<qa::QaCandidate>,
 ) -> Response {
     let trace_id = req.trace_id.clone();
     let scene = req.scene.clone();
@@ -231,9 +289,75 @@ async fn forward_engine(
                 &device_id,
                 &agent,
             ));
+            if let Some(c) = qa_candidate.as_ref() {
+                let in_bucket = enforce::in_canary_bucket(session_id.as_deref(), c.canary_percent);
+                match qa::decide_consume(
+                    &agent.effective_action,
+                    agent.degraded,
+                    &c.rollout_state,
+                    in_bucket,
+                ) {
+                    qa::ConsumeDecision::Reply => {
+                        log::info!(
+                            "virbius qa reply: entry={} mode={} trace_id={}",
+                            c.entry_id,
+                            c.mode,
+                            trace_id
+                        );
+                        qa::emit_qa_event(
+                            &trace_id,
+                            &scene,
+                            c,
+                            "QA_REPLY",
+                            "reply",
+                            session_id.as_deref(),
+                            user_id.as_deref(),
+                            device_id.as_deref(),
+                        );
+                        return Json(qa_reply_response(&trace_id, c)).into_response();
+                    }
+                    qa::ConsumeDecision::Suppressed(reason) => {
+                        qa::emit_qa_event(
+                            &trace_id,
+                            &scene,
+                            c,
+                            "QA_SUPPRESSED",
+                            reason,
+                            session_id.as_deref(),
+                            user_id.as_deref(),
+                            device_id.as_deref(),
+                        );
+                    }
+                    qa::ConsumeDecision::DryRunCandidate => {
+                        qa::emit_qa_event(
+                            &trace_id,
+                            &scene,
+                            c,
+                            "QA_DRY_RUN_CANDIDATE",
+                            "allow",
+                            session_id.as_deref(),
+                            user_id.as_deref(),
+                            device_id.as_deref(),
+                        );
+                    }
+                    qa::ConsumeDecision::Skip => {}
+                }
+            }
             Json(agent).into_response()
         }
         Err(_) => {
+            if let Some(c) = qa_candidate.as_ref() {
+                qa::emit_qa_event(
+                    &trace_id,
+                    &scene,
+                    c,
+                    "QA_SUPPRESSED",
+                    "degraded",
+                    session_id.as_deref(),
+                    user_id.as_deref(),
+                    device_id.as_deref(),
+                );
+            }
             audit::emit_allow(
                 &trace_id,
                 &scene,
@@ -251,9 +375,26 @@ async fn forward_engine(
                 trace_id,
                 degraded: true,
                 enforce_mode: None,
+                reply_text: None,
+                qa_entry_id: None,
             })
             .into_response()
         }
+    }
+}
+
+fn qa_reply_response(trace_id: &str, c: &qa::QaCandidate) -> AgentEvaluateResponse {
+    AgentEvaluateResponse {
+        effective_action: "reply".into(),
+        max_risk_score: 0,
+        rule_id: None,
+        rule_revision: Some(c.revision),
+        reason_code: Some("QA_REPLY".into()),
+        trace_id: trace_id.to_string(),
+        degraded: false,
+        enforce_mode: None,
+        reply_text: Some(c.answer.clone()),
+        qa_entry_id: Some(c.entry_id.clone()),
     }
 }
 
@@ -298,6 +439,8 @@ fn gateway_response(
         trace_id: trace_id.to_string(),
         degraded,
         enforce_mode: primary.map(|p| p.enforce_mode.clone()),
+        reply_text: None,
+        qa_entry_id: None,
     }
 }
 
@@ -311,6 +454,8 @@ fn to_agent_response(resp: EvaluateResponse, degraded: bool) -> AgentEvaluateRes
         trace_id: resp.trace_id,
         degraded,
         enforce_mode: resp.enforce_mode,
+        reply_text: None,
+        qa_entry_id: None,
     }
 }
 
@@ -361,6 +506,7 @@ async fn main() {
     let state = Arc::new(AppState {
         engine: EngineClient::new(engine_url.clone()),
         lists: Arc::new(access_lists::AccessListChecker::from_env()),
+        qa: Arc::new(qa::QaChecker::from_env()),
         deploy_resolver,
         deploy_watcher,
     });

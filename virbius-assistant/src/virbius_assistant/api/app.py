@@ -18,7 +18,7 @@ async def lifespan(app: FastAPI):
 
     mcp_port = getattr(app.state, "mcp_port", 9091)
     client = McpClient(
-        server_url=f"http://localhost:{mcp_port}/sse",
+        server_url=settings.mcp_url or f"http://localhost:{mcp_port}/sse",
         app_id=settings.agent_app_id,
         tenant_id=settings.agent_tenant_id,
         license_jwt=settings.agent_license_jwt,

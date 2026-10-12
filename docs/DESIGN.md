@@ -383,7 +383,7 @@ flowchart LR
 | **L0** | 词库、正则、明显违规 | **端** Native | `edge` |
 | **L1** | 轻量分类、签名规则 | **云** 检测服务（管 RPC 调用） | `cloud` |
 | **L2** | 语义判别、指令重构 | **云** Prompt + LLM/ONNX | `cloud` |
-| **L3** | 策略合并、三维策略、代答 | **云** `virbius-engine` Groovy 引擎 | `cloud` + `runtime: groovy` |
+| **L3** | 策略合并、三维策略、代答 | **云** `virbius-engine` Groovy 引擎；代答（M1a）在**管层** `virbius-gateway-agent`（命中即短路，不进 L3 合并） | `cloud` + `runtime: groovy` |
 
 **管层**：不承载 L1/L2 模型；执行 `gateway` 静态 Skill，并 **gRPC 调用 `virbius-engine.Evaluate`**（一次返回检测 signal + 最终 decision），根据结果 **disposition**。
 
@@ -2712,7 +2712,8 @@ gateway:
 
 ### Phase 2
 
-- L2 Prompt 重构、安全代答
+- L2 Prompt 重构
+- 安全代答：**输入侧已落地（M1a）**，见 [openspec/qa-reply.md](./openspec/qa-reply.md)；输出侧代答（安全大模型生成代答）仍为规划
 - Flink **自动**晋升（`review` 指标门禁 → canary → full；Phase 2）
 - 分级超时与 tenant Fail-open/close
 - 会话 risk、三维 scene

@@ -82,3 +82,9 @@ jobs:
       - name: Rust clippy (gateway-agent)
         working-directory: virbius-gateway-agent
         run: cargo clippy -- -D warnings
+      - name: Shell script syntax check
+        run: |
+          for f in scripts/*.sh; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done

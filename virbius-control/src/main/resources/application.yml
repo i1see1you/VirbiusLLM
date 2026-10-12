@@ -44,6 +44,12 @@ virbius:
       enabled: true
       key-prefix: virbius:lists
       sweep-cron: "0 0 3 * * *"
+  qa:
+    job-poll-ms: 2000
+    ack-timeout-seconds: ${VIRBIUS_QA_ACK_TIMEOUT_SECONDS:120}
+    pointer-prefix: virbius:config:qa
+    blob-prefix: virbius:artifacts:qa
+    ack-prefix: virbius:ack:qa
   audit:
     allow-log-path: ${VIRBIUS_AUDIT_ALLOW_PATH:${virbius.data-dir}/audit-allow.jsonl}
     allow-log:

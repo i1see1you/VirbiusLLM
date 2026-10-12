@@ -28,6 +28,7 @@ local scene_registry_mod = require("scene_registry")
 local access_lists_mod = require("access_lists")
 local config_redis_mod = require("config_redis")
 local prompt_mod = require("prompt")
+local reply_mod = require("reply")
 local trace_mod = require("trace")
 
 json_util.set_codec(core.json.encode, core.json.decode)
@@ -69,9 +70,22 @@ local function get_header(ctx, name)
     return core.request.header(ctx, name)
 end
 
-local function read_prompt_content()
-    ngx.req.read_body()
-    return prompt_mod.extract(ngx.req.get_body_data() or "", core.json.decode)
+local function emit_reply(trace_id, out, meta)
+    local answer = tostring(out.reply_text or "")
+    local opts = { trace_id = trace_id, model = meta.model, qa_entry_id = out.qa_entry_id }
+    if meta.stream then
+        ngx.status = 200
+        ngx.header["Content-Type"] = "text/event-stream"
+        ngx.header["Cache-Control"] = "no-cache"
+        ngx.header["X-Virbius-Trace-Id"] = trace_id
+        for _, chunk in ipairs(reply_mod.sse_chunks(answer, opts)) do
+            ngx.print("data: " .. core.json.encode(chunk) .. "\n\n")
+        end
+        ngx.print("data: [DONE]\n\n")
+        ngx.eof()
+        return ngx.exit(200)
+    end
+    return core.response.exit(200, reply_mod.completion(answer, opts))
 end
 
 local function check_access_lists(lists_source, ctx, content, user_id, device_id, client_ip)
@@ -111,7 +125,10 @@ function _M.access(conf, ctx)
     local device_id = get_header(ctx, "X-Virbius-Device-Id")
     local session_id = get_header(ctx, "X-Virbius-Session-Id")
     local client_ip = ngx.var.remote_addr
-    local content = read_prompt_content()
+    ngx.req.read_body()
+    local raw_body = ngx.req.get_body_data() or ""
+    local content = prompt_mod.extract(raw_body, core.json.decode)
+    local last_user_message = prompt_mod.extract_last_user(raw_body, core.json.decode)
 
     local user_id
     if conf.auth_mode == "required" then
@@ -241,6 +258,7 @@ function _M.access(conf, ctx)
         route_uri = route_uri,
         query = query,
         headers = headers_map,
+        last_user_message = (last_user_message ~= "" and last_user_message or nil),
     })
     local res, err = httpc:request_uri(conf.agent_url .. "/v1/evaluate", {
         method = "POST",
@@ -266,6 +284,9 @@ function _M.access(conf, ctx)
     end
 
     local out = core.json.decode(res.body)
+    if out and out.effective_action == "reply" and out.reply_text then
+        return emit_reply(trace_id, out, prompt_mod.extract_meta(raw_body, core.json.decode))
+    end
     if out and out.effective_action == "block" then
         return core.response.exit(403, {
             code = "POLICY_BLOCK",

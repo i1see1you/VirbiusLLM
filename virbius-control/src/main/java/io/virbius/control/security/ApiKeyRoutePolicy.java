@@ -37,6 +37,9 @@ public final class ApiKeyRoutePolicy {
         if (path.contains("/gateway-artifacts")) {
             return ApiRole.TENANT_ADMIN;
         }
+        if (path.contains("/qa/") && path.contains("/publish")) {
+            return ApiRole.PLATFORM_ADMIN;
+        }
         if (path.contains("/api-credentials")) {
             return ApiRole.TENANT_ADMIN;
         }

@@ -403,6 +403,15 @@ OpenResty 本地对齐：`./scripts/compile-openresty-poc.sh`（`--deploy-layout
 | 428 | 触发验证码（captcha） |
 | 400 | 如 trace_id 格式非法 |
 
+### 4.9 QA 代答（M1a）
+
+命中 QA 代答库且最终判定为 `allow` 且未降级时，网关**不调用上游 LLM**，直接返回预设答案（OpenAI 兼容 JSON；客户端 `stream=true` 时合成 SSE），响应体含 `virbius.proxy_replied` / `qa_entry_id`。
+
+- 管理：control `/api/v1/admin/tenants/{tenantId}/qa`（条目 `match_mode`: `exact|contains|regex`；发布需 `PLATFORM_ADMIN`，异步 job 完成实例 ack 后生效）。
+- 输入：网关传 `last_user_message`（最后一条 user 消息）用于匹配；`content` 仍为全部 user 消息拼接（用于风险检测）。
+- 压制：`deny`/`captcha`/`review` 或引擎降级（fail-open）时代答不生效，按原链路口径返回。
+- 详见 [openspec/qa-reply.md](./openspec/qa-reply.md)。
+
 ---
 
 ## 5. trace_id 与审计串联

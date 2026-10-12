@@ -180,6 +180,38 @@ curl -X POST "http://127.0.0.1:8080/api/v1/tenants/default/access-lists/user_id/
 - `VIRBIUS_GATEWAY_LISTS_PATH`（agent 名单文件）
 - `VIRBIUS_EDGE_LISTS_PATH`（端侧 keyword 文件，遗留）
 
+## 6.6 QA 代答库 API（M1a）
+
+安全知识代答（命中即返回预设答案，不调上游 LLM）。前缀 `/api/v1/admin/tenants/{tenantId}/qa`。
+
+| 操作 | 方法 | 路径 |
+|------|------|------|
+| 列出代答库 | GET | `.../qa` |
+| 新建代答库 | POST | `.../qa` body: `{"name":"...","rollout_state":"full"}` |
+| 查询 | GET | `.../qa/{qaId}` |
+| 更新 | PUT | `.../qa/{qaId}` body: `{"name":"...","rollout_state":"canary","canary_percent":10}` |
+| 删除 | DELETE | `.../qa/{qaId}` |
+| 查询条目 | GET | `.../qa/{qaId}/entries` |
+| 整表替换条目 | PUT | `.../qa/{qaId}/entries` body: `{"entries":[{"question":"...","answer":"...","match_mode":"exact"}]}` |
+| 提交发布 job | POST | `.../qa/{qaId}/publish`（**需 `PLATFORM_ADMIN`**） |
+| 发布 job 列表 | GET | `.../qa/{qaId}/jobs` |
+| 实例 ack 状态 | GET | `.../qa/{qaId}/ack` |
+
+- `match_mode`: `exact` | `contains` | `regex`（`similar` 属 M1b）；`answer` ≤ 4KB；`question`/`variant` ≤ 512；正则禁用环视/反向引用；≤ 1 万条（regex ≤ 200）。
+- 发布为**异步** job：答案送检（engine `/v1/precheck`）→ 写 Redis 快照 → 各网关实例 ack 后生效（`pending|checking|publishing|waiting_ack|acked|failed`）。
+- 生效：gateway-agent 轮询快照，仅当最终判定 `allow` 且未降级时返回预设答案（OpenAI 兼容 JSON / SSE）。发布与编辑权限分离。
+
+```bash
+# 新建代答库并写入条目
+QA_ID=$(curl -s -X POST "http://127.0.0.1:8080/api/v1/admin/tenants/default/qa" \
+  -H "Content-Type: application/json" -d '{"name":"ideology","rollout_state":"full"}' | jq -r .data.qa_id)
+curl -X PUT "http://127.0.0.1:8080/api/v1/admin/tenants/default/qa/${QA_ID}/entries" \
+  -H "Content-Type: application/json" \
+  -d '{"entries":[{"question":"什么是核心价值观","answer":"（合规话术）","match_mode":"exact"}]}'
+# 发布（需 PLATFORM_ADMIN 凭证）
+curl -X POST "http://127.0.0.1:8080/api/v1/admin/tenants/default/qa/${QA_ID}/publish"
+```
+
 ## 6.5 Edge manifest 同步与鉴权（方案 B+）
 
 PoC 已实现 Control 直拉 + 租户级 Bearer；详见 [DESIGN §8.10.2.5a](DESIGN.md)、[用户使用手册 §3.2](user-guide.md)。

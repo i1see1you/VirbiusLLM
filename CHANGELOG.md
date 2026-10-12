@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **QA 代答（安全知识代答，M1a）**：
+  - `virbius-gateway-agent`：新增 `qa.rs`（归一化 + exact/contains/regex 匹配、pointer+blob 快照加载与热更新、ack 上报、消费决策）；`/v1/evaluate` 支持 `last_user_message`，响应新增 `reply_text`/`qa_entry_id`；新增 `reply` 动作（仅 `allow && !degraded` 消费，其余压制）；审计事件 `QA_REPLY`/`QA_SUPPRESSED`/`QA_DRY_RUN_CANDIDATE`。
+  - 网关（APISIX / OpenResty）：抽取 `last_user_message`，新增 `reply` 分支合成 OpenAI 兼容响应（JSON 与 SSE，`virbius-gateway/lib/reply.lua`）。
+  - `virbius-engine`：新增离线预检端点 `POST /v1/precheck`（单次聚合推理、无审计/计数副作用，用于发布期答案送检）。
+  - `virbius-control`：新增 `tb_qa_meta`/`tb_qa_entry`/`tb_qa_history`/`tb_qa_publish_job` 四表与 QA 管理 API；异步发布 job（答案送检 → Redis 快照 → 多实例 ack 状态机）；发布权限分离（`/qa/.../publish` → `PLATFORM_ADMIN`）。
+  - 文档：新增 `docs/openspec/qa-reply.md`；`registry`/`gateway-agent`/`engine-admin` OpenAPI 与用户手册同步。
+
 ## [0.1.0] — 2026-06
 
 ### Added

@@ -27,6 +27,8 @@
 
 Edge 拉取契约：[用户使用手册 §3.2](../docs/user-guide.md)、[DESIGN §8.10.2.5a](../docs/DESIGN.md)。
 
+**QA 代答库（M1a）**：`/api/v1/admin/tenants/{tenantId}/qa`（库/条目 CRUD 与 `/publish`、`/jobs`、`/ack`）；发布接口需 `PLATFORM_ADMIN`（编辑与发布权限分离）。契约见 [openspec/qa-reply.md](../docs/openspec/qa-reply.md) 与 [registry.openapi.yaml](../docs/openspec/registry.openapi.yaml)。
+
 ## 配置
 
 ### API Key 鉴权（Admin / Edge / Legacy tenants API）

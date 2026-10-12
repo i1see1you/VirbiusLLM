@@ -20,6 +20,7 @@ local json_util = require("json_util")
 local effective_mod = require("effective")
 local trace = require("trace")
 local prompt = require("prompt")
+local reply = require("reply")
 local context_vars = require("context_vars")
 local scene_registry = require("scene_registry")
 local access_lists = require("access_lists")
@@ -35,6 +36,24 @@ local function json_exit(status, body)
     ngx.header["Content-Type"] = "application/json"
     ngx.say(json_util.encode(body))
     return ngx.exit(status)
+end
+
+local function emit_reply(trace_id, out, meta)
+    local answer = tostring(out.reply_text or "")
+    local opts = { trace_id = trace_id, model = meta.model, qa_entry_id = out.qa_entry_id }
+    if meta.stream then
+        ngx.status = 200
+        ngx.header["Content-Type"] = "text/event-stream"
+        ngx.header["Cache-Control"] = "no-cache"
+        ngx.header["X-Virbius-Trace-Id"] = trace_id
+        for _, chunk in ipairs(reply.sse_chunks(answer, opts)) do
+            ngx.print("data: " .. json_util.encode(chunk) .. "\n\n")
+        end
+        ngx.print("data: [DONE]\n\n")
+        ngx.eof()
+        return ngx.exit(200)
+    end
+    return json_exit(200, reply.completion(answer, opts))
 end
 
 local effective_path = ngx.var.virbius_effective
@@ -80,7 +99,12 @@ if conf.auth_mode == "required" then
 else
     user_id = get_header("X-Virbius-User-Id")
 end
-local content = prompt.read_prompt_content()
+local raw_body = (function()
+    ngx.req.read_body()
+    return ngx.req.get_body_data() or ""
+end)()
+local content = prompt.extract(raw_body, json_util.decode)
+local last_user_message = prompt.extract_last_user(raw_body, json_util.decode)
 
 ngx.req.clear_header("X-Virbius-Scene")
 local route_uri = ngx.var.uri
@@ -190,6 +214,7 @@ local payload = json_util.encode({
     route_uri = route_uri,
     query = query,
     headers = headers_map,
+    last_user_message = (last_user_message ~= "" and last_user_message or nil),
 })
 local res, req_err = httpc:request_uri(agent_url .. "/v1/evaluate", {
     method = "POST",
@@ -218,6 +243,9 @@ if res.status >= 500 then
 end
 
 local out = json_util.decode(res.body)
+if out and out.effective_action == "reply" and out.reply_text then
+    return emit_reply(trace_id, out, prompt.extract_meta(raw_body, json_util.decode))
+end
 if out and out.effective_action == "block" then
     return json_exit(403, {
         code = "POLICY_BLOCK",

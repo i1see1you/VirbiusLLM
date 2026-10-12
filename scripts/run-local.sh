@@ -145,8 +145,9 @@ wait_http "http://127.0.0.1:8082/admin/health" "virbius-engine" || {
 }
 
 nohup env VIRBIUS_ENGINE_URL=http://127.0.0.1:8082 VIRBIUS_DATA_DIR="$VIRBIUS_DATA_DIR" \
-  VIRBIUS_LOG_DIR="$VIRBIUS_LOG_DIR" VIRBIUS_LOG_MAX_FILE_SIZE="$VIRBIUS_LOG_MAX_FILE_SIZE" \
+  VIRBIUS_LOG_DIR="$LOG_DIR" VIRBIUS_LOG_MAX_FILE_SIZE="$VIRBIUS_LOG_MAX_FILE_SIZE" \
   VIRBIUS_LOG_MAX_HISTORY_DAYS="$VIRBIUS_LOG_MAX_HISTORY_DAYS" \
+  VIRBIUS_QA_SYNC_POLL_SEC="${VIRBIUS_QA_SYNC_POLL_SEC:-10}" \
   "$AGENT_BIN" >/dev/null 2>&1 &
 wait_http "http://127.0.0.1:9070/health" "gateway-agent" || {
   echo "--- agent.log (tail) ---"
