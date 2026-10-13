@@ -27,7 +27,7 @@ Thank you for your interest in VirbiusLLM. This document outlines the process fo
 - **Java**: Follow existing conventions in the codebase (no extra comments, 4-space indent).
 - **Rust**: `cargo fmt` before committing.
 - **SQL**: Use PostgreSQL/MySQL/SQLite compatible JDBC syntax; avoid vendor-specific features.
-- **Frontend**: Plain JavaScript (no framework), match existing patterns in `static/js/`.
+- **Frontend** (ops console): Vue 3 + Element Plus + Pinia + vue-router + Vite in `virbius-control/frontend/`. Run `npm ci` once, `npm run build` (type-checks with `vue-tsc` then builds to `static/ui/`, gitignored) and `npx playwright test` for the smoke suite. `mvn package` builds the UI automatically via `frontend-maven-plugin`. For the real-backend end-to-end suite, run `bash scripts/test-ops-console-e2e.sh` (builds + starts a dev control, drives the SPA with Playwright).
 
 ## Reporting Issues
 

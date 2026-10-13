@@ -11,6 +11,7 @@
 VirbiusLLM/
 ├── pom.xml                      # Maven 父工程
 ├── virbius-control/             # Java：Registry API + Admin（:8080）
+│   └── frontend/                # Vue3 + Element Plus 运营台 SPA（构建产物 → static/ui/）
 ├── virbius-engine/              # Java：gRPC Evaluate + admin HTTP (:50051 / :8082)
 ├── virbius-gateway-agent/       # Rust：sidecar HTTP → engine（F-14）
 ├── virbius-gateway/
@@ -71,6 +72,7 @@ make init-db   # 或 ./scripts/init-databases.sh
 | **JDK** | **17**（与根 `pom.xml` 中 `java.version` 一致） |
 | Maven | 3.9+ |
 | Rust | 1.70+（`virbius-gateway-agent`、`virbius-core`） |
+| Node.js | 20+（仅运营台前端开发/测试；`mvn package` 由 `frontend-maven-plugin` 自备，无需本机安装） |
 | SQLite CLI | 可选（`make init-db`，仅本地 `.db`；PG/MySQL 靠 `sql.init`） |
 
 ```bash
@@ -80,7 +82,7 @@ java -version   # 应显示 17.x
 ## 快速开始
 
 ```bash
-# Java 控制面 + 引擎
+# Java 控制面 + 引擎（control 构建会经 frontend-maven-plugin 自动构建运营台 SPA）
 mvn -q -pl virbius-control,virbius-engine package
 java -jar virbius-control/target/virbius-control-0.1.0-SNAPSHOT.jar
 java -jar virbius-engine/target/virbius-engine-0.1.0-SNAPSHOT.jar
@@ -105,3 +107,8 @@ curl -s http://127.0.0.1:9070/health
 
 - 集成与 API 说明：[用户使用手册](./user-guide.md)、[seed-api.md](./seed-api.md)、[DESIGN.md](./DESIGN.md)
 - 规则真源：**`rule_history`**（非 `rule_runtime`）
+
+## 运营台测试
+
+- **mock 冒烟**（前端）：`cd virbius-control/frontend && npm run build && npx playwright test`
+- **真实后端集成**：`bash scripts/test-ops-console-e2e.sh`（构建并启动 dev control，驱动 SPA 校验 QA 全流程 / 脏表单守卫 / 租户隔离）

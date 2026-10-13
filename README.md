@@ -83,7 +83,7 @@ bash scripts/run-local.sh
 
 ```bash
 # 1. Build
-mvn clean install -DskipTests          # virbius-control + virbius-engine
+mvn clean install -DskipTests          # virbius-control + virbius-engine（control 会经 frontend-maven-plugin 自动构建运营台 SPA）
 cargo build --release                   # gateway-agent + virbius-core
 
 # 2. Start locally (H2 in-memory, auto schema)

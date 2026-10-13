@@ -2,7 +2,7 @@
 
 **中文:** [用户使用手册](./user-guide.md)
 
-This guide is for **app, server, and Rust client** integrators. It covers runtime integration with Virbius LLM security. For rule configuration, use the admin console (`ops.html`) and [seed-api.md](./seed-api.md).
+This guide is for **app, server, and Rust client** integrators. It covers runtime integration with Virbius LLM security. For rule configuration, use the admin console (`/ui`, Vue3 SPA) and [seed-api.md](./seed-api.md).
 
 **Related docs**
 

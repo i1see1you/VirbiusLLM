@@ -2,7 +2,7 @@
 
 **English:** [User Guide (Client Integration)](./user-guide.en.md)
 
-本文面向 **App / 服务端 / Rust 客户端** 集成方，说明如何在业务中接入 Virbius 大模型防控能力。运营配置规则请使用 Admin 运营台（`ops.html`）及 [seed-api.md](./seed-api.md)；本文聚焦 **运行时集成**。
+本文面向 **App / 服务端 / Rust 客户端** 集成方，说明如何在业务中接入 Virbius 大模型防控能力。运营配置规则请使用 Admin 运营台（`/ui`，Vue3 SPA）及 [seed-api.md](./seed-api.md)；本文聚焦 **运行时集成**。
 
 **相关文档**
 

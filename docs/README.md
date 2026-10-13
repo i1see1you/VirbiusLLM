@@ -14,6 +14,7 @@
 | [seed-api.md](./seed-api.md) | Seed data, admin APIs, curl examples |
 | [repo-layout.md](./repo-layout.md) | Repo layout, build, `run-local.sh` |
 | [DESIGN.md](./DESIGN.md) | System architecture |
+| [ops-redesign.md](./ops-redesign.md) | Ops console redesign plan (Vue3 migration) |
 
 ## API Specifications
 

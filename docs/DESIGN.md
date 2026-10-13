@@ -397,7 +397,7 @@ flowchart LR
 
 | 模块 | 技术建议 | 职责 |
 |------|----------|------|
-| **virbius-control** | Java + PostgreSQL/MinIO + 静态运营台 | **单进程控制面**：Registry API（规则真源）+ Admin 运营台（`ops.html`）；对外 **一套 HTTP**（§7.1.1） |
+| **virbius-control** | Java + PostgreSQL/MinIO + 静态运营台 | **单进程控制面**：Registry API（规则真源）+ Admin 运营台（Vue3 SPA，`/ui`）；对外 **一套 HTTP**（§7.1.1） |
 | Skill Compiler | Rust（edge）+ Java/CLI（gateway/cloud） | 从 Registry 组装 RuleBundle → 按 `layer`+`runtime` 编译并推送各层产物 |
 | **virbius-engine** | Java + Python（Prompt/ML）+ **Groovy 沙箱** | 云侧统一：L1/L2 Prompt + L3 终判 |
 | Release Orchestrator | Java + Temporal/XXL-JOB | 沙箱→灰度→全量 |
@@ -414,7 +414,7 @@ MVP 将原 **virbius-registry** 与 **virbius-admin** 合并为 **一个 Java �
 |------|------|
 | **部署单元** | 单个 Spring Boot 应用；Maven/Gradle 子模块示例：`registry-core`、`admin-ui`（静态资源）、`deploy-orchestrator`（可选同进程） |
 | **对外 HTTP** | **单一监听端口**（PoC `:8080`）；**单一 OpenAPI**：[seed-api.md](seed-api.md) |
-| **路径** | `/api/v1/*` — 规则、Bundle、发布、enforce（compiler / deploy / 自动化均调用此面）；`/ui` → **`ops.html`** 静态运营台；`/health`、`/ready` — 探活 |
+| **路径** | `/api/v1/*` — 规则、Bundle、发布、enforce（compiler / deploy / 自动化均调用此面）；`/ui` → **Vue3 SPA**（`static/ui/index.html`，hash 路由）静态运营台；`/health`、`/ready` — 探活 |
 | **真源** | **仅 `registry-core` 写 PostgreSQL/MinIO**；Admin 为 UI + 鉴权 + 进程内调用 Registry Service，**不得**维护第二套规则存储或独立 BFF 真源 |
 | **调用方** | 运营浏览器、virbius-compiler、`PublishOrchestrator`、未来 Agent → **同一基址** `http://virbius-control:8080` |
 | **K8s** | Deployment/Service 名 **`virbius-control`**（1 副本 PoC）；**不**再单独部署 `virbius-admin:8081` |
@@ -423,12 +423,12 @@ MVP 将原 **virbius-registry** 与 **virbius-admin** 合并为 **一个 Java �
 ```text
 ┌─ virbius-control (:8080) ─────────────────────────────┐
 │  /api/v1/*     → registry-core（CRUD、发布、rule_history）│
-│  /ui/*         → admin-ui（ops.html，调同进程 /api/v1/admin） │
+│  /ui/*         → admin-ui（Vue3 SPA，调同进程 /api/v1/admin） │
 │  PublishOrchestrator（库，发布编排，进程内触发）          │
 └───────────────────────────────────────────────────────┘
 ```
 
-**运营台（`ops.html`）功能清单**：
+**运营台（Vue3 SPA，`/ui`）功能清单**：
 
 | 页面 | 功能 | 对应 API |
 |------|------|----------|
@@ -1629,7 +1629,7 @@ Registry.status = syncing, publish_id = P
 | 服务 | 语言 | 说明 |
 |------|------|------|
 | virbius-compiler | Rust/Java CLI | 从 Registry 编译 RuleBundle |
-| **virbius-control** | Java + 静态运营台 | Registry API + Admin UI（`ops.html`）+ 发布编排入口；**单进程、单 HTTP**（§7.1.1） |
+| **virbius-control** | Java + 静态运营台 | Registry API + Admin UI（Vue3 SPA，`/ui`）+ 发布编排入口；**单进程、单 HTTP**（§7.1.1） |
 | **virbius-engine** | Java + Python | **统一规则引擎**：Prompt L1/L2 + Groovy L3 |
 | **virbius-gateway** | APISIX/Kong 插件 + gateway-agent | 管层数据面；见 §11.5、§11.6（MVP） |
 | virbius-worker | Python | 评测、红队、Agent |

@@ -51,3 +51,11 @@ staging/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Frontend (ops console SPA; built by frontend-maven-plugin / vite)
+virbius-control/frontend/node_modules/
+virbius-control/frontend/node/
+virbius-control/frontend/dist/
+virbius-control/frontend/test-results/
+virbius-control/frontend/playwright-report/
+virbius-control/src/main/resources/static/ui/

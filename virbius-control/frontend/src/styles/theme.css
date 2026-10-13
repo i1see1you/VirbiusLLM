@@ -1,0 +1,78 @@
+/* Element Plus 主题覆盖 + 布局工具类（Phase 1 最小集） */
+:root {
+  --ops-sidebar-width: 220px;
+  --ops-sidebar-collapsed: 64px;
+  --ops-topbar-height: 48px;
+  --ops-bg: #f5f7fa;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  background: var(--ops-bg);
+}
+
+.ops-layout {
+  height: 100%;
+}
+
+.ops-sidebar {
+  background: #fff;
+  border-right: 1px solid var(--el-border-color-light);
+  transition: width 0.2s;
+  overflow: hidden;
+}
+
+.ops-sidebar .logo {
+  height: var(--ops-topbar-height);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.ops-sidebar .el-menu {
+  border-right: none;
+}
+
+.ops-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+}
+
+.ops-topbar {
+  height: var(--ops-topbar-height);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+.ops-content {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+
+.error-page {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.placeholder-card {
+  max-width: 720px;
+}
+.placeholder-card .el-empty__description {
+  margin-top: 8px;
+}

@@ -117,9 +117,9 @@ curl -s -X POST "http://127.0.0.1:8080/api/v1/admin/tenants/default/bundles/poc-
 
 | 功能 | URL |
 |------|-----|
-| **运营台**（名单 · 累计 · 请求映射 · 规则 · **策略上线** · **审计中心**） | http://127.0.0.1:8080/ui |
+| **运营台**（名单 · 累计 · 请求因子 · 扩展因子 · 场景注册 · 网关路由 · 规则 · 策略上线 · QA 代答 · 监控 · 审计 · 租户） | http://127.0.0.1:8080/ui |
 
-单页表格维护；旧 URL（`/ui/access-lists`、`/ui/policies`、`access-lists.html` 等）自动重定向到 `/ui`。
+Vue3 SPA（hash 路由）；`/ui`、`/ops` 均指向该 SPA。旧控制台路径（`/ui/access-lists`、`/ui/policies`、`access-lists.html` 等）已随旧控制台一并移除（返回 404）。
 
 Admin API：`/api/v1/admin/tenants/{tenantId}/...`（`{ "code": 0, "data": ... }`）。下文 curl 仍可用兼容路径 `/api/v1/tenants/...`。
 
