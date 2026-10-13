@@ -407,7 +407,8 @@ OpenResty 本地对齐：`./scripts/compile-openresty-poc.sh`（`--deploy-layout
 
 命中 QA 代答库且最终判定为 `allow` 且未降级时，网关**不调用上游 LLM**，直接返回预设答案（OpenAI 兼容 JSON；客户端 `stream=true` 时合成 SSE），响应体含 `virbius.proxy_replied` / `qa_entry_id`。
 
-- 管理：control `/api/v1/admin/tenants/{tenantId}/qa`（条目 `match_mode`: `exact|contains|regex`；发布需 `PLATFORM_ADMIN`，异步 job 完成实例 ack 后生效）。
+- 管理（运营台）：`http://127.0.0.1:8080/ui` → 左侧「**QA 代答**」。库列表（名称/状态/放量/revision）→「条目」打开编辑器（启用、entry_id、问题/变体、答案、匹配模式、优先级、过期、送检状态）→「保存条目」→「**发布**」（异步：engine 送检 → Redis 快照 → 实例 ack），面板展示 job 时间线与多实例 ack。`rollout_state`：`dry_run`（只审计不代答）/`canary`（按 session 分桶，配 `canary_percent`）/`full`/`disabled`。
+- 管理（API）：control `/api/v1/admin/tenants/{tenantId}/qa`（条目 `match_mode`: `exact|contains|regex`；发布需 `PLATFORM_ADMIN`，异步 job 完成实例 ack 后生效）。
 - 输入：网关传 `last_user_message`（最后一条 user 消息）用于匹配；`content` 仍为全部 user 消息拼接（用于风险检测）。
 - 压制：`deny`/`captcha`/`review` 或引擎降级（fail-open）时代答不生效，按原链路口径返回。
 - 详见 [openspec/qa-reply.md](./openspec/qa-reply.md)。

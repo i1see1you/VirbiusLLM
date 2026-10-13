@@ -2,6 +2,12 @@ spring:
   datasource:
     url: jdbc:sqlite:${virbius.data-dir:./data}/virbius-control.db
     driver-class-name: org.sqlite.JDBC
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          no-cache: true
+          must-revalidate: true
   sql:
     init:
       mode: always

@@ -8,6 +8,7 @@
       await loadSceneRegistry();
       await loadGatewayRoutes();
       await loadRules();
+      if (typeof loadQa === 'function') await loadQa();
       if (document.getElementById('panel-rollout').classList.contains('active')) {
         await refreshRolloutDashboard();
       }
@@ -37,6 +38,10 @@
       if (currentActive && currentActive.id === 'panel-rules' && tab !== 'rules' && isRuleFormDirty()) {
         if (!confirm(__('rules.confirm-unsaved'))) return;
         resetRuleFormDirty();
+      }
+      if (currentActive && currentActive.id === 'panel-qa' && tab !== 'qa' && typeof qaIsDirty === 'function' && qaIsDirty()) {
+        if (!confirm(__('qa.confirm-unsaved'))) return;
+        resetQaDirty();
       }
       logEl.textContent = '';
       logEl.className = 'log-info';
@@ -68,6 +73,9 @@
       }
       if (tab === 'tenants') {
         loadTenantsPage().catch(e => log(e.message, 'err'));
+      }
+      if (tab === 'qa') {
+        loadQa().catch(e => log(e.message, 'err'));
       }
     }
 

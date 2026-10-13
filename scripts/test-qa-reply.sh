@@ -17,8 +17,8 @@
 # Known gaps (unit-tested in virbius-gateway-agent/src/qa.rs, not in shell):
 #   captcha / review / degraded suppression legs — need engine-side fixtures or a
 #   stopped engine, not deterministic in this script.
-#   Gateway-side Lua path (lib/prompt.lua last-user extraction + lib/reply.lua JSON/SSE
-#   synthesis) — requires APISIX/OpenResty, not covered by any shell test yet.
+# Gateway-side Lua path (extract_last_user + lib/reply.lua JSON/SSE synthesis) is
+# covered end-to-end by scripts/test-openresty-fullchain.sh (needs OpenResty POC).
 #
 # Prerequisites:
 #   - Control API on http://127.0.0.1:8080
@@ -41,7 +41,7 @@ OLLAMA="http://127.0.0.1:11434"
 TENANT="default"
 QA_FILE="${ROOT}/data/gateway/${TENANT}-qa.json"
 QA_POLL_SEC="${VIRBIUS_QA_SYNC_POLL_SEC:-10}"
-AUDIT_LOG="${ROOT}/data/gateway-audit.$(date +%F).jsonl"
+AUDIT_GLOB="${ROOT}/data/gateway-audit.*.jsonl"
 
 PASS=0
 FAIL=0
@@ -97,12 +97,31 @@ inject_snapshot() {
     fi
 }
 
-# audit_has <trace_id> <reason_code> — grep the dated non-allow audit jsonl (QA events are never sampled)
+# audit_files — non-allow audit jsonl (QA events are never sampled; UTC/local date may differ)
+audit_files() {
+    # shellcheck disable=SC2086
+    ls ${AUDIT_GLOB} 2>/dev/null | grep -v -- '-allow' || true
+}
+
+# audit_has <trace_id> <reason_code>
 audit_has() {
-    if [ ! -f "${AUDIT_LOG}" ]; then
+    local files
+    files=$(audit_files)
+    if [ -z "$files" ]; then
         return 2
     fi
-    grep "\"trace_id\":\"$1\"" "${AUDIT_LOG}" 2>/dev/null | grep -q "\"reason_code\":\"$2\""
+    # shellcheck disable=SC2086
+    grep -h "\"trace_id\":\"$1\"" $files 2>/dev/null | grep -q "\"reason_code\":\"$2\""
+}
+
+audit_has_layer() {
+    local files
+    files=$(audit_files)
+    if [ -z "$files" ]; then
+        return 2
+    fi
+    # shellcheck disable=SC2086
+    grep -h "\"trace_id\":\"$1\"" $files 2>/dev/null | grep -q '"layer":"qa"'
 }
 
 wait_snapshot() {
@@ -333,8 +352,8 @@ fi
 # ============================================================
 log_step "Step 4b: Audit assertions (QA_REPLY / QA_SUPPRESSED)"
 
-if [ ! -f "${AUDIT_LOG}" ]; then
-    log_skip "audit jsonl not found: ${AUDIT_LOG}"
+if [ -z "$(audit_files)" ]; then
+    log_skip "no non-allow audit jsonl found under data/"
 else
     if [ -n "${TID_REPLY}" ] && audit_has "${TID_REPLY}" "QA_REPLY"; then
         log_pass "QA_REPLY audit event written (trace=${TID_REPLY})"
@@ -348,7 +367,7 @@ else
         log_fail "missing QA_SUPPRESSED audit event for trace=${TID_SUPPRESS}"
     fi
 
-    if grep "\"trace_id\":\"${TID_REPLY}\"" "${AUDIT_LOG}" 2>/dev/null | grep -q '"layer":"qa"'; then
+    if [ -n "${TID_REPLY}" ] && audit_has_layer "${TID_REPLY}"; then
         log_pass "QA audit event carries layer=qa"
     else
         log_fail "QA audit event missing layer=qa"

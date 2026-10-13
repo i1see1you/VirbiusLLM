@@ -325,7 +325,8 @@ Sidecar may also pull via Control: `GET /api/v1/gateway/tenants/{tenantId}/polic
 
 When the request matches a QA library entry and the final decision is `allow` with `degraded=false`, the gateway **does not call the upstream LLM** and returns the preset answer instead (OpenAI-compatible JSON; synthesized SSE when `stream=true`), including `virbius.proxy_replied` / `qa_entry_id`.
 
-- Management: control `/api/v1/admin/tenants/{tenantId}/qa` (`match_mode`: `exact|contains|regex`; publishing requires `PLATFORM_ADMIN` and takes effect after instance acks).
+- Management (ops console): `http://127.0.0.1:8080/ui` → "**QA Reply**" in the sidebar. Library list (name/status/rollout/revision) → "Entries" opens the editor (enabled, entry_id, question/variants, answer, match mode, priority, expiry, precheck) → "Save entries" → "**Publish**" (async: engine precheck → Redis snapshot → instance acks), with a job timeline and multi-instance ack panel. `rollout_state`: `dry_run` (audit only) / `canary` (session-bucketed with `canary_percent`) / `full` / `disabled`.
+- Management (API): control `/api/v1/admin/tenants/{tenantId}/qa` (`match_mode`: `exact|contains|regex`; publishing requires `PLATFORM_ADMIN` and takes effect after instance acks).
 - Input: the gateway sends `last_user_message` (last user message) for matching; `content` remains the concatenation of all user messages (used for risk detection).
 - Suppression: `deny`/`captcha`/`review` or engine degradation (fail-open) disables the reply; the normal chain applies.
 - See [openspec/qa-reply.md](./openspec/qa-reply.md).

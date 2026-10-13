@@ -13,7 +13,7 @@
 
 | 用途 | URL |
 |------|-----|
-| **运营台**（名单 · 累计 · 请求映射 · 规则 · **策略上线**） | http://127.0.0.1:8080/ui |
+| **运营台**（名单 · 累计 · 请求映射 · 规则 · **策略上线** · **QA 代答**） | http://127.0.0.1:8080/ui |
 
 旧路径（`/ui/access-lists`、`/ui/policies`、`access-lists.html` 等）均重定向到上述页面。
 
@@ -27,7 +27,7 @@
 
 Edge 拉取契约：[用户使用手册 §3.2](../docs/user-guide.md)、[DESIGN §8.10.2.5a](../docs/DESIGN.md)。
 
-**QA 代答库（M1a）**：`/api/v1/admin/tenants/{tenantId}/qa`（库/条目 CRUD 与 `/publish`、`/jobs`、`/ack`）；发布接口需 `PLATFORM_ADMIN`（编辑与发布权限分离）。契约见 [openspec/qa-reply.md](../docs/openspec/qa-reply.md) 与 [registry.openapi.yaml](../docs/openspec/registry.openapi.yaml)。
+**QA 代答库（M1a）**：`/api/v1/admin/tenants/{tenantId}/qa`（库/条目 CRUD 与 `/publish`、`/jobs`、`/ack`）；发布接口需 `PLATFORM_ADMIN`（编辑与发布权限分离）。运营台左侧「**QA 代答**」提供库列表、条目编辑器、发布与多实例 ack 面板；UI 端到端测试见 [`scripts/test-ops-qa-ui.sh`](../scripts/test-ops-qa-ui.sh)（jsdom DOM 级）。契约见 [openspec/qa-reply.md](../docs/openspec/qa-reply.md) 与 [registry.openapi.yaml](../docs/openspec/registry.openapi.yaml)。
 
 ## 配置
 
