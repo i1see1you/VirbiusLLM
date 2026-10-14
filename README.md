@@ -155,19 +155,6 @@ Pick the layers that match your deployment — start small, go deeper as risk gr
 | Progressive rollout (dry_run / canary / full) | ✅ | ❌ | ❌ | ❌ | rare |
 | License / cost | **MIT, free** | paid | OSS | OSS | varies |
 
-## Performance & effectiveness
-
-> TODO: fill in real measurements — this is the most persuasive section.
-
-| Metric | Value |
-|---|---|
-| Edge L0 latency (p50 / p99) | `TODO` (sub-ms target) |
-| Gateway on-path overhead | `TODO` (~10ms target) |
-| Cloud Prompt L1 latency | `TODO` |
-| Detection recall (holdout set) | `TODO` |
-| False-positive rate | `TODO` |
-| Throughput (req/s, single node) | `TODO` |
-
 ## Integrations
 
 - **OpenAI-compatible proxy** — repoint `/v1/chat/completions` (JSON + SSE); no business code change.
